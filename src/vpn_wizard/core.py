@@ -939,12 +939,8 @@ class WireGuardProvisioner:
             "done\n"
             "mv $tmp /etc/wireguard/wg0.conf\n"
             "chmod 600 /etc/wireguard/wg0.conf\n"
-            "# Hot reload\n"
-            "if systemctl is-active --quiet wg-quick@wg0; then\n"
-            "  wg syncconf wg0 <(wg-quick strip /etc/wireguard/wg0.conf)\n"
-            "else\n"
-            "  systemctl restart wg-quick@wg0 || true\n"
-            "fi\n",
+            "# Asynchronous restart to prevent SSH hang if connected via VPN\n"
+            "nohup sh -c 'sleep 1; systemctl restart wg-quick@wg0' >/dev/null 2>&1 &\n",
             sudo=True,
         )
 
@@ -984,8 +980,8 @@ class WireGuardProvisioner:
             "done\n"
             "mv $tmp /etc/amnezia/amneziawg/awg0.conf\n"
             "chmod 600 /etc/amnezia/amneziawg/awg0.conf\n"
-            "# Restart to ensure all Amnezia params and rules are applied cleanly\n"
-            "systemctl restart awg-quick@awg0 || true\n",
+            "# Asynchronous restart to prevent SSH hang if connected via VPN\n"
+            "nohup sh -c 'sleep 1; systemctl restart awg-quick@awg0' >/dev/null 2>&1 &\n",
             sudo=True,
         )
 
