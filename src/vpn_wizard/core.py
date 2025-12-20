@@ -100,7 +100,7 @@ class WireGuardProvisioner:
         dns: str = "1.1.1.1",
         mtu: Optional[int] = None,
         auto_mtu: bool = True,
-        mtu_fallback: int = 1280,
+        mtu_fallback: int = 1420,  # Optimized for speed (std WG MTU) instead of 1280
         mtu_probe_host: str = "1.1.1.1",
         tune: bool = True,
         progress: Optional[Callable[[str], None]] = None,
@@ -121,12 +121,13 @@ class WireGuardProvisioner:
         self._resolved_mtu: Optional[int] = None
         self._name_pattern = re.compile(r"^[a-zA-Z0-9_-]{1,32}$")
         self.protocol = protocol
+        self._public_ip_cache: Optional[str] = None
         
         # AmneziaWG obfuscation parameters (generated once, shared with all clients)
         import random
-        self.awg_jc = random.randint(4, 10)
-        self.awg_jmin = 8
-        self.awg_jmax = 80
+        self.awg_jc = random.randint(3, 10)  # Reduced slightly for performance
+        self.awg_jmin = 50   # Tweaked for better throughput masking
+        self.awg_jmax = 1000 # Larger range for better obfuscation
         self.awg_s1 = random.randint(15, 150)
         self.awg_s2 = random.randint(15, 150)
         # Ensure S1+56 != S2 as per spec
@@ -471,7 +472,7 @@ class WireGuardProvisioner:
             "set -e\n"
             f"client_priv=$(cat /etc/wireguard/clients/{client}.key)\n"
             "server_pub=$(cat /etc/wireguard/server_public.key)\n"
-            "public_ip=$(curl -s https://api.ipify.org || wget -qO- https://api.ipify.org)\n"
+            f"public_ip={self.get_public_ip()}\n"
             f"cat > /etc/wireguard/clients/{client}.conf <<EOF\n"
             "[Interface]\n"
             "PrivateKey = $client_priv\n"
@@ -571,7 +572,7 @@ class WireGuardProvisioner:
             "set -e\n"
             f"client_priv=$(cat /etc/amnezia/amneziawg/clients/{client}.key)\n"
             "server_pub=$(cat /etc/amnezia/amneziawg/server_public.key)\n"
-            "public_ip=$(curl -s https://api.ipify.org || wget -qO- https://api.ipify.org)\n"
+            f"public_ip={self.get_public_ip()}\n"
             f"cat > /etc/amnezia/amneziawg/clients/{client}.conf <<EOF\n"
             "[Interface]\n"
             "PrivateKey = $client_priv\n"
@@ -731,7 +732,7 @@ class WireGuardProvisioner:
             "set -e\n"
             f"client_priv=$(cat /etc/wireguard/clients/{name}.key)\n"
             "server_pub=$(cat /etc/wireguard/server_public.key)\n"
-            "public_ip=$(curl -s https://api.ipify.org || wget -qO- https://api.ipify.org)\n"
+            f"public_ip={self.get_public_ip()}\n"
             f"cat > /etc/wireguard/clients/{name}.conf <<EOF\n"
             "[Interface]\n"
             "PrivateKey = $client_priv\n"
@@ -800,9 +801,31 @@ class WireGuardProvisioner:
             "done\n"
             "mv $tmp /etc/wireguard/wg0.conf\n"
             "chmod 600 /etc/wireguard/wg0.conf\n"
-            "systemctl restart wg-quick@wg0 || true\n",
+            "# Hot reload\n"
+            "if systemctl is-active --quiet wg-quick@wg0; then\n"
+            "  wg syncconf wg0 <(wg-quick strip /etc/wireguard/wg0.conf)\n"
+            "else\n"
+            "  systemctl restart wg-quick@wg0 || true\n"
+            "fi\n",
             sudo=True,
         )
+
+    def get_public_ip(self) -> str:
+        """Get public IP, cached."""
+        if self._public_ip_cache:
+            return self._public_ip_cache
+        
+        # Check if host in config is an IP address
+        if self.ssh.config.host.replace(".", "").isdigit():
+            self._public_ip_cache = self.ssh.config.host
+            return self._public_ip_cache
+            
+        # Fetch from remote
+        self._public_ip_cache = self.ssh.run(
+            "curl -s https://api.ipify.org || wget -qO- https://api.ipify.org", 
+            check=False
+        ).strip()
+        return self._public_ip_cache
 
     def rebuild_awg0_from_clients(self) -> None:
         """Rebuild awg0.conf from all client configs, preserving server header."""
@@ -823,7 +846,12 @@ class WireGuardProvisioner:
             "done\n"
             "mv $tmp /etc/amnezia/amneziawg/awg0.conf\n"
             "chmod 600 /etc/amnezia/amneziawg/awg0.conf\n"
-            "systemctl restart awg-quick@awg0 || true\n",
+            "# Hot reload configuration without restarting interface\n"
+            "if systemctl is-active --quiet awg-quick@awg0; then\n"
+            "  awg syncconf awg0 <(awg-quick strip /etc/amnezia/amneziawg/awg0.conf)\n"
+            "else\n"
+            "  systemctl restart awg-quick@awg0 || true\n"
+            "fi\n",
             sudo=True,
         )
 
