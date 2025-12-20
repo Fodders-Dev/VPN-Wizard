@@ -100,7 +100,7 @@ class WireGuardProvisioner:
         dns: str = "1.1.1.1",
         mtu: Optional[int] = None,
         auto_mtu: bool = True,
-        mtu_fallback: int = 1200,  # Ultra-safe MTU for restrictive mobile networks
+        mtu_fallback: int = 1240,  # "Goldilocks" MTU: Windows accepts it, Mobile fits it
         mtu_probe_host: str = "1.1.1.1",
         tune: bool = True,
         progress: Optional[Callable[[str], None]] = None,
@@ -123,13 +123,13 @@ class WireGuardProvisioner:
         self.protocol = protocol
         self._public_ip_cache: Optional[str] = None
         
-        # AmneziaWG obfuscation parameters (Robust Mobile Config)
-        # Jmax=150 caused "Parameter Incorrect". Jmax=400+ works for driver.
-        # MTU=1200 ensures packets fit even with Jmax=450 overhead.
+        # AmneziaWG obfuscation parameters (Standard Values + Mobile Safe)
+        # MTU 1240 was never truly tested due to the restart bug.
+        # Jmax 1000 is known to be accepted by Windows.
         import random
-        self.awg_jc = random.randint(3, 5)    # Moderate random packets
+        self.awg_jc = random.randint(3, 8)    # Standard junk count
         self.awg_jmin = 50                    # Standard min
-        self.awg_jmax = 450                   # Safe range for driver & mobile traffic
+        self.awg_jmax = 1000                  # Standard max (Fixes 'Parameter Incorrect')
         self.awg_s1 = random.randint(15, 150)
         self.awg_s2 = random.randint(15, 150)
         while self.awg_s1 + 56 == self.awg_s2:
