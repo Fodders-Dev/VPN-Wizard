@@ -972,23 +972,35 @@ class WireGuardProvisioner:
             idx += 1
 
     def next_client_ip(self) -> str:
-        network = ipaddress.ip_network(self.server_cidr, strict=False)
-        used = set()
-        for client in self.list_clients():
-            ip = client.get("ip", "")
-            if not ip:
-                continue
-            try:
-                used.add(ipaddress.ip_interface(ip).ip)
-            except ValueError:
-                continue
-        server_ip = ipaddress.ip_interface(self.server_cidr).ip
-        for host in network.hosts():
-            if host == server_ip:
-                continue
-            if host not in used:
-                return f"{host}/32"
-        raise RuntimeError("No free IPs left in server CIDR.")
+        # Robustly find all used IPs by scanning the config files directly
+        conf_dir = (
+            "/etc/amnezia/amneziawg/clients"
+            if self.protocol == "amneziawg"
+            else "/etc/wireguard/clients"
+        )
+        
+        # Grep all Address lines from client configs
+        # Output format: "Address = 10.10.0.2/32" -> "10.10.0.2"
+        # We cut by space to handle "Address = 10.10..."
+        cmd = (
+            f"grep -h '^Address' {conf_dir}/*.conf 2>/dev/null "
+            "| cut -d= -f2 "
+            "| tr -d ' ' "
+            "| tr -d '\\r' "
+            "| cut -d/ -f1"
+        )
+        used_ips_output = self.ssh.run(cmd, sudo=True, check=False).strip()
+        used_ips = set(used_ips_output.splitlines()) if used_ips_output else set()
+        
+        # Default server subnet is 10.10.0.0/24. 
+        # We assume 10.10.0.1 is server.
+        base = "10.10.0"
+        for i in range(2, 255):
+            ip = f"{base}.{i}"
+            if ip not in used_ips:
+                return f"{ip}/32"
+                
+        raise RuntimeError("No free IPs available in 10.10.0.0/24 subnet")
 
     def _get_client_ip(self, client_name: str) -> Optional[str]:
         if self.protocol == "amneziawg":
