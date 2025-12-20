@@ -483,6 +483,44 @@ async def client_rotate(payload: ClientRemoveRequest) -> ClientAddResponse:
         temp_key.cleanup()
 
 
+@app.post("/api/repair", response_model=JobCreateResponse)
+async def run_repair(payload: RollbackRequest, background_tasks: BackgroundTasks) -> JobCreateResponse:
+    job = JOB_STORE.create()
+    
+    def _do_repair(job_id: str, payload: RollbackRequest):
+        temp_key = TempKey()
+        try:
+            JOB_STORE.update(job_id, status="running")
+            key_path = payload.ssh.key_path
+            if payload.ssh.key_content:
+                temp_key = _write_temp_key(payload.ssh.key_content)
+                key_path = temp_key.path
+
+            cfg = SSHConfig(
+                host=payload.ssh.host,
+                user=payload.ssh.user,
+                port=payload.ssh.port,
+                password=payload.ssh.password,
+                key_path=key_path,
+            )
+            
+            def progress(msg: str) -> None:
+                JOB_STORE.append_progress(job_id, msg)
+
+            with SSHRunner(cfg, logger=progress) as ssh:
+                prov = WireGuardProvisioner(ssh, progress=progress)
+                logs = prov.repair_network()
+            
+            JOB_STORE.update(job_id, status="done", progress=logs, error=None)
+        except Exception as exc:
+            JOB_STORE.update(job_id, status="error", error=str(exc))
+        finally:
+            temp_key.cleanup()
+
+    background_tasks.add_task(_do_repair, job.job_id, payload)
+    return JobCreateResponse(job_id=job.job_id)
+
+
 def _mount_miniapp() -> None:
     root = Path(__file__).resolve().parents[2]
     miniapp_dir = root / "web" / "miniapp"

@@ -357,29 +357,58 @@ addClientBtn.addEventListener("click", async () => {
   }
 });
 
-rollbackBtn.addEventListener("click", async () => {
-  const data = Object.fromEntries(new FormData(form).entries());
-  const keyContent = simpleToggle.checked ? null : data.key_content;
-  setStatus("Rolling back...");
-  try {
-    const result = await fetchJson("/api/rollback", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ssh: {
-          host: data.host,
-          user: data.user,
-          password: data.password || null,
-          key_content: keyContent || null,
-        },
-      }),
-    });
-    if (result.ok) {
-      setStatus(`Rollback OK: ${result.backup}`);
-    } else {
-      setStatus(`Rollback failed: ${result.error || "unknown error"}`);
+
+
+const repairBtn = document.getElementById("repair-btn");
+if (repairBtn) {
+  repairBtn.addEventListener("click", async () => {
+    const data = Object.fromEntries(new FormData(form).entries());
+    const keyContent = simpleToggle.checked ? null : data.key_content;
+    setStatus("Starting repair...");
+    resultCard.style.display = "none";
+    setProgress([]);
+
+    try {
+      const result = await fetchJson("/api/repair", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ssh: {
+            host: data.host,
+            user: data.user,
+            password: data.password || null,
+            key_content: keyContent || null,
+          }
+        }),
+      });
+
+      setStatus("Repairing network settings...");
+      if (pollTimer) {
+        clearInterval(pollTimer);
+      }
+
+      const poll = async () => {
+        const status = await fetchJson(`/api/jobs/${result.job_id}`);
+        setProgress(status.progress || []);
+        if (status.status === "error") {
+          setStatus(`Repair Failed: ${status.error}`);
+          clearInterval(pollTimer);
+          return;
+        }
+        if (status.status === "done") {
+          setStatus("Repair Complete! Try connecting now.");
+          clearInterval(pollTimer);
+          resultCard.style.display = "block"; // Show cards again
+        } else {
+          setStatus(`Repairing: ${status.status}...`);
+        }
+      };
+
+      pollTimer = setInterval(poll, 2000);
+      await poll();
+
+    } catch (err) {
+      setStatus(`Repair request failed: ${err}`);
     }
-  } catch (err) {
-    setStatus(`Rollback failed: ${err}`);
-  }
-});
+  });
+}

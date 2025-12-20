@@ -663,3 +663,91 @@ class WireGuardProvisioner:
         service = self.ssh.run("systemctl is-active wg-quick@wg0 || true", sudo=True, check=False)
         wg = self.ssh.run("wg show wg0 || true", sudo=True, check=False)
         return {"service": service.strip(), "wg": wg.strip()}
+
+    def repair_network(self) -> list[str]:
+        logs = []
+        def log(msg: str):
+            logs.append(msg)
+            self.progress(msg)
+
+        log("Starting network repair...")
+        
+        # 1. Force enable IP forwarding
+        log("Enabling IP forwarding...")
+        self.ssh.run(
+            "echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/99-vpn-wizard-repair.conf && "
+            "sysctl --system",
+            sudo=True
+        )
+
+        # 2. Re-detect interface and fix wg0.conf
+        log("Fixing NAT rules in wg0.conf...")
+        iface = self.ssh.run("ip -4 route get 1.1.1.1 | awk '{print $5; exit}'", check=False).strip()
+        if not iface:
+            iface = "eth0" # Fallback
+            log("Warning: Could not detect interface, assuming eth0")
+        
+        # We use sed to replace PostUp/PostDown lines in place
+        # This is a bit brittle but safer than rewriting the whole file blindly
+        # Actually, simpler to just re-apply the full config block for [Interface] if we could, 
+        # but we don't want to lose the private key.
+        # Let's simple append/replace the firewall rules.
+        
+        # Safe strategy: Read PrivateKey, then re-write the [Interface] block, then append Peers.
+        # But we have rebuild_wg0_from_clients! We can use that.
+        
+        # Actually logic: 
+        # 1. Update the template used in rebuild_wg0_from_clients? No, that method reads from existing wg0.conf header.
+        # So we must fix the header in wg0.conf.
+        
+        full_conf = self.ssh.run("cat /etc/wireguard/wg0.conf", sudo=True)
+        new_lines = []
+        current_iface_line = False
+        
+        priv_key = ""
+        port = str(self.listen_port)
+        
+        for line in full_conf.splitlines():
+            if "PrivateKey" in line:
+                priv_key = line.split("=", 1)[1].strip()
+            if "ListenPort" in line:
+                port = line.split("=", 1)[1].strip()
+                
+        if not priv_key:
+            raise RuntimeError("Could not find PrivateKey in wg0.conf")
+
+        # Re-write the [Interface] block cleanly
+        log(f"Detected primary interface: {iface}")
+        
+        header = (
+            "[Interface]\n"
+            f"Address = {self.server_cidr}\n"
+            f"ListenPort = {port}\n"
+            f"PrivateKey = {priv_key}\n"
+            f"PostUp = iptables -w -A FORWARD -i wg0 -j ACCEPT; iptables -w -A FORWARD -o wg0 -j ACCEPT; iptables -w -t nat -A POSTROUTING -o {iface} -j MASQUERADE\n"
+            f"PostDown = iptables -w -D FORWARD -i wg0 -j ACCEPT; iptables -w -D FORWARD -o wg0 -j ACCEPT; iptables -w -t nat -D POSTROUTING -o {iface} -j MASQUERADE\n"
+        )
+        
+        # Save just the peers from the old config
+        peers_block = self.ssh.run(
+            "awk '/^\\[Peer\\]/{p=1} p' /etc/wireguard/wg0.conf", 
+            sudo=True, 
+            check=False
+        )
+        
+        # Combine
+        new_conf = header + "\n" + peers_block
+        
+        # Write back
+        self.ssh.run(
+            f"cat > /etc/wireguard/wg0.conf.repair.tmp <<'EOF'\n{new_conf}\nEOF", 
+            sudo=True
+        )
+        self.ssh.run("mv /etc/wireguard/wg0.conf.repair.tmp /etc/wireguard/wg0.conf", sudo=True)
+        self.ssh.run("chmod 600 /etc/wireguard/wg0.conf", sudo=True)
+        
+        log("Restarting WireGuard...")
+        self.ssh.run("systemctl restart wg-quick@wg0", sudo=True)
+        
+        log("Repair complete. Try connecting now.")
+        return logs
