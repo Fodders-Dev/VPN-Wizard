@@ -100,7 +100,7 @@ class WireGuardProvisioner:
         dns: str = "1.1.1.1",
         mtu: Optional[int] = None,
         auto_mtu: bool = True,
-        mtu_fallback: int = 1280,  # Revert to safe default to avoid fragmentation
+        mtu_fallback: int = 1240,  # Lower MTU for mobile networks (overhead safety)
         mtu_probe_host: str = "1.1.1.1",
         tune: bool = True,
         progress: Optional[Callable[[str], None]] = None,
@@ -123,12 +123,12 @@ class WireGuardProvisioner:
         self.protocol = protocol
         self._public_ip_cache: Optional[str] = None
         
-        # AmneziaWG obfuscation parameters (optimized for speed)
-        # Lower overhead = higher throughput. Jmax=1000 was too aggressive.
+        # AmneziaWG obfuscation parameters (optimized for MOBILE + SPEED)
+        # Mobile networks have strict DPI and lower MTU.
         import random
-        self.awg_jc = random.randint(1, 3)    # Minimal junk packets (was 3-10)
-        self.awg_jmin = 40                    # Minimum junk size
-        self.awg_jmax = 70                    # Reduced max junk size (was 1000!)
+        self.awg_jc = random.randint(3, 7)    # Increased junk count for better masking (was 1-3)
+        self.awg_jmin = 50                    # Min junk size 
+        self.awg_jmax = 400                   # Moderate junk size (balanced stealth/speed)
         self.awg_s1 = random.randint(15, 150)
         self.awg_s2 = random.randint(15, 150)
         while self.awg_s1 + 56 == self.awg_s2:
