@@ -277,6 +277,12 @@ class WireGuardProvisioner:
         resolved_mtu = self.resolve_mtu()
         mtu_line = f"MTU = {resolved_mtu}\n" if resolved_mtu else ""
         mtu_line_client = f"MTU = {resolved_mtu}\n" if resolved_mtu else ""
+        
+        # Detect interface reliably
+        iface = self.ssh.run("ip -4 route get 1.1.1.1 | awk '{print $5; exit}'", check=False).strip()
+        if not iface:
+            iface = "eth0" # Fallback
+        
         self.ssh.run("mkdir -p /etc/wireguard/clients", sudo=True)
         self.backup_config()
         self.ssh.run(
@@ -297,7 +303,6 @@ class WireGuardProvisioner:
             "set -e\n"
             "server_priv=$(cat /etc/wireguard/server_private.key)\n"
             f"client_pub=$(cat /etc/wireguard/clients/{client}.pub)\n"
-            "iface=$(ip -4 route get 1.1.1.1 | awk '{print $5; exit}')\n"
             "cat > /etc/wireguard/wg0.conf <<EOF\n"
             "[Interface]\n"
             f"Address = {self.server_cidr}\n"
@@ -306,10 +311,10 @@ class WireGuardProvisioner:
             f"{mtu_line}"
             "PostUp = iptables -w -A FORWARD -i wg0 -j ACCEPT; "
             "iptables -w -A FORWARD -o wg0 -j ACCEPT; "
-            "iptables -w -t nat -A POSTROUTING -o $iface -j MASQUERADE\n"
+            f"iptables -w -t nat -A POSTROUTING -o {iface} -j MASQUERADE\n"
             "PostDown = iptables -w -D FORWARD -i wg0 -j ACCEPT; "
             "iptables -w -D FORWARD -o wg0 -j ACCEPT; "
-            "iptables -w -t nat -D POSTROUTING -o $iface -j MASQUERADE\n"
+            f"iptables -w -t nat -D POSTROUTING -o {iface} -j MASQUERADE\n"
             "\n"
             "[Peer]\n"
             "PublicKey = $client_pub\n"
