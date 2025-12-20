@@ -311,10 +311,16 @@ class WireGuardProvisioner:
             f"{mtu_line}"
             "PostUp = iptables -w -A FORWARD -i wg0 -j ACCEPT; "
             "iptables -w -A FORWARD -o wg0 -j ACCEPT; "
-            f"iptables -w -t nat -A POSTROUTING -o {iface} -j MASQUERADE\n"
+            f"iptables -w -t nat -A POSTROUTING -o {iface} -j MASQUERADE; "
+            "ip6tables -w -A FORWARD -i wg0 -j ACCEPT; "
+            "ip6tables -w -A FORWARD -o wg0 -j ACCEPT; "
+            f"ip6tables -w -t nat -A POSTROUTING -o {iface} -j MASQUERADE\n"
             "PostDown = iptables -w -D FORWARD -i wg0 -j ACCEPT; "
             "iptables -w -D FORWARD -o wg0 -j ACCEPT; "
-            f"iptables -w -t nat -D POSTROUTING -o {iface} -j MASQUERADE\n"
+            f"iptables -w -t nat -D POSTROUTING -o {iface} -j MASQUERADE; "
+            "ip6tables -w -D FORWARD -i wg0 -j ACCEPT; "
+            "ip6tables -w -D FORWARD -o wg0 -j ACCEPT; "
+            f"ip6tables -w -t nat -D POSTROUTING -o {iface} -j MASQUERADE\n"
             "\n"
             "[Peer]\n"
             "PublicKey = $client_pub\n"
@@ -355,6 +361,39 @@ class WireGuardProvisioner:
             sudo=True,
             check=False,
         )
+        
+        # Determine interface for NAT
+        iface = self.ssh.run("ip -4 route get 1.1.1.1 | awk '{print $5; exit}'", check=False).strip()
+        if not iface: 
+            iface = "eth0"
+            
+        # Ensure UFW before.rules has the NAT instruction. Use cat for safety.
+        # We append to a temp file then concat if missing.
+        nat_marker = "# VPN Wizard NAT"
+        
+        nat_block = (
+            f"\n{nat_marker}\n"
+            f"*nat\n"
+            f":POSTROUTING ACCEPT [0:0]\n"
+            f"-A POSTROUTING -s {self.server_cidr} -o {iface} -j MASQUERADE\n"
+            f"COMMIT\n"
+        )
+        
+        # Python f-string newlines + ssh run is tricky with quotes.
+        # We'll use a temp file on the server.
+        self.ssh.run(
+            f"cat > /tmp/vpn_wizard_nat_rules <<EOF{nat_block}EOF", 
+            sudo=True, 
+            check=False
+        )
+        
+        self.ssh.run(
+            f"grep -q '{nat_marker}' /etc/ufw/before.rules || cat /tmp/vpn_wizard_nat_rules >> /etc/ufw/before.rules || true", 
+            sudo=True, 
+            check=False
+        )
+        self.ssh.run("rm -f /tmp/vpn_wizard_nat_rules", sudo=True, check=False)
+        
         self.ssh.run("ufw reload || true", sudo=True, check=False)
         
         # Firewalld
@@ -362,6 +401,11 @@ class WireGuardProvisioner:
             f"firewall-cmd --permanent --add-port={port}/udp || true",
             sudo=True,
             check=False,
+        )
+        self.ssh.run(
+            f"firewall-cmd --permanent --add-masquerade || true", 
+            sudo=True, 
+            check=False
         )
         self.ssh.run("firewall-cmd --reload || true", sudo=True, check=False)
 
