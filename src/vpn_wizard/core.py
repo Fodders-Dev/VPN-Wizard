@@ -100,7 +100,7 @@ class WireGuardProvisioner:
         dns: str = "1.1.1.1",
         mtu: Optional[int] = None,
         auto_mtu: bool = True,
-        mtu_fallback: int = 1240,  # Lower MTU for mobile networks (overhead safety)
+        mtu_fallback: int = 1280,  # Standard AmneziaWG/WireGuard MTU (safest)
         mtu_probe_host: str = "1.1.1.1",
         tune: bool = True,
         progress: Optional[Callable[[str], None]] = None,
@@ -123,13 +123,13 @@ class WireGuardProvisioner:
         self.protocol = protocol
         self._public_ip_cache: Optional[str] = None
         
-        # AmneziaWG obfuscation parameters (Standard Safe Values)
-        # "Parameter is incorrect" usually means values are out of supported range.
-        # Reverting to defaults that differ from WireGuard but are valid.
+        # AmneziaWG obfuscation parameters (Golden Standard)
+        # Jmax=1000 caused errors on Windows. Jmax=50-70 was too low for mobile.
+        # Jmax=300-400 is the sweet spot.
         import random
-        self.awg_jc = random.randint(3, 10)   # Standard range
+        self.awg_jc = random.randint(3, 7)    # Balanced junk count
         self.awg_jmin = 50                    # Standard min
-        self.awg_jmax = 1000                  # Standard max (safe)
+        self.awg_jmax = 400                   # Moderate max (safe for all clients)
         self.awg_s1 = random.randint(15, 150)
         self.awg_s2 = random.randint(15, 150)
         while self.awg_s1 + 56 == self.awg_s2:
