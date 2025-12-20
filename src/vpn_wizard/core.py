@@ -100,7 +100,7 @@ class WireGuardProvisioner:
         dns: str = "1.1.1.1",
         mtu: Optional[int] = None,
         auto_mtu: bool = True,
-        mtu_fallback: int = 1240,  # "Goldilocks" MTU: Windows accepts it, Mobile fits it
+        mtu_fallback: int = 1280,  # REQUIRED: Windows driver rejects <1280 ("Parameter incorrect")
         mtu_probe_host: str = "1.1.1.1",
         tune: bool = True,
         progress: Optional[Callable[[str], None]] = None,
@@ -123,15 +123,15 @@ class WireGuardProvisioner:
         self.protocol = protocol
         self._public_ip_cache: Optional[str] = None
         
-        # AmneziaWG obfuscation parameters (Standard Values + Mobile Safe)
-        # MTU 1240 was never truly tested due to the restart bug.
-        # Jmax 1000 is known to be accepted by Windows.
+        # AmneziaWG obfuscation parameters (Minimal Overhead + MSS Clamping)
+        # MTU must be 1280 for Windows.
+        # Mobile drops large packets, so we use minimal junk (Jmax=50) & MSS Clamping.
         import random
-        self.awg_jc = random.randint(3, 8)    # Standard junk count
-        self.awg_jmin = 50                    # Standard min
-        self.awg_jmax = 1000                  # Standard max (Fixes 'Parameter Incorrect')
-        self.awg_s1 = random.randint(15, 150)
-        self.awg_s2 = random.randint(15, 150)
+        self.awg_jc = random.randint(1, 2)    # Minimal junk packets (1-2)
+        self.awg_jmin = 40                    # Absolute minimum
+        self.awg_jmax = 50                    # Tiny max junk (prevents bloating)
+        self.awg_s1 = random.randint(15, 25)  # Minimal init packet size
+        self.awg_s2 = random.randint(15, 25)  # Minimal response size
         while self.awg_s1 + 56 == self.awg_s2:
             self.awg_s2 = random.randint(15, 150)
         self.awg_h1 = random.randint(100000000, 2147483647)
@@ -576,15 +576,19 @@ class WireGuardProvisioner:
             "PostUp = sysctl -w net.ipv4.ip_forward=1; sysctl -w net.ipv6.conf.all.forwarding=1; "
             "iptables -w -I FORWARD 1 -i awg0 -j ACCEPT; "
             "iptables -w -I FORWARD 1 -o awg0 -j ACCEPT; "
+            "iptables -w -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu; "
             f"iptables -w -t nat -A POSTROUTING -s {self.server_cidr} -j MASQUERADE; "
             "ip6tables -w -I FORWARD 1 -i awg0 -j ACCEPT; "
             "ip6tables -w -I FORWARD 1 -o awg0 -j ACCEPT; "
+            "ip6tables -w -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu; "
             "ip6tables -w -t nat -A POSTROUTING -s fd42:42:42::/64 -j MASQUERADE\n"
             "PostDown = iptables -w -D FORWARD -i awg0 -j ACCEPT; "
             "iptables -w -D FORWARD -o awg0 -j ACCEPT; "
+            "iptables -w -t mangle -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu; "
             f"iptables -w -t nat -D POSTROUTING -s {self.server_cidr} -j MASQUERADE; "
             "ip6tables -w -D FORWARD -i awg0 -j ACCEPT; "
             "ip6tables -w -D FORWARD -o awg0 -j ACCEPT; "
+            "ip6tables -w -t mangle -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu; "
             "ip6tables -w -t nat -D POSTROUTING -s fd42:42:42::/64 -j MASQUERADE\n"
             "\n"
             "[Peer]\n"
