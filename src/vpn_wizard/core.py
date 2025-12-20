@@ -57,7 +57,7 @@ class SSHRunner:
             self.client.close()
             self.client = None
 
-    def run(self, command: str, sudo: bool = False, check: bool = True) -> str:
+    def run(self, command: str, sudo: bool = False, check: bool = True, pty: bool = True) -> str:
         if not self.client:
             raise RuntimeError("SSH client not connected.")
 
@@ -69,7 +69,7 @@ class SSHRunner:
                 wrapped = f"sudo {wrapped}"
 
         self.log(f"$ {command}")
-        stdin, stdout, stderr = self.client.exec_command(wrapped, get_pty=True)
+        stdin, stdout, stderr = self.client.exec_command(wrapped, get_pty=pty)
         if sudo and self.config.password:
             stdin.write(self.config.password + "\n")
             stdin.flush()
@@ -414,7 +414,7 @@ class WireGuardProvisioner:
 
     def export_client_config(self) -> str:
         return self.ssh.run(
-            f"cat /etc/wireguard/clients/{self.client_name}.conf", sudo=True
+            f"cat /etc/wireguard/clients/{self.client_name}.conf", sudo=True, pty=False
         )
 
     def list_clients(self) -> list[dict]:
@@ -430,10 +430,10 @@ class WireGuardProvisioner:
         clients = []
         for name in names:
             conf = self.ssh.run(
-                f"cat /etc/wireguard/clients/{name}.conf", sudo=True, check=False
+                f"cat /etc/wireguard/clients/{name}.conf", sudo=True, check=False, pty=False
             )
             pub = self.ssh.run(
-                f"cat /etc/wireguard/clients/{name}.pub", sudo=True, check=False
+                f"cat /etc/wireguard/clients/{name}.pub", sudo=True, check=False, pty=False
             ).strip()
             ip = ""
             for line in conf.splitlines():
@@ -504,7 +504,7 @@ class WireGuardProvisioner:
         self.backup_config()
         self.rebuild_wg0_from_clients()
         config = self.ssh.run(
-            f"cat /etc/wireguard/clients/{name}.conf", sudo=True
+            f"cat /etc/wireguard/clients/{name}.conf", sudo=True, pty=False
         )
         return {"name": name, "ip": ip, "config": config}
 
