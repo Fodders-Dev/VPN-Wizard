@@ -551,7 +551,7 @@ class WireGuardProvisioner:
             "PublicKey = $server_pub\n"
             f"Endpoint = $public_ip:{port}\n"
             f"AllowedIPs = {allowed_ips}\n"
-            "PersistentKeepalive = 25\n"
+            "PersistentKeepalive = 15\n"
             "EOF\n"
             f"chmod 600 /etc/wireguard/clients/{client}.conf",
             sudo=True,
@@ -647,7 +647,7 @@ class WireGuardProvisioner:
             "PublicKey = $server_pub\n"
             f"Endpoint = $public_ip:{port}\n"
             f"AllowedIPs = {allowed_ips}\n"
-            "PersistentKeepalive = 25\n"
+            "PersistentKeepalive = 15\n"
             "EOF\n"
             f"chmod 600 /etc/amnezia/amneziawg/clients/{client}.conf",
             sudo=True,
@@ -851,7 +851,7 @@ class WireGuardProvisioner:
             "PublicKey = $server_pub\n"
             f"Endpoint = $public_ip:{listen_port}\n"
             f"AllowedIPs = {allowed_ips}\n"
-            "PersistentKeepalive = 25\n"
+            "PersistentKeepalive = 15\n"
             "EOF\n"
             f"chmod 600 {clients_dir}/{name}.conf",
             sudo=True,
