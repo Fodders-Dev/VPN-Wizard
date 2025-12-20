@@ -39,6 +39,13 @@ python -m vpn_wizard.gui
 python -m vpn_wizard.server
 ```
 
+## Single Railway service (API + bot in one)
+```
+$env:VPNW_BOT_TOKEN="YOUR_TOKEN"
+$env:VPNW_MINIAPP_URL="https://your-miniapp/?api=https://your-api"
+python -m vpn_wizard.combined
+```
+
 ## Telegram bot
 ```
 $env:VPNW_BOT_TOKEN="YOUR_TOKEN"

@@ -23,6 +23,7 @@ vpnw = "vpn_wizard.cli:app"
 vpnw-gui = "vpn_wizard.gui:main"
 vpnw-server = "vpn_wizard.server:main"
 vpnw-bot = "vpn_wizard.tg_bot:main"
+vpnw-combined = "vpn_wizard.combined:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
