@@ -62,7 +62,7 @@ class SSHPayload(BaseModel):
 
 class ProvisionOptions(BaseModel):
     client_name: str = "client1"
-    client_ip: str = "10.10.0.2/32"
+    client_ip: Optional[str] = None
     server_cidr: str = "10.10.0.1/24"
     listen_port: int = 443
     dns: str = "1.1.1.1, 1.0.0.1"
