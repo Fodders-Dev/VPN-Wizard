@@ -1,79 +1,81 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>VPN Wizard Miniapp</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <link rel="stylesheet" href="style.css" />
-  </head>
-  <body>
-    <main class="app">
-      <header class="hero">
-        <div class="title">VPN Wizard</div>
-        <div class="subtitle">Simple setup for your own WireGuard VPN</div>
-      </header>
 
-      <section class="card">
-        <h2>Step 1: Server access</h2>
-        <form id="provision-form">
-          <label>
-            Server IP or host
-            <input name="host" placeholder="1.2.3.4" required />
-          </label>
-          <label>
-            SSH user
-            <input name="user" placeholder="root" required />
-          </label>
-          <label>
-            SSH password
-            <input name="password" type="password" placeholder="optional if key" />
-          </label>
-          <label>
-            Client name (optional)
-            <input name="client_name" placeholder="grandma-phone" />
-          </label>
-          <label class="advanced">
-            SSH key content (optional)
-            <textarea name="key_content" placeholder="paste private key"></textarea>
-          </label>
-          <div class="remember-row">
-            <label class="toggle">
-              <input type="checkbox" id="remember-toggle" />
-              Remember credentials
-            </label>
-            <input id="pin-input" type="password" placeholder="PIN (4-8 digits)" />
-            <button type="button" id="unlock-btn" class="secondary">Unlock saved</button>
-          </div>
-          <div class="toggle-row">
-            <label class="toggle">
-              <input type="checkbox" id="simple-toggle" checked />
-              Simple mode
-            </label>
-            <span class="toggle-hint">Hide advanced fields</span>
-          </div>
-          <button type="submit" id="provision-btn">Configure server</button>
-          <button type="button" id="add-client-btn" class="secondary">Add new client</button>
-        </form>
-      </section>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VPN Wizard Miniapp</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
 
-      <section class="card" id="progress-card">
-        <h2>Step 2: Progress</h2>
-        <div class="spinner" aria-hidden="true"></div>
-        <div id="status">Waiting...</div>
-        <div id="progress-log" class="log"></div>
-      </section>
+<body>
+  <main class="app">
+    <header class="hero">
+      <div class="title">VPN Wizard</div>
+      <div class="subtitle">Simple setup for your own WireGuard VPN</div>
+    </header>
 
-      <section class="card" id="result-card">
-        <h2>Step 3: Download</h2>
-        <a id="download-link" class="download" href="#" download="client1.conf">Download config</a>
-        <button type="button" id="rollback-btn" class="secondary">Rollback last config</button>
-        <button type="button" id="repair-btn" class="secondary" style="margin-top: 8px;">Fix connection</button>
-        <img id="qr-image" alt="QR code" />
-      </section>
-    </main>
+    <section class="card">
+      <h2>Step 1: Server access</h2>
+      <form id="provision-form">
+        <label>
+          Server IP or host
+          <input name="host" placeholder="1.2.3.4" required />
+        </label>
+        <label>
+          SSH user
+          <input name="user" placeholder="root" required />
+        </label>
+        <label>
+          SSH password
+          <input name="password" type="password" placeholder="optional if key" />
+        </label>
+        <label>
+          Client name (optional)
+          <input name="client_name" placeholder="grandma-phone" />
+        </label>
+        <label class="advanced">
+          SSH key content (optional)
+          <textarea name="key_content" placeholder="paste private key"></textarea>
+        </label>
+        <div class="remember-row">
+          <label class="toggle">
+            <input type="checkbox" id="remember-toggle" />
+            Remember credentials
+          </label>
+          <input id="pin-input" type="password" placeholder="PIN (4-8 digits)" />
+          <button type="button" id="unlock-btn" class="secondary">Unlock saved</button>
+        </div>
+        <div class="toggle-row">
+          <label class="toggle">
+            <input type="checkbox" id="simple-toggle" checked />
+            Simple mode
+          </label>
+          <span class="toggle-hint">Hide advanced fields</span>
+        </div>
+        <button type="submit" id="provision-btn">Configure server</button>
+        <button type="button" id="add-client-btn" class="secondary">Add new client</button>
+      </form>
+    </section>
 
-    <script src="config.js"></script>
-    <script src="app.js"></script>
-  </body>
+    <section class="card" id="progress-card">
+      <h2>Step 2: Progress</h2>
+      <div class="spinner" aria-hidden="true"></div>
+      <div id="status">Waiting...</div>
+      <div id="progress-log" class="log"></div>
+    </section>
+
+    <section class="card" id="result-card">
+      <h2>Step 3: Download</h2>
+      <a id="download-link" class="download" href="#" download="client1.conf">Download config</a>
+      <button type="button" id="rollback-btn" class="secondary">Rollback last config</button>
+      <img id="qr-image" alt="QR code" />
+    </section>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+
 </html>
