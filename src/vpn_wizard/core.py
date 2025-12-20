@@ -100,7 +100,7 @@ class WireGuardProvisioner:
         dns: str = "1.1.1.1",
         mtu: Optional[int] = None,
         auto_mtu: bool = True,
-        mtu_fallback: int = 1420,
+        mtu_fallback: int = 1280,
         mtu_probe_host: str = "1.1.1.1",
         tune: bool = True,
         progress: Optional[Callable[[str], None]] = None,
