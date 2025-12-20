@@ -677,12 +677,21 @@ class WireGuardProvisioner:
         self.ssh.run(
             f"firewall-cmd --permanent --add-masquerade || true", 
             sudo=True, 
-            check=False
+            check=False,
         )
         self.ssh.run("firewall-cmd --reload || true", sudo=True, check=False)
 
-    def start_service(self) -> None:
-        self.ssh.run("systemctl enable --now wg-quick@wg0", sudo=True)
+    def start_awg_service(self) -> None:
+        if self.protocol == "amneziawg":
+            # Enable the service to start on boot
+            self.ssh.run("systemctl enable awg-quick@awg0", sudo=True)
+            # Force restart to apply any configuration changes (MTU, keys, etc.)
+            self.ssh.run("systemctl restart awg-quick@awg0", sudo=True)
+
+    def start_wg_service(self) -> None:
+        if self.protocol == "wireguard":
+            self.ssh.run("systemctl enable wg-quick@wg0", sudo=True)
+            self.ssh.run("systemctl restart wg-quick@wg0", sudo=True)
 
     def export_client_config(self) -> str:
         if self.protocol == "amneziawg":
