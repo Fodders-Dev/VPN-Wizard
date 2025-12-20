@@ -762,6 +762,19 @@ class WireGuardProvisioner:
         name = client_name or self.next_client_name()
         self._validate_client_name(name)
         
+        # Auto-detect protocol if config is missing (robustness against frontend defaults)
+        # Check standard paths
+        awg_path = "/etc/amnezia/amneziawg/awg0.conf"
+        wg_path = "/etc/wireguard/wg0.conf"
+        
+        has_awg = self.ssh.run(f"test -f {awg_path} && echo yes || echo no", sudo=True, check=False).strip() == "yes"
+        has_wg = self.ssh.run(f"test -f {wg_path} && echo yes || echo no", sudo=True, check=False).strip() == "yes"
+        
+        if self.protocol == "amneziawg" and not has_awg and has_wg:
+             self.protocol = "wireguard"
+        elif self.protocol != "amneziawg" and not has_wg and has_awg:
+             self.protocol = "amneziawg"
+        
         # Protocol-specific paths and commands
         if self.protocol == "amneziawg":
             conf_dir = "/etc/amnezia/amneziawg"
@@ -778,6 +791,7 @@ class WireGuardProvisioner:
             cmd_pubkey = "wg pubkey"
             rebuild_cmd = self.rebuild_wg0_from_clients
 
+        # Final check
         has_conf = self.ssh.run(
             f"test -f {wg_conf} && echo yes || echo no",
             sudo=True,
@@ -793,7 +807,7 @@ class WireGuardProvisioner:
         ).strip()
         if exists == "yes":
             raise RuntimeError(f"Client {name} already exists.")
-
+            
         ip = client_ip or self.next_client_ip()
         resolved_mtu = self.resolve_mtu()
         mtu_line = f"MTU = {resolved_mtu}\n" if resolved_mtu else ""
