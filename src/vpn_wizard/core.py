@@ -806,7 +806,13 @@ class WireGuardProvisioner:
             check=False,
         ).strip()
         if exists == "yes":
-            raise RuntimeError(f"Client {name} already exists.")
+            self.progress(f"Client {name} exists, overwriting...")
+            # Remove old files to free up IP and allow clean regen
+            self.ssh.run(
+                f"rm -f {clients_dir}/{name}.conf {clients_dir}/{name}.key {clients_dir}/{name}.pub",
+                sudo=True,
+                check=False
+            )
             
         ip = client_ip or self.next_client_ip()
         resolved_mtu = self.resolve_mtu()
