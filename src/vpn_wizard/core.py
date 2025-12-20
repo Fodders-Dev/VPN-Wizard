@@ -497,6 +497,9 @@ class WireGuardProvisioner:
             iface = "eth0" # Fallback
         
         self.ssh.run("mkdir -p /etc/wireguard/clients", sudo=True)
+        if not self.client_ip:
+            self.client_ip = self.next_client_ip()
+
         self.backup_config()
         self.ssh.run(
             "if [ ! -f /etc/wireguard/server_private.key ]; then\n"
@@ -564,6 +567,10 @@ class WireGuardProvisioner:
         mtu_line_client = f"MTU = {resolved_mtu}\n" if resolved_mtu else ""
         allowed_ips = self._allowed_ips()
         postup, postdown = self._post_rules("awg0")
+        
+        # Resolve client IP if not set (prevent None/null in config)
+        if not self.client_ip:
+            self.client_ip = self.next_client_ip()
         
         # AWG obfuscation params block
         awg_params = (
