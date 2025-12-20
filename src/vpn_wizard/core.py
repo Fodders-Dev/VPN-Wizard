@@ -90,7 +90,69 @@ class SSHRunner:
 
 
 class WireGuardProvisioner:
-    # ... (init stays same, only patching install_wireguard below)
+    def __init__(
+        self,
+        ssh: SSHRunner,
+        client_name: str = "client1",
+        client_ip: str = "10.10.0.2/32",
+        server_cidr: str = "10.10.0.1/24",
+        listen_port: int = 51820,
+        dns: str = "1.1.1.1",
+        mtu: Optional[int] = None,
+        auto_mtu: bool = True,
+        mtu_fallback: int = 1420,
+        mtu_probe_host: str = "1.1.1.1",
+        tune: bool = True,
+        progress: Optional[Callable[[str], None]] = None,
+    ) -> None:
+        self.ssh = ssh
+        self.client_name = client_name
+        self.client_ip = client_ip
+        self.server_cidr = server_cidr
+        self.listen_port = listen_port
+        self.dns = dns
+        self.mtu = mtu
+        self.auto_mtu = auto_mtu
+        self.mtu_fallback = mtu_fallback
+        self.mtu_probe_host = mtu_probe_host
+        self.tune = tune
+        self.progress = progress or (lambda _: None)
+        self._resolved_mtu: Optional[int] = None
+        self._name_pattern = re.compile(r"^[a-zA-Z0-9_-]{1,32}$")
+
+    def provision(self) -> None:
+        self.progress("Detecting OS")
+        os_info = self.detect_os()
+        self.progress("Installing WireGuard")
+        self.install_wireguard(os_info)
+        self.progress("Configuring sysctl")
+        self.configure_sysctl()
+        self.progress("Setting up WireGuard")
+        self.setup_wireguard()
+        self.progress("Configuring firewall")
+        self.enable_firewall()
+        self.progress("Starting service")
+        self.start_service()
+
+    def _classify_os(self, os_info: dict) -> tuple[bool, bool, str, str]:
+        distro = os_info.get("ID", "").lower()
+        like = os_info.get("ID_LIKE", "").lower()
+        is_deb = distro in {"ubuntu", "debian"} or "debian" in like
+        is_rhel = (
+            distro in {"centos", "rhel", "fedora", "almalinux", "rocky"} or "rhel" in like
+        )
+        return is_deb, is_rhel, distro, like
+
+    def detect_os(self) -> dict:
+        raw = self.ssh.run("cat /etc/os-release")
+        info = {}
+        for line in raw.splitlines():
+            if "=" in line:
+                key, value = line.split("=", 1)
+                info[key.strip()] = value.strip().strip('"')
+        if not info:
+            raise RuntimeError("Unable to detect OS from /etc/os-release.")
+        return info
 
     def install_wireguard(self, os_info: dict) -> None:
         is_deb, is_rhel, distro, _ = self._classify_os(os_info)
