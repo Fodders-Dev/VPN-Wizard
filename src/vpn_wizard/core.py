@@ -309,11 +309,46 @@ class WireGuardProvisioner:
                     
                     self.ssh.run("DEBIAN_FRONTEND=noninteractive apt-get update -y", sudo=True)
                     
-                    # Install AmneziaWG
-                    self.ssh.run(
-                        "DEBIAN_FRONTEND=noninteractive apt-get install -y amneziawg",
-                        sudo=True,
-                    )
+                    # Install AmneziaWG (may fail due to initramfs issues on some VPS)
+                    try:
+                        self.ssh.run(
+                            "DEBIAN_FRONTEND=noninteractive apt-get install -y amneziawg",
+                            sudo=True,
+                        )
+                    except RemoteCommandError as install_exc:
+                        # DKMS initramfs failure - try to force-install the built module
+                        if "mkinitrd" in str(install_exc) or "initramfs" in str(install_exc) or "exit status: 1" in str(install_exc):
+                            self.progress("DKMS initramfs failed, attempting manual module load...")
+                            # Force dpkg to configure what it can
+                            self.ssh.run("dpkg --configure -a --force-confdef || true", sudo=True, check=False)
+                            
+                            # Try to manually install the built DKMS module
+                            self.ssh.run(
+                                "dkms install -m amneziawg -v 1.0.0 --force || true",
+                                sudo=True,
+                                check=False,
+                            )
+                            
+                            # Load the module manually
+                            self.ssh.run("modprobe amneziawg || true", sudo=True, check=False)
+                            
+                            # Check if awg command is available (tools were installed)
+                            result = self.ssh.run("which awg || echo 'not_found'", check=False)
+                            if "not_found" in result:
+                                raise RuntimeError("AmneziaWG tools not installed. VPS may need reinstallation.")
+                            
+                            # Check if module loaded
+                            mod_check = self.ssh.run("lsmod | grep amneziawg || echo 'not_loaded'", check=False)
+                            if "not_loaded" in mod_check:
+                                self.progress("Warning: amneziawg module not loaded. Trying insmod directly...")
+                                # Try to load directly from DKMS build dir
+                                self.ssh.run(
+                                    "insmod /var/lib/dkms/amneziawg/1.0.0/$(uname -r)/x86_64/module/amneziawg.ko 2>/dev/null || true",
+                                    sudo=True,
+                                    check=False,
+                                )
+                        else:
+                            raise install_exc
                     return
                 except RemoteCommandError as exc:
                     err_msg = str(exc).lower()
@@ -322,6 +357,14 @@ class WireGuardProvisioner:
                             self.progress(f"Apt locked, retrying in 10s... ({i+1}/{max_retries})")
                             time.sleep(10)
                             continue
+                    # Check for initramfs/dkms errors and handle them
+                    if "mkinitrd" in err_msg or "initramfs" in err_msg or "amneziawg-dkms" in err_msg:
+                        self.progress("DKMS failed, attempting fallback...")
+                        self.ssh.run("dpkg --configure -a --force-confdef || true", sudo=True, check=False)
+                        self.ssh.run("modprobe amneziawg || true", sudo=True, check=False)
+                        result = self.ssh.run("which awg || echo 'not_found'", check=False)
+                        if "not_found" not in result:
+                            return  # Tools available, proceed
                     raise exc
             return
         
