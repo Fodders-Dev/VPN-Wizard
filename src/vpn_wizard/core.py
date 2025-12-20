@@ -666,8 +666,13 @@ class WireGuardProvisioner:
         )
 
     def list_clients(self) -> list[dict]:
+        if self.protocol == "amneziawg":
+            clients_dir = "/etc/amnezia/amneziawg/clients"
+        else:
+            clients_dir = "/etc/wireguard/clients"
+
         raw = self.ssh.run(
-            "ls /etc/wireguard/clients/*.conf 2>/dev/null || true", sudo=True, check=False
+            f"ls {clients_dir}/*.conf 2>/dev/null || true", sudo=True, check=False
         )
         names = []
         for line in raw.splitlines():
@@ -678,10 +683,10 @@ class WireGuardProvisioner:
         clients = []
         for name in names:
             conf = self.ssh.run(
-                f"cat /etc/wireguard/clients/{name}.conf", sudo=True, check=False, pty=False
+                f"cat {clients_dir}/{name}.conf", sudo=True, check=False, pty=False
             )
             pub = self.ssh.run(
-                f"cat /etc/wireguard/clients/{name}.pub", sudo=True, check=False, pty=False
+                f"cat {clients_dir}/{name}.pub", sudo=True, check=False, pty=False
             ).strip()
             ip = ""
             for line in conf.splitlines():
@@ -694,15 +699,33 @@ class WireGuardProvisioner:
     def add_client(self, client_name: Optional[str] = None, client_ip: Optional[str] = None) -> dict:
         name = client_name or self.next_client_name()
         self._validate_client_name(name)
-        has_wg0 = self.ssh.run(
-            "test -f /etc/wireguard/wg0.conf && echo yes || echo no",
+        
+        # Protocol-specific paths and commands
+        if self.protocol == "amneziawg":
+            conf_dir = "/etc/amnezia/amneziawg"
+            wg_conf = f"{conf_dir}/awg0.conf"
+            clients_dir = f"{conf_dir}/clients"
+            cmd_genkey = "awg genkey"
+            cmd_pubkey = "awg pubkey"
+            rebuild_cmd = self.rebuild_awg0_from_clients
+        else:
+            conf_dir = "/etc/wireguard"
+            wg_conf = f"{conf_dir}/wg0.conf"
+            clients_dir = f"{conf_dir}/clients"
+            cmd_genkey = "wg genkey"
+            cmd_pubkey = "wg pubkey"
+            rebuild_cmd = self.rebuild_wg0_from_clients
+
+        has_conf = self.ssh.run(
+            f"test -f {wg_conf} && echo yes || echo no",
             sudo=True,
             check=False,
         ).strip()
-        if has_wg0 != "yes":
-            raise RuntimeError("wg0.conf not found. Run provision first.")
+        if has_conf != "yes":
+            raise RuntimeError(f"{os.path.basename(wg_conf)} not found. Run provision first.")
+            
         exists = self.ssh.run(
-            f"test -f /etc/wireguard/clients/{name}.conf && echo yes || echo no",
+            f"test -f {clients_dir}/{name}.conf && echo yes || echo no",
             sudo=True,
             check=False,
         ).strip()
@@ -713,32 +736,51 @@ class WireGuardProvisioner:
         resolved_mtu = self.resolve_mtu()
         mtu_line = f"MTU = {resolved_mtu}\n" if resolved_mtu else ""
 
-        self.ssh.run("mkdir -p /etc/wireguard/clients", sudo=True)
+        self.ssh.run(f"mkdir -p {clients_dir}", sudo=True)
+        
+        # Ensure server keys exist (should be there if conf exists, but good to be safe)
         self.ssh.run(
-            "if [ ! -f /etc/wireguard/server_private.key ]; then\n"
+            f"if [ ! -f {conf_dir}/server_private.key ]; then\n"
             "  umask 077\n"
-            "  wg genkey | tee /etc/wireguard/server_private.key | wg pubkey > /etc/wireguard/server_public.key\n"
+            f"  {cmd_genkey} | tee {conf_dir}/server_private.key | {cmd_pubkey} > {conf_dir}/server_public.key\n"
             "fi",
             sudo=True,
         )
+        
+        # Generate client keys
         self.ssh.run(
-            f"if [ ! -f /etc/wireguard/clients/{name}.key ]; then\n"
+            f"if [ ! -f {clients_dir}/{name}.key ]; then\n"
             "  umask 077\n"
-            f"  wg genkey | tee /etc/wireguard/clients/{name}.key | wg pubkey > /etc/wireguard/clients/{name}.pub\n"
+            f"  {cmd_genkey} | tee {clients_dir}/{name}.key | {cmd_pubkey} > {clients_dir}/{name}.pub\n"
             "fi",
             sudo=True,
         )
+
+        # Prepare client config content
+        awg_params = ""
+        if self.protocol == "amneziawg":
+            # Extract AmneziaWG params from server config to ensure match
+            # We grep for Jc, Jmin, Jmax, S1, S2, H1, H2, H3, H4
+            params_block = self.ssh.run(
+                f"grep -E '^(Jc|Jmin|Jmax|S1|S2|H1|H2|H3|H4) =' {wg_conf} || true",
+                sudo=True,
+                check=False
+            )
+            if params_block.strip():
+                awg_params = params_block + "\n"
+                
         self.ssh.run(
             "set -e\n"
-            f"client_priv=$(cat /etc/wireguard/clients/{name}.key)\n"
-            "server_pub=$(cat /etc/wireguard/server_public.key)\n"
+            f"client_priv=$(cat {clients_dir}/{name}.key)\n"
+            f"server_pub=$(cat {conf_dir}/server_public.key)\n"
             f"public_ip={self.get_public_ip()}\n"
-            f"cat > /etc/wireguard/clients/{name}.conf <<EOF\n"
+            f"cat > {clients_dir}/{name}.conf <<EOF\n"
             "[Interface]\n"
             "PrivateKey = $client_priv\n"
             f"Address = {ip}\n"
             f"DNS = {self.dns}\n"
             f"{mtu_line}"
+            f"{awg_params}"
             "\n"
             "[Peer]\n"
             "PublicKey = $server_pub\n"
@@ -746,33 +788,44 @@ class WireGuardProvisioner:
             "AllowedIPs = 0.0.0.0/0, ::/0\n"
             "PersistentKeepalive = 25\n"
             "EOF\n"
-            f"chmod 600 /etc/wireguard/clients/{name}.conf",
+            f"chmod 600 {clients_dir}/{name}.conf",
             sudo=True,
         )
+        
         self.backup_config()
-        self.rebuild_wg0_from_clients()
+        rebuild_cmd()
+        
         config = self.ssh.run(
-            f"cat /etc/wireguard/clients/{name}.conf", sudo=True, pty=False
+            f"cat {clients_dir}/{name}.conf", sudo=True, pty=False
         )
         return {"name": name, "ip": ip, "config": config}
 
     def remove_client(self, client_name: str) -> bool:
         self._validate_client_name(client_name)
+        
+        if self.protocol == "amneziawg":
+            clients_dir = "/etc/amnezia/amneziawg/clients"
+            rebuild_cmd = self.rebuild_awg0_from_clients
+        else:
+            clients_dir = "/etc/wireguard/clients"
+            rebuild_cmd = self.rebuild_wg0_from_clients
+
         exists = self.ssh.run(
-            f"test -f /etc/wireguard/clients/{client_name}.conf && echo yes || echo no",
+            f"test -f {clients_dir}/{client_name}.conf && echo yes || echo no",
             sudo=True,
             check=False,
         ).strip()
         if exists != "yes":
             return False
+            
         self.ssh.run(
-            f"rm -f /etc/wireguard/clients/{client_name}.conf "
-            f"/etc/wireguard/clients/{client_name}.key "
-            f"/etc/wireguard/clients/{client_name}.pub",
+            f"rm -f {clients_dir}/{client_name}.conf "
+            f"{clients_dir}/{client_name}.key "
+            f"{clients_dir}/{client_name}.pub",
             sudo=True,
         )
         self.backup_config()
-        self.rebuild_wg0_from_clients()
+        rebuild_cmd()
         return True
 
     def rotate_client(self, client_name: str) -> dict:
@@ -884,8 +937,13 @@ class WireGuardProvisioner:
         raise RuntimeError("No free IPs left in server CIDR.")
 
     def _get_client_ip(self, client_name: str) -> Optional[str]:
+        if self.protocol == "amneziawg":
+            clients_dir = "/etc/amnezia/amneziawg/clients"
+        else:
+            clients_dir = "/etc/wireguard/clients"
+
         conf = self.ssh.run(
-            f"cat /etc/wireguard/clients/{client_name}.conf", sudo=True, check=False
+            f"cat {clients_dir}/{client_name}.conf", sudo=True, check=False
         )
         if not conf:
             return None
