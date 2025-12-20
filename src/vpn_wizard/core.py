@@ -239,6 +239,37 @@ class WireGuardProvisioner:
 
         raise RuntimeError(f"Unsupported distro: {distro}")
 
+    def _release_apt_locks(self) -> None:
+        """Aggressively release apt locks and kill blocking processes."""
+        self.progress("Releasing apt locks...")
+        self.ssh.run(
+            "systemctl stop unattended-upgrades apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true; "
+            "killall -9 unattended-upgrade apt apt-get dpkg 2>/dev/null || true; "
+            "rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock /var/lib/dpkg/lock* 2>/dev/null || true; "
+            "dpkg --configure -a 2>/dev/null || true",
+            sudo=True,
+            check=False,
+        )
+        import time
+        time.sleep(2)
+
+    def _clean_boot_partition(self) -> None:
+        """Remove old kernels to free space in /boot."""
+        self.progress("Cleaning old kernels to free space...")
+        # Get current kernel version
+        current = self.ssh.run("uname -r").strip()
+        # List all installed kernels (linux-image-*) excluding current
+        # This one-liner finds old kernels and purging them
+        cmd = (
+            f"current_kernel=$(uname -r); "
+            f"dpkg -l 'linux-image-[0-9]*' | grep '^ii' | awk '{{print $2}}' | "
+            f"grep -v \"$current_kernel\" | grep -v \"$(uname -r | cut -d- -f1-2)\" | "
+            f"xargs -r apt-get -y purge"
+        )
+        self.ssh.run(cmd, sudo=True, check=False)
+        self.ssh.run("apt-get autoremove -y", sudo=True, check=False)
+        self.ssh.run("apt-get clean", sudo=True, check=False)
+
     def install_amneziawg(self, os_info: dict) -> None:
         """Install AmneziaWG kernel module and tools via PPA."""
         # Check if AmneziaWG tools are already installed
@@ -251,19 +282,11 @@ class WireGuardProvisioner:
         is_deb, is_rhel, distro, _ = self._classify_os(os_info)
         
         if is_deb:
-            import time
+            # 1. Release locks
+            self._release_apt_locks()
             
-            # Kill ALL apt processes and remove ALL locks
-            self.progress("Releasing apt locks...")
-            self.ssh.run(
-                "systemctl stop unattended-upgrades apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true; "
-                "killall -9 unattended-upgrade apt apt-get dpkg 2>/dev/null || true; "
-                "rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock /var/lib/dpkg/lock* 2>/dev/null || true; "
-                "dpkg --configure -a 2>/dev/null || true",
-                sudo=True,
-                check=False,
-            )
-            time.sleep(3)
+            # 2. Clean boot partition to avoid "No space left on device"
+            self._clean_boot_partition()
             
             # Apt with 2 minute lock timeout
             apt = "DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120"
@@ -273,8 +296,15 @@ class WireGuardProvisioner:
             
             self.progress("Installing prerequisites...")
             self.ssh.run(f"{apt} install -y software-properties-common gnupg2 curl qrencode iptables", sudo=True)
-            self.ssh.run(f"{apt} install -y linux-headers-$(uname -r) || true", sudo=True, check=False)
             
+            # Try to install headers - this often fails if space is low, so we try-catch
+            try:
+                self.ssh.run(f"{apt} install -y linux-headers-$(uname -r)", sudo=True)
+            except RemoteCommandError:
+                self.progress("Header install failed, trying explicit cleanup again...")
+                self._clean_boot_partition()
+                self.ssh.run(f"{apt} install -y linux-headers-$(uname -r)", sudo=True)
+
             self.progress("Adding AmneziaWG repository...")
             self.ssh.run(
                 "add-apt-repository -y ppa:amnezia/ppa || "
