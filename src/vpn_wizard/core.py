@@ -348,7 +348,16 @@ class WireGuardProvisioner:
 
     def enable_firewall(self) -> None:
         port = self.listen_port
+        # UFW: Allow port and enable routing
         self.ssh.run(f"ufw allow {port}/udp || true", sudo=True, check=False)
+        self.ssh.run(
+            "sed -i 's/^DEFAULT_FORWARD_POLICY=.*/DEFAULT_FORWARD_POLICY=\"ACCEPT\"/' /etc/default/ufw || true",
+            sudo=True,
+            check=False,
+        )
+        self.ssh.run("ufw reload || true", sudo=True, check=False)
+        
+        # Firewalld
         self.ssh.run(
             f"firewall-cmd --permanent --add-port={port}/udp || true",
             sudo=True,
@@ -683,6 +692,12 @@ class WireGuardProvisioner:
             "echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/99-vpn-wizard-repair.conf && "
             "sysctl --system",
             sudo=True
+        )
+        # Fix UFW policy if present
+        self.ssh.run(
+            "sed -i 's/^DEFAULT_FORWARD_POLICY=.*/DEFAULT_FORWARD_POLICY=\"ACCEPT\"/' /etc/default/ufw && ufw reload || true",
+            sudo=True,
+            check=False
         )
 
         # 2. Re-detect interface and fix wg0.conf
