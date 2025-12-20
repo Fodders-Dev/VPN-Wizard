@@ -55,6 +55,18 @@ def _build_provisioner(
     )
 
 
+def _print_checks(checks: list[dict]) -> None:
+    for item in checks:
+        typer.echo(
+            f"check {item.get('name')}: {'ok' if item.get('ok') else 'fail'} ({item.get('details')})"
+        )
+
+
+def _has_critical_fail(checks: list[dict]) -> bool:
+    critical = {"os_supported", "sudo", "port_available"}
+    return any(item.get("name") in critical and not item.get("ok") for item in checks)
+
+
 @app.command()
 def provision(
     host: str = typer.Option(..., help="Server hostname or IP"),
@@ -71,6 +83,7 @@ def provision(
     auto_mtu: bool = typer.Option(True, "--auto-mtu/--no-auto-mtu", help="Auto-detect MTU"),
     tune: bool = typer.Option(True, "--tune/--no-tune", help="Enable network tuning"),
     check: bool = typer.Option(True, "--check/--no-check", help="Post-provision checks"),
+    precheck: bool = typer.Option(True, "--precheck/--no-precheck", help="Pre-provision checks"),
     quiet: bool = typer.Option(False, help="Less output"),
 ) -> None:
     prov = _build_provisioner(
@@ -90,12 +103,17 @@ def provision(
         quiet,
     )
     try:
+        if precheck:
+            checks = prov.pre_check()
+            _print_checks(checks)
+            if _has_critical_fail(checks):
+                typer.echo("Precheck failed.")
+                raise typer.Exit(code=1)
         prov.provision()
         if check:
             results = prov.post_check()
             ok = all(item.get("ok") for item in results)
-            for item in results:
-                typer.echo(f"check {item.get('name')}: {'ok' if item.get('ok') else 'fail'} ({item.get('details')})")
+            _print_checks(results)
             typer.echo("Checks: OK" if ok else "Checks: FAIL")
         typer.echo("Provisioned.")
     finally:
@@ -181,6 +199,41 @@ def status(
     typer.echo(f"service: {info.get('service')}")
     if info.get("wg"):
         typer.echo(info.get("wg"))
+
+
+@app.command()
+def rollback(
+    host: str = typer.Option(..., help="Server hostname or IP"),
+    user: str = typer.Option(..., help="SSH username"),
+    password: Optional[str] = typer.Option(None, help="SSH password"),
+    key: Optional[str] = typer.Option(None, help="SSH private key path"),
+    port: int = typer.Option(22, help="SSH port"),
+    quiet: bool = typer.Option(False, help="Less output"),
+) -> None:
+    prov = _build_provisioner(
+        host,
+        user,
+        password,
+        key,
+        port,
+        "client1",
+        51820,
+        "10.10.0.2/32",
+        "10.10.0.1/24",
+        "1.1.1.1",
+        None,
+        True,
+        True,
+        quiet,
+    )
+    try:
+        backup = prov.rollback_last_backup()
+    finally:
+        prov.ssh.close()
+    if backup:
+        typer.echo(f"Rolled back to {backup}")
+    else:
+        typer.echo("No backup found.")
 
 
 def main() -> None:

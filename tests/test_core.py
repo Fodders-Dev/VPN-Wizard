@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from vpn_wizard.core import WireGuardProvisioner
+from vpn_wizard.core import SSHConfig, WireGuardProvisioner
 
 
 class FakeSSH:
-    def __init__(self, responses: dict[str, str] | None = None) -> None:
+    def __init__(self, responses: dict[str, str] | None = None, password: str | None = None) -> None:
         self.responses = responses or {}
         self.commands: list[tuple[str, bool, bool]] = []
+        self.config = SSHConfig(host="example.com", user="root", password=password)
 
     def run(self, command: str, sudo: bool = False, check: bool = True) -> str:
         self.commands.append((command, sudo, check))
@@ -88,3 +89,19 @@ def test_resolve_mtu_uses_fallback_when_probe_unavailable() -> None:
     ssh = FakeSSH({"command -v ping": "missing"})
     prov = WireGuardProvisioner(ssh, mtu=None, auto_mtu=True, mtu_fallback=1420)
     assert prov.resolve_mtu() == 1420
+
+
+def test_precheck_passes_on_supported_os() -> None:
+    ssh = FakeSSH(
+        {
+            "cat /etc/os-release": "ID=ubuntu\nID_LIKE=debian\n",
+            "ping -c 1": "ok",
+            "sudo -n true": "ok",
+            "ss -lun": "free",
+            "test -f /etc/wireguard/wg0.conf": "missing",
+        }
+    )
+    prov = WireGuardProvisioner(ssh)
+    checks = prov.pre_check()
+    assert any(item.get("name") == "os_supported" and item.get("ok") for item in checks)
+    assert any(item.get("name") == "port_available" and item.get("ok") for item in checks)

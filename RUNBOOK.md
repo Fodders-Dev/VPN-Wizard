@@ -16,7 +16,7 @@ pip install -r requirements-dev.txt
 ## CLI
 Provision:
 ```
-python -m vpn_wizard.cli provision --host <ip> --user <user> --password <pass> --client client1 --auto-mtu --tune --check
+python -m vpn_wizard.cli provision --host <ip> --user <user> --password <pass> --client client1 --auto-mtu --tune --check --precheck
 ```
 
 Export config + QR:
@@ -27,6 +27,11 @@ python -m vpn_wizard.cli export --host <ip> --user <user> --password <pass> --cl
 Status:
 ```
 python -m vpn_wizard.cli status --host <ip> --user <user> --password <pass>
+```
+
+Rollback last config:
+```
+python -m vpn_wizard.cli rollback --host <ip> --user <user> --password <pass>
 ```
 
 ## GUI

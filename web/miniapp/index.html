@@ -29,10 +29,17 @@
             SSH password
             <input name="password" type="password" placeholder="optional if key" />
           </label>
-          <label>
+          <label class="advanced">
             SSH key content (optional)
             <textarea name="key_content" placeholder="paste private key"></textarea>
           </label>
+          <div class="toggle-row">
+            <label class="toggle">
+              <input type="checkbox" id="simple-toggle" checked />
+              Simple mode
+            </label>
+            <span class="toggle-hint">Hide advanced fields</span>
+          </div>
           <button type="submit" id="provision-btn">Configure</button>
         </form>
       </section>
@@ -47,6 +54,7 @@
       <section class="card" id="result-card">
         <h2>Step 3: Download</h2>
         <a id="download-link" class="download" href="#" download="client1.conf">Download config</a>
+        <button type="button" id="rollback-btn" class="secondary">Rollback last config</button>
         <img id="qr-image" alt="QR code" />
       </section>
     </main>

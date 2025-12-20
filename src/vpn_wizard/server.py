@@ -72,6 +72,16 @@ class ProvisionResponse(BaseModel):
     error: Optional[str] = None
 
 
+class RollbackRequest(BaseModel):
+    ssh: SSHPayload
+
+
+class RollbackResponse(BaseModel):
+    ok: bool
+    backup: Optional[str] = None
+    error: Optional[str] = None
+
+
 class JobCreateResponse(BaseModel):
     job_id: str
 
@@ -207,6 +217,15 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
                 tune=opts.tune,
                 progress=progress,
             )
+            pre_checks = prov.pre_check()
+            for item in pre_checks:
+                progress(
+                    f"precheck {item.get('name')}: {'ok' if item.get('ok') else 'fail'} ({item.get('details')})"
+                )
+            critical = {"os_supported", "sudo", "port_available"}
+            if any(item.get("name") in critical and not item.get("ok") for item in pre_checks):
+                JOB_STORE.update(job_id, status="error", error="Precheck failed.", checks=pre_checks)
+                return
             prov.provision()
             config = prov.export_client_config()
             checks = prov.post_check() if opts.check else []
@@ -269,6 +288,34 @@ def job_result(job_id: str) -> ProvisionResponse:
         checks=job.checks,
         error=None,
     )
+
+
+@app.post("/api/rollback", response_model=RollbackResponse)
+async def rollback(payload: RollbackRequest) -> RollbackResponse:
+    temp_key = TempKey()
+    try:
+        key_path = payload.ssh.key_path
+        if payload.ssh.key_content:
+            temp_key = _write_temp_key(payload.ssh.key_content)
+            key_path = temp_key.path
+
+        cfg = SSHConfig(
+            host=payload.ssh.host,
+            user=payload.ssh.user,
+            port=payload.ssh.port,
+            password=payload.ssh.password,
+            key_path=key_path,
+        )
+        with SSHRunner(cfg) as ssh:
+            prov = WireGuardProvisioner(ssh)
+            backup = prov.rollback_last_backup()
+        if not backup:
+            return RollbackResponse(ok=False, error="No backup found.")
+        return RollbackResponse(ok=True, backup=backup)
+    except Exception as exc:
+        return RollbackResponse(ok=False, error=str(exc))
+    finally:
+        temp_key.cleanup()
 
 
 def _mount_miniapp() -> None:

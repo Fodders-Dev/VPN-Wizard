@@ -126,6 +126,15 @@ class WireGuardProvisioner:
         self.progress("Starting service")
         self.start_service()
 
+    def _classify_os(self, os_info: dict) -> tuple[bool, bool, str, str]:
+        distro = os_info.get("ID", "").lower()
+        like = os_info.get("ID_LIKE", "").lower()
+        is_deb = distro in {"ubuntu", "debian"} or "debian" in like
+        is_rhel = (
+            distro in {"centos", "rhel", "fedora", "almalinux", "rocky"} or "rhel" in like
+        )
+        return is_deb, is_rhel, distro, like
+
     def detect_os(self) -> dict:
         raw = self.ssh.run("cat /etc/os-release")
         info = {}
@@ -138,10 +147,7 @@ class WireGuardProvisioner:
         return info
 
     def install_wireguard(self, os_info: dict) -> None:
-        distro = os_info.get("ID", "").lower()
-        like = os_info.get("ID_LIKE", "").lower()
-        is_deb = distro in {"ubuntu", "debian"} or "debian" in like
-        is_rhel = distro in {"centos", "rhel", "fedora", "almalinux", "rocky"} or "rhel" in like
+        is_deb, is_rhel, distro, _ = self._classify_os(os_info)
 
         if is_deb:
             self.ssh.run("DEBIAN_FRONTEND=noninteractive apt-get update -y", sudo=True)
@@ -165,6 +171,45 @@ class WireGuardProvisioner:
             return
 
         raise RuntimeError(f"Unsupported distro: {distro}")
+
+    def pre_check(self) -> list[dict]:
+        checks: list[dict] = []
+        try:
+            os_info = self.detect_os()
+            is_deb, is_rhel, distro, _ = self._classify_os(os_info)
+            ok = is_deb or is_rhel
+            checks.append({"name": "os_supported", "ok": ok, "details": distro or "unknown"})
+        except Exception as exc:
+            checks.append({"name": "os_supported", "ok": False, "details": str(exc)})
+
+        ping = self.ssh.run(
+            "ping -c 1 -W 1 1.1.1.1 >/dev/null 2>&1 && echo ok || echo fail",
+            check=False,
+        ).strip()
+        checks.append({"name": "ping", "ok": ping == "ok", "details": ping})
+
+        sudo_ok = True
+        details = "password auth"
+        if not getattr(self.ssh, "config", None) or not self.ssh.config.password:
+            sudo = self.ssh.run("sudo -n true && echo ok || echo fail", check=False).strip()
+            sudo_ok = sudo == "ok"
+            details = "passwordless" if sudo_ok else "sudo requires password"
+        checks.append({"name": "sudo", "ok": sudo_ok, "details": details})
+
+        port = self.listen_port
+        port_state = self.ssh.run(
+            f"ss -lun | awk '{{print $5}}' | grep -q ':{port}$' && echo busy || echo free",
+            check=False,
+        ).strip()
+        checks.append({"name": "port_available", "ok": port_state != "busy", "details": port_state})
+
+        wg0 = self.ssh.run(
+            "test -f /etc/wireguard/wg0.conf && echo exists || echo missing",
+            sudo=True,
+            check=False,
+        ).strip()
+        checks.append({"name": "wg0_exists", "ok": wg0 == "missing", "details": wg0})
+        return checks
 
     def configure_sysctl(self) -> None:
         self.ssh.run(
@@ -204,6 +249,7 @@ class WireGuardProvisioner:
         mtu_line = f"MTU = {resolved_mtu}\n" if resolved_mtu else ""
         mtu_line_client = f"MTU = {resolved_mtu}\n" if resolved_mtu else ""
         self.ssh.run("mkdir -p /etc/wireguard/clients", sudo=True)
+        self.backup_config()
         self.ssh.run(
             "if [ ! -f /etc/wireguard/server_private.key ]; then\n"
             "  umask 077\n"
@@ -282,6 +328,38 @@ class WireGuardProvisioner:
         return self.ssh.run(
             f"cat /etc/wireguard/clients/{self.client_name}.conf", sudo=True
         )
+
+    def backup_config(self) -> Optional[str]:
+        path = self.ssh.run(
+            "if [ -f /etc/wireguard/wg0.conf ]; then\n"
+            "  ts=$(date +%Y%m%d%H%M%S)\n"
+            "  cp /etc/wireguard/wg0.conf /etc/wireguard/wg0.conf.bak.$ts\n"
+            "  echo /etc/wireguard/wg0.conf.bak.$ts\n"
+            "fi",
+            sudo=True,
+            check=False,
+        ).strip()
+        if path:
+            self.progress(f"Backup saved: {path}")
+            return path
+        return None
+
+    def rollback_last_backup(self) -> Optional[str]:
+        backup = self.ssh.run(
+            "set -e\n"
+            "latest=$(ls -t /etc/wireguard/wg0.conf.bak.* 2>/dev/null | head -n 1 || true)\n"
+            "if [ -z \"$latest\" ]; then\n"
+            "  echo ''\n"
+            "  exit 0\n"
+            "fi\n"
+            "cp \"$latest\" /etc/wireguard/wg0.conf\n"
+            "chmod 600 /etc/wireguard/wg0.conf\n"
+            "systemctl restart wg-quick@wg0 || true\n"
+            "echo \"$latest\"",
+            sudo=True,
+            check=False,
+        ).strip()
+        return backup or None
 
     def resolve_mtu(self) -> Optional[int]:
         if self._resolved_mtu is not None:

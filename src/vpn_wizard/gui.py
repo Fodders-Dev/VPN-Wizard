@@ -47,6 +47,14 @@ class ProvisionWorker(QtCore.QThread):
             )
             with SSHRunner(cfg, logger=logger) as ssh:
                 prov = WireGuardProvisioner(ssh, client_name=self.client)
+                checks = prov.pre_check()
+                for item in checks:
+                    self.log.emit(
+                        f"check {item.get('name')}: {'ok' if item.get('ok') else 'fail'} ({item.get('details')})"
+                    )
+                critical = {"os_supported", "sudo", "port_available"}
+                if any(item.get("name") in critical and not item.get("ok") for item in checks):
+                    raise RuntimeError("Precheck failed.")
                 prov.provision()
                 config = prov.export_client_config()
                 checks = prov.post_check()
