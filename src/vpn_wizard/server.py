@@ -21,7 +21,26 @@ from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
 
 
 app = FastAPI(title="VPN Wizard API")
-cors_origins = [item.strip() for item in os.getenv("VPNW_CORS_ORIGINS", "").split(",") if item.strip()]
+raw_origins = os.getenv("VPNW_CORS_ORIGINS", "")
+cors_origins = []
+if raw_origins:
+    for origin in raw_origins.split(","):
+        # Cleanup: remove whitespace, quotes, trailing slashes
+        clean = origin.strip().strip("'").strip('"').rstrip("/")
+        if not clean:
+            continue
+        if clean == "*":
+            cors_origins.append("*")
+            continue
+        # Auto-fix: add https if missing
+        if not clean.startswith("http"):
+            cors_origins.append(f"https://{clean}")
+            cors_origins.append(f"http://{clean}")  # Allow http for testing
+        else:
+            cors_origins.append(clean)
+
+print(f"VPN Wizard: Loaded CORS origins: {cors_origins}")
+
 if not cors_origins:
     cors_origins = ["*"]
 app.add_middleware(
