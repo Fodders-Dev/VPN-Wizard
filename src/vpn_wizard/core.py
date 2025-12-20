@@ -123,12 +123,13 @@ class WireGuardProvisioner:
         self.protocol = protocol
         self._public_ip_cache: Optional[str] = None
         
-        # AmneziaWG obfuscation parameters (optimized for MOBILE + SPEED)
-        # Mobile networks have strict DPI and lower MTU.
+        # AmneziaWG obfuscation parameters (Standard Safe Values)
+        # "Parameter is incorrect" usually means values are out of supported range.
+        # Reverting to defaults that differ from WireGuard but are valid.
         import random
-        self.awg_jc = random.randint(3, 7)    # Increased junk count for better masking (was 1-3)
-        self.awg_jmin = 50                    # Min junk size 
-        self.awg_jmax = 400                   # Moderate junk size (balanced stealth/speed)
+        self.awg_jc = random.randint(3, 10)   # Standard range
+        self.awg_jmin = 50                    # Standard min
+        self.awg_jmax = 1000                  # Standard max (safe)
         self.awg_s1 = random.randint(15, 150)
         self.awg_s2 = random.randint(15, 150)
         while self.awg_s1 + 56 == self.awg_s2:
