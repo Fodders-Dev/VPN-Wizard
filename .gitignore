@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+log_*.txt
+*.ovpn
+new ca/
+.env
+.env.*
+*.key
+*.pem

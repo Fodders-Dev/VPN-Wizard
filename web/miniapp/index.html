@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VPN Wizard Miniapp</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="hero">
+        <div class="title">VPN Wizard</div>
+        <div class="subtitle">Simple setup for your own WireGuard VPN</div>
+      </header>
+
+      <section class="card">
+        <h2>Step 1: Server access</h2>
+        <form id="provision-form">
+          <label>
+            Server IP or host
+            <input name="host" placeholder="1.2.3.4" required />
+          </label>
+          <label>
+            SSH user
+            <input name="user" placeholder="root" required />
+          </label>
+          <label>
+            SSH password
+            <input name="password" type="password" placeholder="optional if key" />
+          </label>
+          <label>
+            SSH key content (optional)
+            <textarea name="key_content" placeholder="paste private key"></textarea>
+          </label>
+          <button type="submit" id="provision-btn">Configure</button>
+        </form>
+      </section>
+
+      <section class="card" id="progress-card">
+        <h2>Step 2: Progress</h2>
+        <div class="spinner" aria-hidden="true"></div>
+        <div id="status">Waiting...</div>
+        <div id="progress-log" class="log"></div>
+      </section>
+
+      <section class="card" id="result-card">
+        <h2>Step 3: Download</h2>
+        <a id="download-link" class="download" href="#" download="client1.conf">Download config</a>
+        <img id="qr-image" alt="QR code" />
+      </section>
+    </main>
+
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

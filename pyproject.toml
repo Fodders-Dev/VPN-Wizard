@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vpn-wizard"
+version = "0.1.0"
+description = "VPN Wizard: turn a VPS into a WireGuard VPN with CLI + GUI"
+requires-python = ">=3.10"
+dependencies = [
+  "paramiko>=3.4.0",
+  "typer>=0.12.0",
+  "PySide6>=6.6.0",
+  "qrcode>=7.4.2",
+  "pillow>=10.0.0",
+  "fastapi>=0.110.0",
+  "uvicorn>=0.27.0",
+  "python-telegram-bot>=20.6",
+]
+
+[project.scripts]
+vpnw = "vpn_wizard.cli:app"
+vpnw-gui = "vpn_wizard.gui:main"
+vpnw-server = "vpn_wizard.server:main"
+vpnw-bot = "vpn_wizard.tg_bot:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
