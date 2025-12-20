@@ -212,7 +212,7 @@ if (!localStorage.getItem("vpnw_creds")) {
   unlockBtn.disabled = true;
 }
 
-async function pollJob(jobId) {
+async function pollJob(jobId, clientName) {
   const status = await fetchJson(`/api/jobs/${jobId}`);
   const lines = status.progress || [];
   setProgress(lines);
@@ -232,6 +232,8 @@ async function pollJob(jobId) {
     pollTimer = null;
     const result = await fetchJson(`/api/jobs/${jobId}/result`);
     const blob = new Blob([result.config], { type: "text/plain" });
+    const name = clientName || "client1";
+    downloadLink.download = `${name}.conf`;
     downloadLink.href = URL.createObjectURL(blob);
     qrImage.src = `data:image/png;base64,${result.qr_png_base64}`;
     const checks = result.checks || [];
@@ -290,6 +292,8 @@ form.addEventListener("submit", async (event) => {
     },
   };
 
+  const currentClientName = data.client_name || "client1";
+
   try {
     const result = await fetchJson("/api/provision", {
       method: "POST",
@@ -301,14 +305,14 @@ form.addEventListener("submit", async (event) => {
       clearInterval(pollTimer);
     }
     pollTimer = setInterval(() => {
-      pollJob(result.job_id).catch((err) => {
+      pollJob(result.job_id, currentClientName).catch((err) => {
         setStatus(`Failed: ${err}`);
         clearInterval(pollTimer);
         pollTimer = null;
         button.disabled = false;
       });
     }, 2000);
-    await pollJob(result.job_id);
+    await pollJob(result.job_id, currentClientName);
   } catch (err) {
     setStatus(`Failed: ${err}`);
     button.disabled = false;
@@ -343,6 +347,7 @@ addClientBtn.addEventListener("click", async () => {
       return;
     }
     const blob = new Blob([result.config], { type: "text/plain" });
+    downloadLink.download = `${result.client_name}.conf`;
     downloadLink.href = URL.createObjectURL(blob);
     qrImage.src = `data:image/png;base64,${result.qr_png_base64}`;
     resultCard.style.display = "block";
