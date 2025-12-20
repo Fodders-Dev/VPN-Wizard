@@ -100,7 +100,7 @@ class WireGuardProvisioner:
         dns: str = "1.1.1.1",
         mtu: Optional[int] = None,
         auto_mtu: bool = True,
-        mtu_fallback: int = 1420,  # Optimized for speed (std WG MTU) instead of 1280
+        mtu_fallback: int = 1280,  # Revert to safe default to avoid fragmentation
         mtu_probe_host: str = "1.1.1.1",
         tune: bool = True,
         progress: Optional[Callable[[str], None]] = None,
@@ -123,21 +123,20 @@ class WireGuardProvisioner:
         self.protocol = protocol
         self._public_ip_cache: Optional[str] = None
         
-        # AmneziaWG obfuscation parameters (generated once, shared with all clients)
+        # AmneziaWG obfuscation parameters (optimized for speed)
+        # Lower overhead = higher throughput. Jmax=1000 was too aggressive.
         import random
-        self.awg_jc = random.randint(3, 10)  # Reduced slightly for performance
-        self.awg_jmin = 50   # Tweaked for better throughput masking
-        self.awg_jmax = 1000 # Larger range for better obfuscation
+        self.awg_jc = random.randint(1, 3)    # Minimal junk packets (was 3-10)
+        self.awg_jmin = 40                    # Minimum junk size
+        self.awg_jmax = 70                    # Reduced max junk size (was 1000!)
         self.awg_s1 = random.randint(15, 150)
         self.awg_s2 = random.randint(15, 150)
-        # Ensure S1+56 != S2 as per spec
         while self.awg_s1 + 56 == self.awg_s2:
             self.awg_s2 = random.randint(15, 150)
         self.awg_h1 = random.randint(100000000, 2147483647)
         self.awg_h2 = random.randint(100000000, 2147483647)
         self.awg_h3 = random.randint(100000000, 2147483647)
         self.awg_h4 = random.randint(100000000, 2147483647)
-        # Ensure all H values are unique
         h_vals = {self.awg_h1, self.awg_h2, self.awg_h3, self.awg_h4}
         while len(h_vals) < 4:
             self.awg_h1 = random.randint(100000000, 2147483647)
@@ -145,6 +144,34 @@ class WireGuardProvisioner:
             self.awg_h3 = random.randint(100000000, 2147483647)
             self.awg_h4 = random.randint(100000000, 2147483647)
             h_vals = {self.awg_h1, self.awg_h2, self.awg_h3, self.awg_h4}
+
+    # ... (omitted) ...
+
+    def configure_sysctl(self) -> None:
+        self.ssh.run(
+            "cat > /etc/sysctl.d/99-vpn-wizard.conf <<'EOF'\n"
+            "net.ipv4.ip_forward=1\n"
+            "net.ipv6.conf.all.forwarding=1\n"
+            "EOF",
+            sudo=True,
+        )
+        self.ssh.run("sysctl --system", sudo=True)
+        if self.tune:
+            self.ssh.run(
+                "cat > /etc/sysctl.d/99-vpn-wizard-tuning.conf <<'EOF'\n"
+                "net.core.default_qdisc=fq\n"
+                "net.ipv4.tcp_congestion_control=bbr\n"
+                # Buffers for 1Gbps+
+                "net.core.rmem_max=26214400\n"
+                "net.core.wmem_max=26214400\n"
+                "net.core.rmem_default=2097152\n"  # Increased from 524KB
+                "net.core.wmem_default=2097152\n"  # Increased from 524KB
+                "net.ipv4.udp_rmem_min=16384\n"    # Increased
+                "net.ipv4.udp_wmem_min=16384\n"    # Increased
+                "net.ipv4.tcp_mtu_probing=1\n"
+                "EOF",
+                sudo=True,
+            )
 
     def provision(self) -> None:
         self.progress("Detecting OS")
