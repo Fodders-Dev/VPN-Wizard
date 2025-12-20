@@ -241,11 +241,10 @@ class WireGuardProvisioner:
 
     def install_amneziawg(self, os_info: dict) -> None:
         """Install AmneziaWG kernel module and tools via PPA."""
-        # Check if AmneziaWG tools are already installed (just check for awg command)
+        # Check if AmneziaWG tools are already installed
         awg_check = self.ssh.run("which awg 2>/dev/null && echo 'installed' || echo 'missing'", check=False)
         if "installed" in awg_check:
             self.progress("AmneziaWG already installed, skipping...")
-            # Try to load the module if not loaded
             self.ssh.run("modprobe amneziawg 2>/dev/null || true", sudo=True, check=False)
             return
         
@@ -254,129 +253,55 @@ class WireGuardProvisioner:
         if is_deb:
             import time
             
-            # FIRST: Kill any automatic update processes that hold apt lock
+            # Kill ALL apt processes and remove ALL locks
             self.progress("Releasing apt locks...")
             self.ssh.run(
-                "systemctl stop unattended-upgrades 2>/dev/null || true; "
-                "systemctl stop apt-daily.timer 2>/dev/null || true; "
-                "systemctl stop apt-daily-upgrade.timer 2>/dev/null || true; "
+                "systemctl stop unattended-upgrades apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true; "
                 "killall -9 unattended-upgrade apt apt-get dpkg 2>/dev/null || true; "
                 "rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock /var/lib/dpkg/lock* 2>/dev/null || true; "
                 "dpkg --configure -a 2>/dev/null || true",
                 sudo=True,
                 check=False,
             )
-            # Wait a moment for processes to die
-            time.sleep(2)
+            time.sleep(3)
             
-            max_retries = 10
-            for i in range(max_retries):
-                try:
-                    # Clean up old kernels to free space in /boot
-                    self.ssh.run(
-                        "apt-get autoremove -y || true",
-                        sudo=True,
-                        check=False,
-                    )
-                    
-                    # Enable source repos for DKMS
-                    self.ssh.run(
-                        "grep -q '^deb-src' /etc/apt/sources.list || "
-                        "echo 'deb-src http://archive.ubuntu.com/ubuntu $(lsb_release -cs) main' >> /etc/apt/sources.list",
-                        sudo=True,
-                        check=False,
-                    )
-                    
-                    self.ssh.run("DEBIAN_FRONTEND=noninteractive apt-get update -y", sudo=True)
-                    
-                    # Install prerequisites
-                    self.ssh.run(
-                        "DEBIAN_FRONTEND=noninteractive apt-get install -y "
-                        "software-properties-common gnupg2 curl qrencode iptables",
-                        sudo=True,
-                    )
-                    
-                    # Install kernel headers
-                    self.ssh.run(
-                        "DEBIAN_FRONTEND=noninteractive apt-get install -y linux-headers-$(uname -r) || true",
-                        sudo=True,
-                        check=False,
-                    )
-                    
-                    # Add Amnezia PPA
-                    self.ssh.run(
-                        "add-apt-repository -y ppa:amnezia/ppa || "
-                        "(apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 57290828 && "
-                        "echo 'deb https://ppa.launchpadcontent.net/amnezia/ppa/ubuntu focal main' >> /etc/apt/sources.list)",
-                        sudo=True,
-                        check=False,
-                    )
-                    
-                    self.ssh.run("DEBIAN_FRONTEND=noninteractive apt-get update -y", sudo=True)
-                    
-                    # Install AmneziaWG (may fail due to initramfs issues on some VPS)
-                    try:
-                        self.ssh.run(
-                            "DEBIAN_FRONTEND=noninteractive apt-get install -y amneziawg",
-                            sudo=True,
-                        )
-                    except RemoteCommandError as install_exc:
-                        # DKMS initramfs failure - try to force-install the built module
-                        if "mkinitrd" in str(install_exc) or "initramfs" in str(install_exc) or "exit status: 1" in str(install_exc):
-                            self.progress("DKMS initramfs failed, attempting manual module load...")
-                            # Force dpkg to configure what it can
-                            self.ssh.run("dpkg --configure -a --force-confdef || true", sudo=True, check=False)
-                            
-                            # Try to manually install the built DKMS module
-                            self.ssh.run(
-                                "dkms install -m amneziawg -v 1.0.0 --force || true",
-                                sudo=True,
-                                check=False,
-                            )
-                            
-                            # Load the module manually
-                            self.ssh.run("modprobe amneziawg || true", sudo=True, check=False)
-                            
-                            # Check if awg command is available (tools were installed)
-                            result = self.ssh.run("which awg || echo 'not_found'", check=False)
-                            if "not_found" in result:
-                                raise RuntimeError("AmneziaWG tools not installed. VPS may need reinstallation.")
-                            
-                            # Check if module loaded
-                            mod_check = self.ssh.run("lsmod | grep amneziawg || echo 'not_loaded'", check=False)
-                            if "not_loaded" in mod_check:
-                                self.progress("Warning: amneziawg module not loaded. Trying insmod directly...")
-                                # Try to load directly from DKMS build dir
-                                self.ssh.run(
-                                    "insmod /var/lib/dkms/amneziawg/1.0.0/$(uname -r)/x86_64/module/amneziawg.ko 2>/dev/null || true",
-                                    sudo=True,
-                                    check=False,
-                                )
-                        else:
-                            raise install_exc
-                    return
-                except RemoteCommandError as exc:
-                    err_msg = str(exc).lower()
-                    if "lock" in err_msg or "resource temporarily unavailable" in err_msg:
-                        if i < max_retries - 1:
-                            self.progress(f"Apt locked, retrying in 10s... ({i+1}/{max_retries})")
-                            time.sleep(10)
-                            continue
-                    # Check for initramfs/dkms errors and handle them
-                    if "mkinitrd" in err_msg or "initramfs" in err_msg or "amneziawg-dkms" in err_msg:
-                        self.progress("DKMS failed, attempting fallback...")
-                        self.ssh.run("dpkg --configure -a --force-confdef || true", sudo=True, check=False)
-                        self.ssh.run("modprobe amneziawg || true", sudo=True, check=False)
-                        result = self.ssh.run("which awg || echo 'not_found'", check=False)
-                        if "not_found" not in result:
-                            return  # Tools available, proceed
-                    raise exc
+            # Apt with 2 minute lock timeout
+            apt = "DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120"
+            
+            self.progress("Updating packages...")
+            self.ssh.run(f"{apt} update -y", sudo=True)
+            
+            self.progress("Installing prerequisites...")
+            self.ssh.run(f"{apt} install -y software-properties-common gnupg2 curl qrencode iptables", sudo=True)
+            self.ssh.run(f"{apt} install -y linux-headers-$(uname -r) || true", sudo=True, check=False)
+            
+            self.progress("Adding AmneziaWG repository...")
+            self.ssh.run(
+                "add-apt-repository -y ppa:amnezia/ppa || "
+                "(apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 57290828 && "
+                "echo 'deb https://ppa.launchpadcontent.net/amnezia/ppa/ubuntu focal main' >> /etc/apt/sources.list)",
+                sudo=True,
+                check=False,
+            )
+            self.ssh.run(f"{apt} update -y", sudo=True)
+            
+            self.progress("Installing AmneziaWG...")
+            try:
+                self.ssh.run(f"{apt} install -y amneziawg", sudo=True)
+            except RemoteCommandError as e:
+                # DKMS/initramfs failure - try to force load module
+                if "mkinitrd" in str(e) or "initramfs" in str(e) or "exit status" in str(e):
+                    self.progress("DKMS failed, loading module manually...")
+                    self.ssh.run("dpkg --configure -a --force-confdef || true", sudo=True, check=False)
+                    self.ssh.run("modprobe amneziawg || true", sudo=True, check=False)
+                    if "not_found" in self.ssh.run("which awg || echo 'not_found'", check=False):
+                        raise RuntimeError("AmneziaWG tools not installed. Try reinstalling VPS.")
+                else:
+                    raise e
             return
         
         if is_rhel:
-            pm = self.ssh.run(
-                "command -v dnf >/dev/null && echo dnf || echo yum", check=False
-            ).strip() or "yum"
+            pm = self.ssh.run("command -v dnf >/dev/null && echo dnf || echo yum", check=False).strip() or "yum"
             self.ssh.run(f"{pm} copr enable -y amneziavpn/amneziawg || true", sudo=True, check=False)
             self.ssh.run(f"{pm} install -y amneziawg-dkms amneziawg-tools qrencode curl", sudo=True)
             return
