@@ -241,6 +241,12 @@ class WireGuardProvisioner:
 
     def install_amneziawg(self, os_info: dict) -> None:
         """Install AmneziaWG kernel module and tools via PPA."""
+        # Check if AmneziaWG is already installed
+        awg_check = self.ssh.run("which awg && lsmod | grep -q amneziawg && echo 'installed' || echo 'missing'", check=False)
+        if "installed" in awg_check:
+            self.progress("AmneziaWG already installed, skipping...")
+            return
+        
         is_deb, is_rhel, distro, _ = self._classify_os(os_info)
         
         if is_deb:
