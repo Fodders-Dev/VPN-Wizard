@@ -253,22 +253,26 @@ class WireGuardProvisioner:
         
         if is_deb:
             import time
+            
+            # FIRST: Kill any automatic update processes that hold apt lock
+            self.progress("Releasing apt locks...")
+            self.ssh.run(
+                "systemctl stop unattended-upgrades 2>/dev/null || true; "
+                "systemctl stop apt-daily.timer 2>/dev/null || true; "
+                "systemctl stop apt-daily-upgrade.timer 2>/dev/null || true; "
+                "killall -9 unattended-upgrade apt apt-get dpkg 2>/dev/null || true; "
+                "rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock /var/lib/dpkg/lock* 2>/dev/null || true; "
+                "dpkg --configure -a 2>/dev/null || true",
+                sudo=True,
+                check=False,
+            )
+            # Wait a moment for processes to die
+            time.sleep(2)
+            
             max_retries = 10
             for i in range(max_retries):
                 try:
-                    # Clean up any broken packages from previous attempts
-                    self.ssh.run(
-                        "dpkg --configure -a || true",
-                        sudo=True,
-                        check=False,
-                    )
-                    self.ssh.run(
-                        "apt-get --fix-broken install -y || true",
-                        sudo=True,
-                        check=False,
-                    )
-                    
-                    # Clean up old kernels to free space in /boot (don't purge amneziawg!)
+                    # Clean up old kernels to free space in /boot
                     self.ssh.run(
                         "apt-get autoremove -y || true",
                         sudo=True,
