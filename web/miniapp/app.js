@@ -38,7 +38,16 @@ function setProgress(lines) {
 
 let pollTimer = null;
 
-const API_BASE = window.API_BASE || "";
+function resolveApiBase() {
+  const url = new URL(window.location.href);
+  const param = url.searchParams.get("api");
+  if (param) {
+    localStorage.setItem("vpnw_api_base", param);
+  }
+  return localStorage.getItem("vpnw_api_base") || window.API_BASE || "";
+}
+
+const API_BASE = resolveApiBase();
 
 async function fetchJson(url, options) {
   const response = await fetch(`${API_BASE}${url}`, options);

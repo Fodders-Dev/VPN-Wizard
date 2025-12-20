@@ -18,3 +18,4 @@ python -m vpn_wizard.tg_bot
 - If you only want the bot wizard, you can skip the server.
 - If miniapp is hosted separately (Vercel), set `window.API_BASE` in `web/miniapp/config.js`.
 - Enable CORS with `VPNW_CORS_ORIGINS="https://your-miniapp-domain"`.
+- You can also set the API on the fly via `?api=https://your-api-domain` in the miniapp URL.

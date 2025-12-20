@@ -59,3 +59,4 @@ pytest
 - Telegram miniapp requires a public HTTPS URL configured in BotFather.
 - For cross-origin miniapp, set `VPNW_CORS_ORIGINS="https://your-miniapp-domain"` before running the API server.
 - Set `window.API_BASE` in `web/miniapp/config.js` to your API server URL when hosting separately.
+- You can also pass `?api=https://your-api-domain` in the miniapp URL to override API base.
