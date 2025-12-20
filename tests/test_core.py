@@ -74,7 +74,7 @@ def test_setup_wireguard_includes_mtu_and_iptables_wait() -> None:
     prov.setup_wireguard()
     combined = "\n".join(cmd for cmd, _, _ in ssh.commands)
     assert "MTU = 1420" in combined
-    assert "iptables -w -A FORWARD" in combined
+    assert "iptables -w -I FORWARD" in combined
 
 
 def test_detect_mtu_returns_value_from_probe() -> None:

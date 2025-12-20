@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import ipaddress
+import os
 import re
 import shlex
 from typing import Callable, Optional
@@ -97,7 +98,7 @@ class WireGuardProvisioner:
         client_ip: str = "10.10.0.2/32",
         server_cidr: str = "10.10.0.1/24",
         listen_port: int = 443,
-        dns: str = "1.1.1.1",
+        dns: str = "1.1.1.1, 1.0.0.1",
         mtu: Optional[int] = None,
         auto_mtu: bool = True,
         mtu_fallback: int = 1280,  # Revert to safe default to avoid fragmentation
@@ -105,6 +106,7 @@ class WireGuardProvisioner:
         tune: bool = True,
         progress: Optional[Callable[[str], None]] = None,
         protocol: str = "amneziawg",  # "wireguard" or "amneziawg"
+        allow_ipv6: bool = False,
     ) -> None:
         self.ssh = ssh
         self.client_name = client_name
@@ -122,6 +124,7 @@ class WireGuardProvisioner:
         self._name_pattern = re.compile(r"^[a-zA-Z0-9_-]{1,32}$")
         self.protocol = protocol
         self._public_ip_cache: Optional[str] = None
+        self.allow_ipv6 = allow_ipv6
         
         # AmneziaWG obfuscation parameters (optimized for speed)
         # Lower overhead = higher throughput. Jmax=1000 was too aggressive.
@@ -146,32 +149,6 @@ class WireGuardProvisioner:
             h_vals = {self.awg_h1, self.awg_h2, self.awg_h3, self.awg_h4}
 
     # ... (omitted) ...
-
-    def configure_sysctl(self) -> None:
-        self.ssh.run(
-            "cat > /etc/sysctl.d/99-vpn-wizard.conf <<'EOF'\n"
-            "net.ipv4.ip_forward=1\n"
-            "net.ipv6.conf.all.forwarding=1\n"
-            "EOF",
-            sudo=True,
-        )
-        self.ssh.run("sysctl --system", sudo=True)
-        if self.tune:
-            self.ssh.run(
-                "cat > /etc/sysctl.d/99-vpn-wizard-tuning.conf <<'EOF'\n"
-                "net.core.default_qdisc=fq\n"
-                "net.ipv4.tcp_congestion_control=bbr\n"
-                # Buffers for 1Gbps+
-                "net.core.rmem_max=26214400\n"
-                "net.core.wmem_max=26214400\n"
-                "net.core.rmem_default=2097152\n"  # Increased from 524KB
-                "net.core.wmem_default=2097152\n"  # Increased from 524KB
-                "net.ipv4.udp_rmem_min=16384\n"    # Increased
-                "net.ipv4.udp_wmem_min=16384\n"    # Increased
-                "net.ipv4.tcp_mtu_probing=1\n"
-                "EOF",
-                sudo=True,
-            )
 
     def provision(self) -> None:
         self.progress("Detecting OS")
@@ -397,12 +374,19 @@ class WireGuardProvisioner:
         ).strip()
         checks.append({"name": "port_available", "ok": port_state != "busy", "details": port_state})
 
-        wg0 = self.ssh.run(
-            "test -f /etc/wireguard/wg0.conf && echo exists || echo missing",
+        conf_path = (
+            "/etc/amnezia/amneziawg/awg0.conf"
+            if self.protocol == "amneziawg"
+            else "/etc/wireguard/wg0.conf"
+        )
+        conf_state = self.ssh.run(
+            f"test -f {conf_path} && echo exists || echo missing",
             sudo=True,
             check=False,
         ).strip()
-        checks.append({"name": "wg0_exists", "ok": wg0 == "missing", "details": wg0})
+        checks.append(
+            {"name": "server_conf_exists", "ok": conf_state == "missing", "details": conf_state}
+        )
         return checks
 
     def configure_sysctl(self) -> None:
@@ -421,10 +405,10 @@ class WireGuardProvisioner:
                 "net.ipv4.tcp_congestion_control=bbr\n"
                 "net.core.rmem_max=26214400\n"
                 "net.core.wmem_max=26214400\n"
-                "net.core.rmem_default=524288\n"
-                "net.core.wmem_default=524288\n"
-                "net.ipv4.udp_rmem_min=8192\n"
-                "net.ipv4.udp_wmem_min=8192\n"
+                "net.core.rmem_default=2097152\n"
+                "net.core.wmem_default=2097152\n"
+                "net.ipv4.udp_rmem_min=16384\n"
+                "net.ipv4.udp_wmem_min=16384\n"
                 "net.ipv4.tcp_mtu_probing=1\n"
                 "EOF",
                 sudo=True,
@@ -436,12 +420,76 @@ class WireGuardProvisioner:
                 check=False,
             )
 
+    def _allowed_ips(self) -> str:
+        return "0.0.0.0/0, ::/0" if self.allow_ipv6 else "0.0.0.0/0"
+
+    def _post_rules(self, ifname: str) -> tuple[str, str]:
+        postup = (
+            "sysctl -w net.ipv4.ip_forward=1; "
+            "sysctl -w net.ipv6.conf.all.forwarding=1; "
+            f"iptables -w -I FORWARD 1 -i {ifname} -j ACCEPT; "
+            f"iptables -w -I FORWARD 1 -o {ifname} -j ACCEPT; "
+            f"iptables -w -t nat -A POSTROUTING -s {self.server_cidr} -j MASQUERADE; "
+            "iptables -w -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN "
+            "-j TCPMSS --clamp-mss-to-pmtu"
+        )
+        postdown = (
+            f"iptables -w -D FORWARD -i {ifname} -j ACCEPT; "
+            f"iptables -w -D FORWARD -o {ifname} -j ACCEPT; "
+            f"iptables -w -t nat -D POSTROUTING -s {self.server_cidr} -j MASQUERADE; "
+            "iptables -w -t mangle -D FORWARD -p tcp --tcp-flags SYN,RST SYN "
+            "-j TCPMSS --clamp-mss-to-pmtu"
+        )
+        if self.allow_ipv6:
+            postup += (
+                f"; ip6tables -w -I FORWARD 1 -i {ifname} -j ACCEPT || true; "
+                f"ip6tables -w -I FORWARD 1 -o {ifname} -j ACCEPT || true; "
+                "ip6tables -w -t nat -A POSTROUTING -s fd42:42:42::/64 -j MASQUERADE || true"
+            )
+            postdown += (
+                f"; ip6tables -w -D FORWARD -i {ifname} -j ACCEPT || true; "
+                f"ip6tables -w -D FORWARD -o {ifname} -j ACCEPT || true; "
+                "ip6tables -w -t nat -D POSTROUTING -s fd42:42:42::/64 -j MASQUERADE || true"
+            )
+        return postup, postdown
+
+    def _resolve_listen_port(self, conf_path: str) -> int:
+        port = self.ssh.run(
+            f"awk -F'= ' '/^ListenPort/{{print $2; exit}}' {conf_path} 2>/dev/null || true",
+            sudo=True,
+            check=False,
+            pty=False,
+        ).strip()
+        return int(port) if port.isdigit() else self.listen_port
+
+    def _resolve_dns(self, clients_dir: str) -> str:
+        dns = self.ssh.run(
+            f"awk -F'= ' '/^DNS/{{print $2; exit}}' {clients_dir}/*.conf 2>/dev/null || true",
+            sudo=True,
+            check=False,
+            pty=False,
+        ).strip()
+        return dns or self.dns
+
+    def _resolve_allowed_ips(self, clients_dir: str) -> str:
+        if not self.allow_ipv6:
+            return self._allowed_ips()
+        allowed = self.ssh.run(
+            f"awk -F'= ' '/^AllowedIPs/{{print $2; exit}}' {clients_dir}/*.conf 2>/dev/null || true",
+            sudo=True,
+            check=False,
+            pty=False,
+        ).strip()
+        return allowed or self._allowed_ips()
+
     def setup_wireguard(self) -> None:
         client = self.client_name
         port = self.listen_port
         resolved_mtu = self.resolve_mtu()
         mtu_line = f"MTU = {resolved_mtu}\n" if resolved_mtu else ""
         mtu_line_client = f"MTU = {resolved_mtu}\n" if resolved_mtu else ""
+        allowed_ips = self._allowed_ips()
+        postup, postdown = self._post_rules("wg0")
         
         # Detect interface reliably
         iface = self.ssh.run("ip -4 route get 1.1.1.1 | awk '{print $5; exit}'", check=False).strip()
@@ -474,19 +522,8 @@ class WireGuardProvisioner:
             f"ListenPort = {port}\n"
             "PrivateKey = $server_priv\n"
             f"{mtu_line}"
-            "PostUp = sysctl -w net.ipv4.ip_forward=1; sysctl -w net.ipv6.conf.all.forwarding=1; "
-            "iptables -w -I FORWARD 1 -i wg0 -j ACCEPT; "
-            "iptables -w -I FORWARD 1 -o wg0 -j ACCEPT; "
-            f"iptables -w -t nat -A POSTROUTING -s {self.server_cidr} -j MASQUERADE; "
-            "ip6tables -w -I FORWARD 1 -i wg0 -j ACCEPT; "
-            "ip6tables -w -I FORWARD 1 -o wg0 -j ACCEPT; "
-            "ip6tables -w -t nat -A POSTROUTING -s fd42:42:42::/64 -j MASQUERADE\n"
-            "PostDown = iptables -w -D FORWARD -i wg0 -j ACCEPT; "
-            "iptables -w -D FORWARD -o wg0 -j ACCEPT; "
-            f"iptables -w -t nat -D POSTROUTING -s {self.server_cidr} -j MASQUERADE; "
-            "ip6tables -w -D FORWARD -i wg0 -j ACCEPT; "
-            "ip6tables -w -D FORWARD -o wg0 -j ACCEPT; "
-            "ip6tables -w -t nat -D POSTROUTING -s fd42:42:42::/64 -j MASQUERADE\n"
+            f"PostUp = {postup}\n"
+            f"PostDown = {postdown}\n"
             "\n"
             "[Peer]\n"
             "PublicKey = $client_pub\n"
@@ -510,7 +547,7 @@ class WireGuardProvisioner:
             "[Peer]\n"
             "PublicKey = $server_pub\n"
             f"Endpoint = $public_ip:{port}\n"
-            "AllowedIPs = 0.0.0.0/0, ::/0\n"
+            f"AllowedIPs = {allowed_ips}\n"
             "PersistentKeepalive = 25\n"
             "EOF\n"
             f"chmod 600 /etc/wireguard/clients/{client}.conf",
@@ -525,6 +562,8 @@ class WireGuardProvisioner:
         resolved_mtu = self.resolve_mtu()
         mtu_line = f"MTU = {resolved_mtu}\n" if resolved_mtu else ""
         mtu_line_client = f"MTU = {resolved_mtu}\n" if resolved_mtu else ""
+        allowed_ips = self._allowed_ips()
+        postup, postdown = self._post_rules("awg0")
         
         # AWG obfuscation params block
         awg_params = (
@@ -572,19 +611,8 @@ class WireGuardProvisioner:
             "PrivateKey = $server_priv\n"
             f"{mtu_line}"
             f"{awg_params}"
-            "PostUp = sysctl -w net.ipv4.ip_forward=1; sysctl -w net.ipv6.conf.all.forwarding=1; "
-            "iptables -w -I FORWARD 1 -i awg0 -j ACCEPT; "
-            "iptables -w -I FORWARD 1 -o awg0 -j ACCEPT; "
-            f"iptables -w -t nat -A POSTROUTING -s {self.server_cidr} -j MASQUERADE; "
-            "ip6tables -w -I FORWARD 1 -i awg0 -j ACCEPT; "
-            "ip6tables -w -I FORWARD 1 -o awg0 -j ACCEPT; "
-            "ip6tables -w -t nat -A POSTROUTING -s fd42:42:42::/64 -j MASQUERADE\n"
-            "PostDown = iptables -w -D FORWARD -i awg0 -j ACCEPT; "
-            "iptables -w -D FORWARD -o awg0 -j ACCEPT; "
-            f"iptables -w -t nat -D POSTROUTING -s {self.server_cidr} -j MASQUERADE; "
-            "ip6tables -w -D FORWARD -i awg0 -j ACCEPT; "
-            "ip6tables -w -D FORWARD -o awg0 -j ACCEPT; "
-            "ip6tables -w -t nat -D POSTROUTING -s fd42:42:42::/64 -j MASQUERADE\n"
+            f"PostUp = {postup}\n"
+            f"PostDown = {postdown}\n"
             "\n"
             "[Peer]\n"
             "PublicKey = $client_pub\n"
@@ -611,7 +639,7 @@ class WireGuardProvisioner:
             "[Peer]\n"
             "PublicKey = $server_pub\n"
             f"Endpoint = $public_ip:{port}\n"
-            "AllowedIPs = 0.0.0.0/0, ::/0\n"
+            f"AllowedIPs = {allowed_ips}\n"
             "PersistentKeepalive = 25\n"
             "EOF\n"
             f"chmod 600 /etc/amnezia/amneziawg/clients/{client}.conf",
@@ -762,6 +790,9 @@ class WireGuardProvisioner:
         ip = client_ip or self.next_client_ip()
         resolved_mtu = self.resolve_mtu()
         mtu_line = f"MTU = {resolved_mtu}\n" if resolved_mtu else ""
+        listen_port = self._resolve_listen_port(wg_conf)
+        dns_value = self._resolve_dns(clients_dir)
+        allowed_ips = self._resolve_allowed_ips(clients_dir)
 
         self.ssh.run(f"mkdir -p {clients_dir}", sudo=True)
         
@@ -805,14 +836,14 @@ class WireGuardProvisioner:
             "[Interface]\n"
             "PrivateKey = $client_priv\n"
             f"Address = {ip}\n"
-            f"DNS = {self.dns}\n"
+            f"DNS = {dns_value}\n"
             f"{mtu_line}"
             f"{awg_params}"
             "\n"
             "[Peer]\n"
             "PublicKey = $server_pub\n"
-            f"Endpoint = $public_ip:{self.listen_port}\n"
-            "AllowedIPs = 0.0.0.0/0, ::/0\n"
+            f"Endpoint = $public_ip:{listen_port}\n"
+            f"AllowedIPs = {allowed_ips}\n"
             "PersistentKeepalive = 25\n"
             "EOF\n"
             f"chmod 600 {clients_dir}/{name}.conf",
@@ -984,11 +1015,18 @@ class WireGuardProvisioner:
             raise RuntimeError("Invalid client name. Use letters, numbers, dash, underscore.")
 
     def backup_config(self) -> Optional[str]:
+        if self.protocol == "amneziawg":
+            conf_path = "/etc/amnezia/amneziawg/awg0.conf"
+            backup_prefix = "/etc/amnezia/amneziawg/awg0.conf.bak"
+        else:
+            conf_path = "/etc/wireguard/wg0.conf"
+            backup_prefix = "/etc/wireguard/wg0.conf.bak"
+
         path = self.ssh.run(
-            "if [ -f /etc/wireguard/wg0.conf ]; then\n"
+            f"if [ -f {conf_path} ]; then\n"
             "  ts=$(date +%Y%m%d%H%M%S)\n"
-            "  cp /etc/wireguard/wg0.conf /etc/wireguard/wg0.conf.bak.$ts\n"
-            "  echo /etc/wireguard/wg0.conf.bak.$ts\n"
+            f"  cp {conf_path} {backup_prefix}.$ts\n"
+            f"  echo {backup_prefix}.$ts\n"
             "fi",
             sudo=True,
             check=False,
@@ -999,16 +1037,25 @@ class WireGuardProvisioner:
         return None
 
     def rollback_last_backup(self) -> Optional[str]:
+        if self.protocol == "amneziawg":
+            conf_path = "/etc/amnezia/amneziawg/awg0.conf"
+            backup_glob = "/etc/amnezia/amneziawg/awg0.conf.bak.*"
+            service_name = "awg-quick@awg0"
+        else:
+            conf_path = "/etc/wireguard/wg0.conf"
+            backup_glob = "/etc/wireguard/wg0.conf.bak.*"
+            service_name = "wg-quick@wg0"
+
         backup = self.ssh.run(
             "set -e\n"
-            "latest=$(ls -t /etc/wireguard/wg0.conf.bak.* 2>/dev/null | head -n 1 || true)\n"
+            f"latest=$(ls -t {backup_glob} 2>/dev/null | head -n 1 || true)\n"
             "if [ -z \"$latest\" ]; then\n"
             "  echo ''\n"
             "  exit 0\n"
             "fi\n"
-            "cp \"$latest\" /etc/wireguard/wg0.conf\n"
-            "chmod 600 /etc/wireguard/wg0.conf\n"
-            "systemctl restart wg-quick@wg0 || true\n"
+            f"cp \"$latest\" {conf_path}\n"
+            f"chmod 600 {conf_path}\n"
+            f"systemctl restart {service_name} || true\n"
             "echo \"$latest\"",
             sudo=True,
             check=False,
@@ -1070,15 +1117,17 @@ class WireGuardProvisioner:
 
     def post_check(self) -> list[dict]:
         checks: list[dict] = []
+        service_name = "awg-quick@awg0" if self.protocol == "amneziawg" else "wg-quick@wg0"
+        iface = "awg0" if self.protocol == "amneziawg" else "wg0"
         service = self.ssh.run(
-            "systemctl is-active wg-quick@wg0 || true", sudo=True, check=False
+            f"systemctl is-active {service_name} || true", sudo=True, check=False
         ).strip()
         checks.append(
             {"name": "service_active", "ok": service == "active", "details": service}
         )
 
         link = self.ssh.run(
-            "ip link show wg0 >/dev/null 2>&1 && echo ok || echo missing",
+            f"ip link show {iface} >/dev/null 2>&1 && echo ok || echo missing",
             sudo=True,
             check=False,
         ).strip()
@@ -1101,15 +1150,21 @@ class WireGuardProvisioner:
         return checks
 
     def status(self) -> dict:
-        service = self.ssh.run("systemctl is-active wg-quick@wg0 || true", sudo=True, check=False)
-        wg = self.ssh.run("wg show wg0 || true", sudo=True, check=False)
+        service_name = "awg-quick@awg0" if self.protocol == "amneziawg" else "wg-quick@wg0"
+        show_cmd = "awg show awg0" if self.protocol == "amneziawg" else "wg show wg0"
+        service = self.ssh.run(
+            f"systemctl is-active {service_name} || true", sudo=True, check=False
+        )
+        wg = self.ssh.run(f"{show_cmd} || true", sudo=True, check=False)
         return {"service": service.strip(), "wg": wg.strip()}
 
     def get_system_report(self) -> str:
         """Collects deep diagnostics for debugging connectivity issues."""
+        service_name = "awg-quick@awg0" if self.protocol == "amneziawg" else "wg-quick@wg0"
+        show_cmd = "awg show all" if self.protocol == "amneziawg" else "wg show all"
         commands = [
-            ("Service Status", "systemctl status wg-quick@wg0 --no-pager"),
-            ("WireGuard Status", "wg show all"),
+            ("Service Status", f"systemctl status {service_name} --no-pager"),
+            ("WireGuard Status", show_cmd),
             ("Interfaces", "ip addr"),
             ("Routes", "ip route"),
             ("IP Forwarding", "sysctl net.ipv4.ip_forward"),
@@ -1119,7 +1174,7 @@ class WireGuardProvisioner:
             ("IP6Tables NAT", "ip6tables -t nat -S"),
             ("Sysctl Conf", "cat /etc/sysctl.d/99-vpn-wizard.conf || echo 'missing'"),
             ("UFW Before Rules", "tail -n 20 /etc/ufw/before.rules"),
-            ("Journal Log", "journalctl -u wg-quick@wg0 -n 50 --no-pager"),
+            ("Journal Log", f"journalctl -u {service_name} -n 50 --no-pager"),
             ("Ping 1.1.1.1", "ping -c 3 1.1.1.1 || echo 'failed'"),
         ]
         
@@ -1139,6 +1194,10 @@ class WireGuardProvisioner:
         def log(msg: str):
             logs.append(msg)
             self.progress(msg)
+
+        if self.protocol == "amneziawg":
+            log("Repair is only supported for WireGuard mode.")
+            return logs
 
         log("Starting network repair...")
         
@@ -1195,13 +1254,14 @@ class WireGuardProvisioner:
         # Re-write the [Interface] block cleanly
         log(f"Detected primary interface: {iface}")
         
+        postup, postdown = self._post_rules("wg0")
         header = (
             "[Interface]\n"
             f"Address = {self.server_cidr}\n"
             f"ListenPort = {port}\n"
             f"PrivateKey = {priv_key}\n"
-            f"PostUp = iptables -w -A FORWARD -i wg0 -j ACCEPT; iptables -w -A FORWARD -o wg0 -j ACCEPT; iptables -w -t nat -A POSTROUTING -o {iface} -j MASQUERADE\n"
-            f"PostDown = iptables -w -D FORWARD -i wg0 -j ACCEPT; iptables -w -D FORWARD -o wg0 -j ACCEPT; iptables -w -t nat -D POSTROUTING -o {iface} -j MASQUERADE\n"
+            f"PostUp = {postup}\n"
+            f"PostDown = {postdown}\n"
         )
         
         # Save just the peers from the old config

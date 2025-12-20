@@ -13,7 +13,7 @@
   <main class="app">
     <header class="hero">
       <div class="title">VPN Wizard</div>
-      <div class="subtitle">Simple setup for your own WireGuard VPN</div>
+      <div class="subtitle">Simple setup for your own AmneziaWG VPN</div>
     </header>
 
     <section class="card">
@@ -39,14 +39,14 @@
           SSH key content (optional)
           <textarea name="key_content" placeholder="paste private key"></textarea>
         </label>
-        <div class="remember-row">
-          <label class="toggle">
-            <input type="checkbox" id="remember-toggle" />
-            Remember credentials
-          </label>
-          <input id="pin-input" type="password" placeholder="PIN (4-8 digits)" />
-          <button type="button" id="unlock-btn" class="secondary">Unlock saved</button>
-        </div>
+          <div class="remember-row">
+            <label class="toggle">
+              <input type="checkbox" id="remember-toggle" />
+              Remember (local + encrypted)
+            </label>
+            <input id="pin-input" type="password" placeholder="PIN (4-8 digits)" />
+            <button type="button" id="unlock-btn" class="secondary">Unlock saved</button>
+          </div>
         <div class="toggle-row">
           <label class="toggle">
             <input type="checkbox" id="simple-toggle" checked />

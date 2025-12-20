@@ -65,7 +65,7 @@ class ProvisionOptions(BaseModel):
     client_ip: str = "10.10.0.2/32"
     server_cidr: str = "10.10.0.1/24"
     listen_port: int = 443
-    dns: str = "1.1.1.1"
+    dns: str = "1.1.1.1, 1.0.0.1"
     mtu: Optional[int] = None
     auto_mtu: bool = True
     tune: bool = True
