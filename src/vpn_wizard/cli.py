@@ -77,7 +77,7 @@ def provision(
     key: Optional[str] = typer.Option(None, help="SSH private key path"),
     port: int = typer.Option(22, help="SSH port"),
     client: str = typer.Option("client1", help="Client name"),
-    listen_port: int = typer.Option(51820, help="WireGuard listen port"),
+    listen_port: int = typer.Option(443, help="WireGuard listen port"),
     client_ip: str = typer.Option("10.10.0.2/32", help="Client IP/CIDR"),
     server_cidr: str = typer.Option("10.10.0.1/24", help="Server VPN CIDR"),
     dns: str = typer.Option("1.1.1.1", help="DNS server for clients"),
