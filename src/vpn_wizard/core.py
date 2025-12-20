@@ -241,10 +241,12 @@ class WireGuardProvisioner:
 
     def install_amneziawg(self, os_info: dict) -> None:
         """Install AmneziaWG kernel module and tools via PPA."""
-        # Check if AmneziaWG is already installed
-        awg_check = self.ssh.run("which awg && lsmod | grep -q amneziawg && echo 'installed' || echo 'missing'", check=False)
+        # Check if AmneziaWG tools are already installed (just check for awg command)
+        awg_check = self.ssh.run("which awg 2>/dev/null && echo 'installed' || echo 'missing'", check=False)
         if "installed" in awg_check:
             self.progress("AmneziaWG already installed, skipping...")
+            # Try to load the module if not loaded
+            self.ssh.run("modprobe amneziawg 2>/dev/null || true", sudo=True, check=False)
             return
         
         is_deb, is_rhel, distro, _ = self._classify_os(os_info)
@@ -254,7 +256,7 @@ class WireGuardProvisioner:
             max_retries = 10
             for i in range(max_retries):
                 try:
-                    # First, clean up any broken packages from previous attempts
+                    # Clean up any broken packages from previous attempts
                     self.ssh.run(
                         "dpkg --configure -a || true",
                         sudo=True,
@@ -266,14 +268,7 @@ class WireGuardProvisioner:
                         check=False,
                     )
                     
-                    # Remove old AmneziaWG if partially installed
-                    self.ssh.run(
-                        "apt-get purge -y amneziawg amneziawg-dkms amneziawg-tools 2>/dev/null || true",
-                        sudo=True,
-                        check=False,
-                    )
-                    
-                    # Clean up old kernels to free space in /boot
+                    # Clean up old kernels to free space in /boot (don't purge amneziawg!)
                     self.ssh.run(
                         "apt-get autoremove -y || true",
                         sudo=True,
