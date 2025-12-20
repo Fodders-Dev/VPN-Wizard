@@ -248,6 +248,32 @@ class WireGuardProvisioner:
             max_retries = 10
             for i in range(max_retries):
                 try:
+                    # First, clean up any broken packages from previous attempts
+                    self.ssh.run(
+                        "dpkg --configure -a || true",
+                        sudo=True,
+                        check=False,
+                    )
+                    self.ssh.run(
+                        "apt-get --fix-broken install -y || true",
+                        sudo=True,
+                        check=False,
+                    )
+                    
+                    # Remove old AmneziaWG if partially installed
+                    self.ssh.run(
+                        "apt-get purge -y amneziawg amneziawg-dkms amneziawg-tools 2>/dev/null || true",
+                        sudo=True,
+                        check=False,
+                    )
+                    
+                    # Clean up old kernels to free space in /boot
+                    self.ssh.run(
+                        "apt-get autoremove -y || true",
+                        sudo=True,
+                        check=False,
+                    )
+                    
                     # Enable source repos for DKMS
                     self.ssh.run(
                         "grep -q '^deb-src' /etc/apt/sources.list || "
