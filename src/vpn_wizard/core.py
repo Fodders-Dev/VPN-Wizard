@@ -957,12 +957,8 @@ class WireGuardProvisioner:
             "done\n"
             "mv $tmp /etc/amnezia/amneziawg/awg0.conf\n"
             "chmod 600 /etc/amnezia/amneziawg/awg0.conf\n"
-            "# Hot reload configuration without restarting interface\n"
-            "if systemctl is-active --quiet awg-quick@awg0; then\n"
-            "  awg syncconf awg0 <(awg-quick strip /etc/amnezia/amneziawg/awg0.conf)\n"
-            "else\n"
-            "  systemctl restart awg-quick@awg0 || true\n"
-            "fi\n",
+            "# Restart to ensure all Amnezia params and rules are applied cleanly\n"
+            "systemctl restart awg-quick@awg0 || true\n",
             sudo=True,
         )
 
