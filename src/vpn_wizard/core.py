@@ -696,6 +696,10 @@ class WireGuardProvisioner:
         self.ssh.run("systemctl enable --now wg-quick@wg0", sudo=True)
 
     def export_client_config(self) -> str:
+        if self.protocol == "amneziawg":
+            return self.ssh.run(
+                f"cat /etc/amnezia/amneziawg/clients/{self.client_name}.conf", sudo=True, pty=False
+            )
         return self.ssh.run(
             f"cat /etc/wireguard/clients/{self.client_name}.conf", sudo=True, pty=False
         )
