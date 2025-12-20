@@ -104,6 +104,7 @@ class WireGuardProvisioner:
         mtu_probe_host: str = "1.1.1.1",
         tune: bool = True,
         progress: Optional[Callable[[str], None]] = None,
+        protocol: str = "amneziawg",  # "wireguard" or "amneziawg"
     ) -> None:
         self.ssh = ssh
         self.client_name = client_name
@@ -119,20 +120,57 @@ class WireGuardProvisioner:
         self.progress = progress or (lambda _: None)
         self._resolved_mtu: Optional[int] = None
         self._name_pattern = re.compile(r"^[a-zA-Z0-9_-]{1,32}$")
+        self.protocol = protocol
+        
+        # AmneziaWG obfuscation parameters (generated once, shared with all clients)
+        import random
+        self.awg_jc = random.randint(4, 10)
+        self.awg_jmin = 8
+        self.awg_jmax = 80
+        self.awg_s1 = random.randint(15, 150)
+        self.awg_s2 = random.randint(15, 150)
+        # Ensure S1+56 != S2 as per spec
+        while self.awg_s1 + 56 == self.awg_s2:
+            self.awg_s2 = random.randint(15, 150)
+        self.awg_h1 = random.randint(100000000, 2147483647)
+        self.awg_h2 = random.randint(100000000, 2147483647)
+        self.awg_h3 = random.randint(100000000, 2147483647)
+        self.awg_h4 = random.randint(100000000, 2147483647)
+        # Ensure all H values are unique
+        h_vals = {self.awg_h1, self.awg_h2, self.awg_h3, self.awg_h4}
+        while len(h_vals) < 4:
+            self.awg_h1 = random.randint(100000000, 2147483647)
+            self.awg_h2 = random.randint(100000000, 2147483647)
+            self.awg_h3 = random.randint(100000000, 2147483647)
+            self.awg_h4 = random.randint(100000000, 2147483647)
+            h_vals = {self.awg_h1, self.awg_h2, self.awg_h3, self.awg_h4}
 
     def provision(self) -> None:
         self.progress("Detecting OS")
         os_info = self.detect_os()
-        self.progress("Installing WireGuard")
-        self.install_wireguard(os_info)
-        self.progress("Configuring sysctl")
-        self.configure_sysctl()
-        self.progress("Setting up WireGuard")
-        self.setup_wireguard()
-        self.progress("Configuring firewall")
-        self.enable_firewall()
-        self.progress("Starting service")
-        self.start_service()
+        
+        if self.protocol == "amneziawg":
+            self.progress("Installing AmneziaWG")
+            self.install_amneziawg(os_info)
+            self.progress("Configuring sysctl")
+            self.configure_sysctl()
+            self.progress("Setting up AmneziaWG")
+            self.setup_amneziawg()
+            self.progress("Configuring firewall")
+            self.enable_firewall()
+            self.progress("Starting AmneziaWG service")
+            self.start_awg_service()
+        else:
+            self.progress("Installing WireGuard")
+            self.install_wireguard(os_info)
+            self.progress("Configuring sysctl")
+            self.configure_sysctl()
+            self.progress("Setting up WireGuard")
+            self.setup_wireguard()
+            self.progress("Configuring firewall")
+            self.enable_firewall()
+            self.progress("Starting service")
+            self.start_service()
 
     def _classify_os(self, os_info: dict) -> tuple[bool, bool, str, str]:
         distro = os_info.get("ID", "").lower()
@@ -200,6 +238,76 @@ class WireGuardProvisioner:
             return
 
         raise RuntimeError(f"Unsupported distro: {distro}")
+
+    def install_amneziawg(self, os_info: dict) -> None:
+        """Install AmneziaWG kernel module and tools via PPA."""
+        is_deb, is_rhel, distro, _ = self._classify_os(os_info)
+        
+        if is_deb:
+            import time
+            max_retries = 10
+            for i in range(max_retries):
+                try:
+                    # Enable source repos for DKMS
+                    self.ssh.run(
+                        "grep -q '^deb-src' /etc/apt/sources.list || "
+                        "echo 'deb-src http://archive.ubuntu.com/ubuntu $(lsb_release -cs) main' >> /etc/apt/sources.list",
+                        sudo=True,
+                        check=False,
+                    )
+                    
+                    self.ssh.run("DEBIAN_FRONTEND=noninteractive apt-get update -y", sudo=True)
+                    
+                    # Install prerequisites
+                    self.ssh.run(
+                        "DEBIAN_FRONTEND=noninteractive apt-get install -y "
+                        "software-properties-common gnupg2 curl qrencode iptables",
+                        sudo=True,
+                    )
+                    
+                    # Install kernel headers
+                    self.ssh.run(
+                        "DEBIAN_FRONTEND=noninteractive apt-get install -y linux-headers-$(uname -r) || true",
+                        sudo=True,
+                        check=False,
+                    )
+                    
+                    # Add Amnezia PPA
+                    self.ssh.run(
+                        "add-apt-repository -y ppa:amnezia/ppa || "
+                        "(apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 57290828 && "
+                        "echo 'deb https://ppa.launchpadcontent.net/amnezia/ppa/ubuntu focal main' >> /etc/apt/sources.list)",
+                        sudo=True,
+                        check=False,
+                    )
+                    
+                    self.ssh.run("DEBIAN_FRONTEND=noninteractive apt-get update -y", sudo=True)
+                    
+                    # Install AmneziaWG
+                    self.ssh.run(
+                        "DEBIAN_FRONTEND=noninteractive apt-get install -y amneziawg",
+                        sudo=True,
+                    )
+                    return
+                except RemoteCommandError as exc:
+                    err_msg = str(exc).lower()
+                    if "lock" in err_msg or "resource temporarily unavailable" in err_msg:
+                        if i < max_retries - 1:
+                            self.progress(f"Apt locked, retrying in 10s... ({i+1}/{max_retries})")
+                            time.sleep(10)
+                            continue
+                    raise exc
+            return
+        
+        if is_rhel:
+            pm = self.ssh.run(
+                "command -v dnf >/dev/null && echo dnf || echo yum", check=False
+            ).strip() or "yum"
+            self.ssh.run(f"{pm} copr enable -y amneziavpn/amneziawg || true", sudo=True, check=False)
+            self.ssh.run(f"{pm} install -y amneziawg-dkms amneziawg-tools qrencode curl", sudo=True)
+            return
+        
+        raise RuntimeError(f"Unsupported distro for AmneziaWG: {distro}")
 
     def pre_check(self) -> list[dict]:
         checks: list[dict] = []
@@ -352,6 +460,111 @@ class WireGuardProvisioner:
             sudo=True,
         )
         self.rebuild_wg0_from_clients()
+
+    def setup_amneziawg(self) -> None:
+        """Setup AmneziaWG with obfuscation parameters."""
+        client = self.client_name
+        port = self.listen_port
+        resolved_mtu = self.resolve_mtu()
+        mtu_line = f"MTU = {resolved_mtu}\n" if resolved_mtu else ""
+        mtu_line_client = f"MTU = {resolved_mtu}\n" if resolved_mtu else ""
+        
+        # AWG obfuscation params block
+        awg_params = (
+            f"Jc = {self.awg_jc}\n"
+            f"Jmin = {self.awg_jmin}\n"
+            f"Jmax = {self.awg_jmax}\n"
+            f"S1 = {self.awg_s1}\n"
+            f"S2 = {self.awg_s2}\n"
+            f"H1 = {self.awg_h1}\n"
+            f"H2 = {self.awg_h2}\n"
+            f"H3 = {self.awg_h3}\n"
+            f"H4 = {self.awg_h4}\n"
+        )
+        
+        self.ssh.run("mkdir -p /etc/amnezia/amneziawg/clients", sudo=True)
+        self.backup_config()
+        
+        # Generate server keys using awg command
+        self.ssh.run(
+            "if [ ! -f /etc/amnezia/amneziawg/server_private.key ]; then\n"
+            "  umask 077\n"
+            "  awg genkey | tee /etc/amnezia/amneziawg/server_private.key | awg pubkey > /etc/amnezia/amneziawg/server_public.key\n"
+            "fi",
+            sudo=True,
+        )
+        
+        # Generate client keys
+        self.ssh.run(
+            f"if [ ! -f /etc/amnezia/amneziawg/clients/{client}.key ]; then\n"
+            "  umask 077\n"
+            f"  awg genkey | tee /etc/amnezia/amneziawg/clients/{client}.key | awg pubkey > /etc/amnezia/amneziawg/clients/{client}.pub\n"
+            "fi",
+            sudo=True,
+        )
+        
+        # Create server config (awg0.conf)
+        self.ssh.run(
+            "set -e\n"
+            "server_priv=$(cat /etc/amnezia/amneziawg/server_private.key)\n"
+            f"client_pub=$(cat /etc/amnezia/amneziawg/clients/{client}.pub)\n"
+            "cat > /etc/amnezia/amneziawg/awg0.conf <<EOF\n"
+            "[Interface]\n"
+            f"Address = {self.server_cidr}\n"
+            f"ListenPort = {port}\n"
+            "PrivateKey = $server_priv\n"
+            f"{mtu_line}"
+            f"{awg_params}"
+            "PostUp = sysctl -w net.ipv4.ip_forward=1; sysctl -w net.ipv6.conf.all.forwarding=1; "
+            "iptables -w -I FORWARD 1 -i awg0 -j ACCEPT; "
+            "iptables -w -I FORWARD 1 -o awg0 -j ACCEPT; "
+            f"iptables -w -t nat -A POSTROUTING -s {self.server_cidr} -j MASQUERADE; "
+            "ip6tables -w -I FORWARD 1 -i awg0 -j ACCEPT; "
+            "ip6tables -w -I FORWARD 1 -o awg0 -j ACCEPT; "
+            "ip6tables -w -t nat -A POSTROUTING -s fd42:42:42::/64 -j MASQUERADE\n"
+            "PostDown = iptables -w -D FORWARD -i awg0 -j ACCEPT; "
+            "iptables -w -D FORWARD -o awg0 -j ACCEPT; "
+            f"iptables -w -t nat -D POSTROUTING -s {self.server_cidr} -j MASQUERADE; "
+            "ip6tables -w -D FORWARD -i awg0 -j ACCEPT; "
+            "ip6tables -w -D FORWARD -o awg0 -j ACCEPT; "
+            "ip6tables -w -t nat -D POSTROUTING -s fd42:42:42::/64 -j MASQUERADE\n"
+            "\n"
+            "[Peer]\n"
+            "PublicKey = $client_pub\n"
+            f"AllowedIPs = {self.client_ip}\n"
+            "EOF\n"
+            "chmod 600 /etc/amnezia/amneziawg/awg0.conf",
+            sudo=True,
+        )
+        
+        # Create client config
+        self.ssh.run(
+            "set -e\n"
+            f"client_priv=$(cat /etc/amnezia/amneziawg/clients/{client}.key)\n"
+            "server_pub=$(cat /etc/amnezia/amneziawg/server_public.key)\n"
+            "public_ip=$(curl -s https://api.ipify.org || wget -qO- https://api.ipify.org)\n"
+            f"cat > /etc/amnezia/amneziawg/clients/{client}.conf <<EOF\n"
+            "[Interface]\n"
+            "PrivateKey = $client_priv\n"
+            f"Address = {self.client_ip}\n"
+            f"DNS = {self.dns}\n"
+            f"{mtu_line_client}"
+            f"{awg_params}"
+            "\n"
+            "[Peer]\n"
+            "PublicKey = $server_pub\n"
+            f"Endpoint = $public_ip:{port}\n"
+            "AllowedIPs = 0.0.0.0/0, ::/0\n"
+            "PersistentKeepalive = 25\n"
+            "EOF\n"
+            f"chmod 600 /etc/amnezia/amneziawg/clients/{client}.conf",
+            sudo=True,
+        )
+        self.rebuild_awg0_from_clients()
+    
+    def start_awg_service(self) -> None:
+        """Start AmneziaWG service using awg-quick."""
+        self.ssh.run("systemctl enable --now awg-quick@awg0", sudo=True)
 
     def enable_firewall(self) -> None:
         port = self.listen_port
@@ -555,6 +768,29 @@ class WireGuardProvisioner:
             "mv $tmp /etc/wireguard/wg0.conf\n"
             "chmod 600 /etc/wireguard/wg0.conf\n"
             "systemctl restart wg-quick@wg0 || true\n",
+            sudo=True,
+        )
+
+    def rebuild_awg0_from_clients(self) -> None:
+        """Rebuild awg0.conf from all client configs, preserving server header."""
+        self.ssh.run(
+            "set -e\n"
+            "header=$(awk 'BEGIN{p=1} /^\\[Peer\\]/{p=0} {if(p) print}' /etc/amnezia/amneziawg/awg0.conf)\n"
+            "tmp=$(mktemp)\n"
+            "echo \"$header\" > $tmp\n"
+            "for conf in /etc/amnezia/amneziawg/clients/*.conf; do\n"
+            "  [ -f \"$conf\" ] || continue\n"
+            "  name=$(basename \"$conf\" .conf)\n"
+            "  pub=$(cat /etc/amnezia/amneziawg/clients/$name.pub)\n"
+            "  ip=$(awk -F'= ' '/^Address/{print $2}' \"$conf\" | head -n1)\n"
+            "  echo \"\" >> $tmp\n"
+            "  echo \"[Peer]\" >> $tmp\n"
+            "  echo \"PublicKey = $pub\" >> $tmp\n"
+            "  echo \"AllowedIPs = $ip\" >> $tmp\n"
+            "done\n"
+            "mv $tmp /etc/amnezia/amneziawg/awg0.conf\n"
+            "chmod 600 /etc/amnezia/amneziawg/awg0.conf\n"
+            "systemctl restart awg-quick@awg0 || true\n",
             sudo=True,
         )
 

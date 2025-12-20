@@ -70,6 +70,7 @@ class ProvisionOptions(BaseModel):
     auto_mtu: bool = True
     tune: bool = True
     check: bool = True
+    protocol: str = "amneziawg"  # "wireguard" or "amneziawg"
 
 
 class ProvisionRequest(BaseModel):
@@ -261,6 +262,7 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
                 auto_mtu=opts.auto_mtu,
                 tune=opts.tune,
                 progress=progress,
+                protocol=opts.protocol,
             )
             pre_checks = prov.pre_check()
             for item in pre_checks:
