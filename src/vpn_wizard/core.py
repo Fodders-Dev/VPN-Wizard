@@ -123,13 +123,13 @@ class WireGuardProvisioner:
         self.protocol = protocol
         self._public_ip_cache: Optional[str] = None
         
-        # AmneziaWG obfuscation parameters (Safe Mode / Mobile Fix)
-        # Mobile networks have strict MTU (often 1300-1400).
-        # MTU 1200 + Jmax 150 ensures we fit within standard 1400 limits.
+        # AmneziaWG obfuscation parameters (Robust Mobile Config)
+        # Jmax=150 caused "Parameter Incorrect". Jmax=400+ works for driver.
+        # MTU=1200 ensures packets fit even with Jmax=450 overhead.
         import random
-        self.awg_jc = random.randint(2, 4)    # Low junk count stability
+        self.awg_jc = random.randint(3, 5)    # Moderate random packets
         self.awg_jmin = 50                    # Standard min
-        self.awg_jmax = 150                   # Small max to save space
+        self.awg_jmax = 450                   # Safe range for driver & mobile traffic
         self.awg_s1 = random.randint(15, 150)
         self.awg_s2 = random.randint(15, 150)
         while self.awg_s1 + 56 == self.awg_s2:
