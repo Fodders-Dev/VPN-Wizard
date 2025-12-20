@@ -192,15 +192,19 @@ unlockBtn.addEventListener("click", async () => {
   try {
     const pin = pinInput.value.trim();
     if (pin.length < 4) {
+      alert("PIN must be at least 4 digits.");
       setStatus("PIN required to unlock.");
       return;
     }
     const creds = await loadCredentials(pin);
     populateForm(creds);
     setStatus("Credentials unlocked.");
+    alert("Credentials unlocked successfully!");
     unlockBtn.disabled = true;
   } catch (err) {
+    console.error(err);
     setStatus("Unlock failed.");
+    alert("Unlock failed. Wrong PIN?");
   }
 });
 
