@@ -9,6 +9,8 @@ from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
 from vpn_wizard.qr import save_qr_png
 
 app = typer.Typer(add_completion=False)
+client_app = typer.Typer(add_completion=False)
+app.add_typer(client_app, name="client")
 
 
 def _build_provisioner(
@@ -234,6 +236,160 @@ def rollback(
         typer.echo(f"Rolled back to {backup}")
     else:
         typer.echo("No backup found.")
+
+
+@client_app.command("list")
+def client_list(
+    host: str = typer.Option(..., help="Server hostname or IP"),
+    user: str = typer.Option(..., help="SSH username"),
+    password: Optional[str] = typer.Option(None, help="SSH password"),
+    key: Optional[str] = typer.Option(None, help="SSH private key path"),
+    port: int = typer.Option(22, help="SSH port"),
+    quiet: bool = typer.Option(False, help="Less output"),
+) -> None:
+    prov = _build_provisioner(
+        host,
+        user,
+        password,
+        key,
+        port,
+        "client1",
+        51820,
+        "10.10.0.2/32",
+        "10.10.0.1/24",
+        "1.1.1.1",
+        None,
+        True,
+        True,
+        quiet,
+    )
+    try:
+        clients = prov.list_clients()
+    finally:
+        prov.ssh.close()
+    for client in clients:
+        typer.echo(f"{client.get('name')} {client.get('ip')}")
+
+
+@client_app.command("add")
+def client_add(
+    host: str = typer.Option(..., help="Server hostname or IP"),
+    user: str = typer.Option(..., help="SSH username"),
+    password: Optional[str] = typer.Option(None, help="SSH password"),
+    key: Optional[str] = typer.Option(None, help="SSH private key path"),
+    port: int = typer.Option(22, help="SSH port"),
+    name: Optional[str] = typer.Option(None, help="Client name"),
+    client_ip: Optional[str] = typer.Option(None, help="Client IP/CIDR"),
+    out: Optional[Path] = typer.Option(None, help="Output config path"),
+    qr: Optional[Path] = typer.Option(None, help="Output QR PNG path"),
+    quiet: bool = typer.Option(False, help="Less output"),
+) -> None:
+    prov = _build_provisioner(
+        host,
+        user,
+        password,
+        key,
+        port,
+        "client1",
+        51820,
+        "10.10.0.2/32",
+        "10.10.0.1/24",
+        "1.1.1.1",
+        None,
+        True,
+        True,
+        quiet,
+    )
+    try:
+        result = prov.add_client(client_name=name, client_ip=client_ip)
+    finally:
+        prov.ssh.close()
+
+    config = result.get("config", "")
+    client_name = result.get("name", "client")
+    out_path = out or Path(f"{client_name}.conf")
+    out_path.write_text(config, encoding="utf-8")
+    typer.echo(f"Wrote {out_path}")
+
+    if qr:
+        save_qr_png(config, qr)
+        typer.echo(f"Wrote {qr}")
+
+
+@client_app.command("remove")
+def client_remove(
+    host: str = typer.Option(..., help="Server hostname or IP"),
+    user: str = typer.Option(..., help="SSH username"),
+    password: Optional[str] = typer.Option(None, help="SSH password"),
+    key: Optional[str] = typer.Option(None, help="SSH private key path"),
+    port: int = typer.Option(22, help="SSH port"),
+    name: str = typer.Option(..., help="Client name"),
+    quiet: bool = typer.Option(False, help="Less output"),
+) -> None:
+    prov = _build_provisioner(
+        host,
+        user,
+        password,
+        key,
+        port,
+        "client1",
+        51820,
+        "10.10.0.2/32",
+        "10.10.0.1/24",
+        "1.1.1.1",
+        None,
+        True,
+        True,
+        quiet,
+    )
+    try:
+        ok = prov.remove_client(name)
+    finally:
+        prov.ssh.close()
+    typer.echo("Removed." if ok else "Client not found.")
+
+
+@client_app.command("rotate")
+def client_rotate(
+    host: str = typer.Option(..., help="Server hostname or IP"),
+    user: str = typer.Option(..., help="SSH username"),
+    password: Optional[str] = typer.Option(None, help="SSH password"),
+    key: Optional[str] = typer.Option(None, help="SSH private key path"),
+    port: int = typer.Option(22, help="SSH port"),
+    name: str = typer.Option(..., help="Client name"),
+    out: Optional[Path] = typer.Option(None, help="Output config path"),
+    qr: Optional[Path] = typer.Option(None, help="Output QR PNG path"),
+    quiet: bool = typer.Option(False, help="Less output"),
+) -> None:
+    prov = _build_provisioner(
+        host,
+        user,
+        password,
+        key,
+        port,
+        "client1",
+        51820,
+        "10.10.0.2/32",
+        "10.10.0.1/24",
+        "1.1.1.1",
+        None,
+        True,
+        True,
+        quiet,
+    )
+    try:
+        result = prov.rotate_client(name)
+    finally:
+        prov.ssh.close()
+
+    config = result.get("config", "")
+    out_path = out or Path(f"{name}.conf")
+    out_path.write_text(config, encoding="utf-8")
+    typer.echo(f"Wrote {out_path}")
+
+    if qr:
+        save_qr_png(config, qr)
+        typer.echo(f"Wrote {qr}")
 
 
 def main() -> None:

@@ -34,6 +34,26 @@ Rollback last config:
 python -m vpn_wizard.cli rollback --host <ip> --user <user> --password <pass>
 ```
 
+Add client:
+```
+python -m vpn_wizard.cli client add --host <ip> --user <user> --password <pass> --name grandma-phone --qr grandma.png
+```
+
+List clients:
+```
+python -m vpn_wizard.cli client list --host <ip> --user <user> --password <pass>
+```
+
+Remove client:
+```
+python -m vpn_wizard.cli client remove --host <ip> --user <user> --password <pass> --name grandma-phone
+```
+
+Rotate client keys:
+```
+python -m vpn_wizard.cli client rotate --host <ip> --user <user> --password <pass> --name grandma-phone --qr grandma.png
+```
+
 ## GUI
 ```
 python -m vpn_wizard.gui
@@ -72,3 +92,4 @@ pytest
 - For cross-origin miniapp, set `VPNW_CORS_ORIGINS="https://your-miniapp-domain"` before running the API server.
 - Set `window.API_BASE` in `web/miniapp/config.js` to your API server URL when hosting separately.
 - You can also pass `?api=https://your-api-domain` in the miniapp URL to override API base.
+- Miniapp can save credentials locally encrypted with a PIN (not stored on server).

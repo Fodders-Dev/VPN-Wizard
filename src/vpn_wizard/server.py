@@ -82,6 +82,32 @@ class RollbackResponse(BaseModel):
     error: Optional[str] = None
 
 
+class ClientRequest(BaseModel):
+    ssh: SSHPayload
+    client_name: Optional[str] = None
+    client_ip: Optional[str] = None
+
+
+class ClientRemoveRequest(BaseModel):
+    ssh: SSHPayload
+    client_name: str
+
+
+class ClientListResponse(BaseModel):
+    ok: bool
+    clients: list[dict] = []
+    error: Optional[str] = None
+
+
+class ClientAddResponse(BaseModel):
+    ok: bool
+    client_name: Optional[str] = None
+    client_ip: Optional[str] = None
+    config: Optional[str] = None
+    qr_png_base64: Optional[str] = None
+    error: Optional[str] = None
+
+
 class JobCreateResponse(BaseModel):
     job_id: str
 
@@ -314,6 +340,126 @@ async def rollback(payload: RollbackRequest) -> RollbackResponse:
         return RollbackResponse(ok=True, backup=backup)
     except Exception as exc:
         return RollbackResponse(ok=False, error=str(exc))
+    finally:
+        temp_key.cleanup()
+
+
+@app.post("/api/clients/list", response_model=ClientListResponse)
+async def client_list(payload: RollbackRequest) -> ClientListResponse:
+    temp_key = TempKey()
+    try:
+        key_path = payload.ssh.key_path
+        if payload.ssh.key_content:
+            temp_key = _write_temp_key(payload.ssh.key_content)
+            key_path = temp_key.path
+
+        cfg = SSHConfig(
+            host=payload.ssh.host,
+            user=payload.ssh.user,
+            port=payload.ssh.port,
+            password=payload.ssh.password,
+            key_path=key_path,
+        )
+        with SSHRunner(cfg) as ssh:
+            prov = WireGuardProvisioner(ssh)
+            clients = prov.list_clients()
+        return ClientListResponse(ok=True, clients=clients)
+    except Exception as exc:
+        return ClientListResponse(ok=False, error=str(exc))
+    finally:
+        temp_key.cleanup()
+
+
+@app.post("/api/clients/add", response_model=ClientAddResponse)
+async def client_add(payload: ClientRequest) -> ClientAddResponse:
+    temp_key = TempKey()
+    try:
+        key_path = payload.ssh.key_path
+        if payload.ssh.key_content:
+            temp_key = _write_temp_key(payload.ssh.key_content)
+            key_path = temp_key.path
+
+        cfg = SSHConfig(
+            host=payload.ssh.host,
+            user=payload.ssh.user,
+            port=payload.ssh.port,
+            password=payload.ssh.password,
+            key_path=key_path,
+        )
+        with SSHRunner(cfg) as ssh:
+            prov = WireGuardProvisioner(ssh)
+            result = prov.add_client(client_name=payload.client_name, client_ip=payload.client_ip)
+        qr_b64 = _build_qr_base64(result["config"])
+        return ClientAddResponse(
+            ok=True,
+            client_name=result["name"],
+            client_ip=result["ip"],
+            config=result["config"],
+            qr_png_base64=qr_b64,
+        )
+    except Exception as exc:
+        return ClientAddResponse(ok=False, error=str(exc))
+    finally:
+        temp_key.cleanup()
+
+
+@app.post("/api/clients/remove", response_model=RollbackResponse)
+async def client_remove(payload: ClientRemoveRequest) -> RollbackResponse:
+    temp_key = TempKey()
+    try:
+        key_path = payload.ssh.key_path
+        if payload.ssh.key_content:
+            temp_key = _write_temp_key(payload.ssh.key_content)
+            key_path = temp_key.path
+
+        cfg = SSHConfig(
+            host=payload.ssh.host,
+            user=payload.ssh.user,
+            port=payload.ssh.port,
+            password=payload.ssh.password,
+            key_path=key_path,
+        )
+        with SSHRunner(cfg) as ssh:
+            prov = WireGuardProvisioner(ssh)
+            ok = prov.remove_client(payload.client_name)
+        if not ok:
+            return RollbackResponse(ok=False, error="Client not found.")
+        return RollbackResponse(ok=True, backup=None)
+    except Exception as exc:
+        return RollbackResponse(ok=False, error=str(exc))
+    finally:
+        temp_key.cleanup()
+
+
+@app.post("/api/clients/rotate", response_model=ClientAddResponse)
+async def client_rotate(payload: ClientRemoveRequest) -> ClientAddResponse:
+    temp_key = TempKey()
+    try:
+        key_path = payload.ssh.key_path
+        if payload.ssh.key_content:
+            temp_key = _write_temp_key(payload.ssh.key_content)
+            key_path = temp_key.path
+
+        cfg = SSHConfig(
+            host=payload.ssh.host,
+            user=payload.ssh.user,
+            port=payload.ssh.port,
+            password=payload.ssh.password,
+            key_path=key_path,
+        )
+        with SSHRunner(cfg) as ssh:
+            prov = WireGuardProvisioner(ssh)
+            result = prov.rotate_client(payload.client_name)
+        qr_b64 = _build_qr_base64(result["config"])
+        return ClientAddResponse(
+            ok=True,
+            client_name=result["name"],
+            client_ip=result["ip"],
+            config=result["config"],
+            qr_png_base64=qr_b64,
+        )
+    except Exception as exc:
+        return ClientAddResponse(ok=False, error=str(exc))
     finally:
         temp_key.cleanup()
 

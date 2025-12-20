@@ -29,10 +29,22 @@
             SSH password
             <input name="password" type="password" placeholder="optional if key" />
           </label>
+          <label>
+            Client name (optional)
+            <input name="client_name" placeholder="grandma-phone" />
+          </label>
           <label class="advanced">
             SSH key content (optional)
             <textarea name="key_content" placeholder="paste private key"></textarea>
           </label>
+          <div class="remember-row">
+            <label class="toggle">
+              <input type="checkbox" id="remember-toggle" />
+              Remember credentials
+            </label>
+            <input id="pin-input" type="password" placeholder="PIN (4-8 digits)" />
+            <button type="button" id="unlock-btn" class="secondary">Unlock saved</button>
+          </div>
           <div class="toggle-row">
             <label class="toggle">
               <input type="checkbox" id="simple-toggle" checked />
@@ -40,7 +52,8 @@
             </label>
             <span class="toggle-hint">Hide advanced fields</span>
           </div>
-          <button type="submit" id="provision-btn">Configure</button>
+          <button type="submit" id="provision-btn">Configure server</button>
+          <button type="button" id="add-client-btn" class="secondary">Add new client</button>
         </form>
       </section>
 

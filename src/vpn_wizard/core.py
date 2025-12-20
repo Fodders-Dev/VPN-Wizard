@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import ipaddress
+import re
 import shlex
 from typing import Callable, Optional
 
@@ -111,6 +113,7 @@ class WireGuardProvisioner:
         self.tune = tune
         self.progress = progress or (lambda _: None)
         self._resolved_mtu: Optional[int] = None
+        self._name_pattern = re.compile(r"^[a-zA-Z0-9_-]{1,32}$")
 
     def provision(self) -> None:
         self.progress("Detecting OS")
@@ -310,6 +313,7 @@ class WireGuardProvisioner:
             f"chmod 600 /etc/wireguard/clients/{client}.conf",
             sudo=True,
         )
+        self.rebuild_wg0_from_clients()
 
     def enable_firewall(self) -> None:
         port = self.listen_port
@@ -328,6 +332,189 @@ class WireGuardProvisioner:
         return self.ssh.run(
             f"cat /etc/wireguard/clients/{self.client_name}.conf", sudo=True
         )
+
+    def list_clients(self) -> list[dict]:
+        raw = self.ssh.run(
+            "ls /etc/wireguard/clients/*.conf 2>/dev/null || true", sudo=True, check=False
+        )
+        names = []
+        for line in raw.splitlines():
+            if not line.strip():
+                continue
+            name = line.strip().split("/")[-1].removesuffix(".conf")
+            names.append(name)
+        clients = []
+        for name in names:
+            conf = self.ssh.run(
+                f"cat /etc/wireguard/clients/{name}.conf", sudo=True, check=False
+            )
+            pub = self.ssh.run(
+                f"cat /etc/wireguard/clients/{name}.pub", sudo=True, check=False
+            ).strip()
+            ip = ""
+            for line in conf.splitlines():
+                if line.startswith("Address"):
+                    ip = line.split("=", 1)[1].strip()
+                    break
+            clients.append({"name": name, "ip": ip, "public_key": pub})
+        return clients
+
+    def add_client(self, client_name: Optional[str] = None, client_ip: Optional[str] = None) -> dict:
+        name = client_name or self.next_client_name()
+        self._validate_client_name(name)
+        has_wg0 = self.ssh.run(
+            "test -f /etc/wireguard/wg0.conf && echo yes || echo no",
+            sudo=True,
+            check=False,
+        ).strip()
+        if has_wg0 != "yes":
+            raise RuntimeError("wg0.conf not found. Run provision first.")
+        exists = self.ssh.run(
+            f"test -f /etc/wireguard/clients/{name}.conf && echo yes || echo no",
+            sudo=True,
+            check=False,
+        ).strip()
+        if exists == "yes":
+            raise RuntimeError(f"Client {name} already exists.")
+
+        ip = client_ip or self.next_client_ip()
+        resolved_mtu = self.resolve_mtu()
+        mtu_line = f"MTU = {resolved_mtu}\n" if resolved_mtu else ""
+
+        self.ssh.run("mkdir -p /etc/wireguard/clients", sudo=True)
+        self.ssh.run(
+            "if [ ! -f /etc/wireguard/server_private.key ]; then\n"
+            "  umask 077\n"
+            "  wg genkey | tee /etc/wireguard/server_private.key | wg pubkey > /etc/wireguard/server_public.key\n"
+            "fi",
+            sudo=True,
+        )
+        self.ssh.run(
+            f"if [ ! -f /etc/wireguard/clients/{name}.key ]; then\n"
+            "  umask 077\n"
+            f"  wg genkey | tee /etc/wireguard/clients/{name}.key | wg pubkey > /etc/wireguard/clients/{name}.pub\n"
+            "fi",
+            sudo=True,
+        )
+        self.ssh.run(
+            "set -e\n"
+            f"client_priv=$(cat /etc/wireguard/clients/{name}.key)\n"
+            "server_pub=$(cat /etc/wireguard/server_public.key)\n"
+            "public_ip=$(curl -s https://api.ipify.org || wget -qO- https://api.ipify.org)\n"
+            f"cat > /etc/wireguard/clients/{name}.conf <<EOF\n"
+            "[Interface]\n"
+            "PrivateKey = $client_priv\n"
+            f"Address = {ip}\n"
+            f"DNS = {self.dns}\n"
+            f"{mtu_line}"
+            "\n"
+            "[Peer]\n"
+            "PublicKey = $server_pub\n"
+            f"Endpoint = $public_ip:{self.listen_port}\n"
+            "AllowedIPs = 0.0.0.0/0, ::/0\n"
+            "PersistentKeepalive = 25\n"
+            "EOF\n"
+            f"chmod 600 /etc/wireguard/clients/{name}.conf",
+            sudo=True,
+        )
+        self.backup_config()
+        self.rebuild_wg0_from_clients()
+        config = self.ssh.run(
+            f"cat /etc/wireguard/clients/{name}.conf", sudo=True
+        )
+        return {"name": name, "ip": ip, "config": config}
+
+    def remove_client(self, client_name: str) -> bool:
+        self._validate_client_name(client_name)
+        exists = self.ssh.run(
+            f"test -f /etc/wireguard/clients/{client_name}.conf && echo yes || echo no",
+            sudo=True,
+            check=False,
+        ).strip()
+        if exists != "yes":
+            return False
+        self.ssh.run(
+            f"rm -f /etc/wireguard/clients/{client_name}.conf "
+            f"/etc/wireguard/clients/{client_name}.key "
+            f"/etc/wireguard/clients/{client_name}.pub",
+            sudo=True,
+        )
+        self.backup_config()
+        self.rebuild_wg0_from_clients()
+        return True
+
+    def rotate_client(self, client_name: str) -> dict:
+        self._validate_client_name(client_name)
+        current_ip = self._get_client_ip(client_name)
+        if not current_ip:
+            raise RuntimeError("Client not found.")
+        self.remove_client(client_name)
+        return self.add_client(client_name=client_name, client_ip=current_ip)
+
+    def rebuild_wg0_from_clients(self) -> None:
+        self.ssh.run(
+            "set -e\n"
+            "header=$(awk 'BEGIN{p=1} /^\\[Peer\\]/{p=0} {if(p) print}' /etc/wireguard/wg0.conf)\n"
+            "tmp=$(mktemp)\n"
+            "echo \"$header\" > $tmp\n"
+            "for conf in /etc/wireguard/clients/*.conf; do\n"
+            "  [ -f \"$conf\" ] || continue\n"
+            "  name=$(basename \"$conf\" .conf)\n"
+            "  pub=$(cat /etc/wireguard/clients/$name.pub)\n"
+            "  ip=$(awk -F'= ' '/^Address/{print $2}' \"$conf\" | head -n1)\n"
+            "  echo \"\" >> $tmp\n"
+            "  echo \"[Peer]\" >> $tmp\n"
+            "  echo \"PublicKey = $pub\" >> $tmp\n"
+            "  echo \"AllowedIPs = $ip\" >> $tmp\n"
+            "done\n"
+            "mv $tmp /etc/wireguard/wg0.conf\n"
+            "chmod 600 /etc/wireguard/wg0.conf\n"
+            "systemctl restart wg-quick@wg0 || true\n",
+            sudo=True,
+        )
+
+    def next_client_name(self) -> str:
+        existing = {client["name"] for client in self.list_clients()}
+        idx = 1
+        while True:
+            name = f"client{idx}"
+            if name not in existing:
+                return name
+            idx += 1
+
+    def next_client_ip(self) -> str:
+        network = ipaddress.ip_network(self.server_cidr, strict=False)
+        used = set()
+        for client in self.list_clients():
+            ip = client.get("ip", "")
+            if not ip:
+                continue
+            try:
+                used.add(ipaddress.ip_interface(ip).ip)
+            except ValueError:
+                continue
+        server_ip = ipaddress.ip_interface(self.server_cidr).ip
+        for host in network.hosts():
+            if host == server_ip:
+                continue
+            if host not in used:
+                return f"{host}/32"
+        raise RuntimeError("No free IPs left in server CIDR.")
+
+    def _get_client_ip(self, client_name: str) -> Optional[str]:
+        conf = self.ssh.run(
+            f"cat /etc/wireguard/clients/{client_name}.conf", sudo=True, check=False
+        )
+        if not conf:
+            return None
+        for line in conf.splitlines():
+            if line.startswith("Address"):
+                return line.split("=", 1)[1].strip()
+        return None
+
+    def _validate_client_name(self, name: str) -> None:
+        if not self._name_pattern.match(name):
+            raise RuntimeError("Invalid client name. Use letters, numbers, dash, underscore.")
 
     def backup_config(self) -> Optional[str]:
         path = self.ssh.run(
