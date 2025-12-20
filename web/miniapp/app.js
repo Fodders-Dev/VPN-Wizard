@@ -356,3 +356,57 @@ addClientBtn.addEventListener("click", async () => {
     setStatus(`Failed: ${err}`);
   }
 });
+
+const debugBtn = document.getElementById("debug-btn");
+if (debugBtn) {
+  debugBtn.addEventListener("click", async () => {
+    const data = Object.fromEntries(new FormData(form).entries());
+    const keyContent = simpleToggle.checked ? null : data.key_content;
+
+    // Simple verification
+    if (!data.host || !data.user) {
+      alert("Please fill in Host and User fields first.");
+      return;
+    }
+
+    const originalText = debugBtn.innerText;
+    debugBtn.innerText = "Fetching logs...";
+    debugBtn.disabled = true;
+
+    try {
+      const resp = await fetchJson("/api/logs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ssh: {
+            host: data.host,
+            user: data.user,
+            password: data.password || null,
+            key_content: keyContent || null,
+          }
+        }),
+      });
+
+      if (resp.ok && resp.logs) {
+        try {
+          await navigator.clipboard.writeText(resp.logs);
+          alert("Logs copied to clipboard! Paste them to the support chat.");
+        } catch (err) {
+          console.error("Clipboard failed", err);
+          const userCopy = confirm("Logs retrieved. Click OK to view them, then copy/paste.");
+          if (userCopy) {
+            prompt("Copy these logs:", resp.logs);
+          }
+        }
+      } else {
+        alert(`Failed to get logs: ${resp.error}`);
+      }
+
+    } catch (err) {
+      alert(`Debug request failed: ${err}`);
+    } finally {
+      debugBtn.innerText = originalText;
+      debugBtn.disabled = false;
+    }
+  });
+}

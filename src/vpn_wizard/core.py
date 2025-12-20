@@ -723,6 +723,35 @@ class WireGuardProvisioner:
         wg = self.ssh.run("wg show wg0 || true", sudo=True, check=False)
         return {"service": service.strip(), "wg": wg.strip()}
 
+    def get_system_report(self) -> str:
+        """Collects deep diagnostics for debugging connectivity issues."""
+        commands = [
+            ("Service Status", "systemctl status wg-quick@wg0 --no-pager"),
+            ("WireGuard Status", "wg show all"),
+            ("Interfaces", "ip addr"),
+            ("Routes", "ip route"),
+            ("IP Forwarding", "sysctl net.ipv4.ip_forward"),
+            ("UFW Status", "ufw status verbose"),
+            ("IPTables NAT", "iptables -t nat -S"),
+            ("IPTables Filter", "iptables -S"),
+            ("IP6Tables NAT", "ip6tables -t nat -S"),
+            ("Sysctl Conf", "cat /etc/sysctl.d/99-vpn-wizard.conf || echo 'missing'"),
+            ("UFW Before Rules", "tail -n 20 /etc/ufw/before.rules"),
+            ("Journal Log", "journalctl -u wg-quick@wg0 -n 50 --no-pager"),
+            ("Ping 1.1.1.1", "ping -c 3 1.1.1.1 || echo 'failed'"),
+        ]
+        
+        report = ["=== VPN WIZARD DIAGNOSTIC REPORT ==="]
+        for name, cmd in commands:
+            report.append(f"\n--- {name} ---")
+            try:
+                out = self.ssh.run(cmd, sudo=True, check=False, pty=False)
+                report.append(out)
+            except Exception as e:
+                report.append(f"Error running command: {e}")
+        
+        return "\n".join(report)
+
     def repair_network(self) -> list[str]:
         logs = []
         def log(msg: str):

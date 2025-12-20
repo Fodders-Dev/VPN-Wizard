@@ -483,6 +483,38 @@ async def client_rotate(payload: ClientRemoveRequest) -> ClientAddResponse:
         temp_key.cleanup()
 
 
+class LogsResponse(BaseModel):
+    ok: bool
+    logs: Optional[str] = None
+    error: Optional[str] = None
+
+@app.post("/api/logs", response_model=LogsResponse)
+async def get_logs(payload: RollbackRequest) -> LogsResponse:
+    temp_key = TempKey()
+    try:
+        key_path = payload.ssh.key_path
+        if payload.ssh.key_content:
+            temp_key = _write_temp_key(payload.ssh.key_content)
+            key_path = temp_key.path
+
+        cfg = SSHConfig(
+            host=payload.ssh.host,
+            user=payload.ssh.user,
+            port=payload.ssh.port,
+            password=payload.ssh.password,
+            key_path=key_path,
+        )
+        with SSHRunner(cfg) as ssh:
+            prov = WireGuardProvisioner(ssh)
+            report = prov.get_system_report()
+            
+        return LogsResponse(ok=True, logs=report)
+    except Exception as exc:
+        return LogsResponse(ok=False, error=str(exc))
+    finally:
+        temp_key.cleanup()
+
+
 @app.post("/api/repair", response_model=JobCreateResponse)
 async def run_repair(payload: RollbackRequest, background_tasks: BackgroundTasks) -> JobCreateResponse:
     job = JOB_STORE.create()
