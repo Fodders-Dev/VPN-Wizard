@@ -861,7 +861,7 @@ class WireGuardProvisioner:
                 cmd_genkey = "awg genkey"
                 cmd_pubkey = "awg pubkey"
                 rebuild_cmd = self.rebuild_awg1_from_clients
-                self.listen_port = 51821 # Tyumen port
+                self.listen_port = 53 # Tyumen port (mobile-friendly UDP)
                 self.server_cidr = "10.11.0.1/24" # Tyumen subnet
                 # Mutate obfuscation params for Tyumen to be different from default
                 self.awg_jc += 1
@@ -1164,7 +1164,7 @@ class WireGuardProvisioner:
 
     def next_client_ip(self) -> str:
         # Robustly find all used IPs by scanning the config files directly
-        if self.listen_port == 51821: # Tyumen mode check
+        if self.server_cidr.startswith("10.11."): # Tyumen mode check
              conf_dir = "/etc/amnezia/amneziawg/clients_tyumen"
         elif self.protocol == "amneziawg":
             conf_dir = "/etc/amnezia/amneziawg/clients"
