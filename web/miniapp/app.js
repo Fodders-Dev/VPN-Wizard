@@ -88,7 +88,17 @@ function resolveApiBase() {
   if (param) {
     localStorage.setItem("vpnw_api_base", param);
   }
-  return localStorage.getItem("vpnw_api_base") || window.API_BASE || "";
+  const stored = localStorage.getItem("vpnw_api_base");
+  if (stored) {
+    return stored;
+  }
+  if (window.API_BASE) {
+    return window.API_BASE;
+  }
+  if (window.location.host.endsWith("vercel.app")) {
+    return "https://vpn-wizard-production.up.railway.app";
+  }
+  return "";
 }
 
 const API_BASE = resolveApiBase();
