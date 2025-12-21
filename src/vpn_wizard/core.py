@@ -941,20 +941,27 @@ class WireGuardProvisioner:
         # Prepare client config content
         awg_params = ""
         if self.protocol == "amneziawg":
-            # For Tyumen interface, we MUST use the self.* values we just mutated/set,
-            # because they are the source of truth for the new interface.
+            # For Tyumen, prefer server-side params to avoid mismatch; fall back to self.* if missing.
             if name.startswith("tyumen"):
-                 awg_params = (
-                    f"Jc = {self.awg_jc}\n"
-                    f"Jmin = {self.awg_jmin}\n"
-                    f"Jmax = {self.awg_jmax}\n"
-                    f"S1 = {self.awg_s1}\n"
-                    f"S2 = {self.awg_s2}\n"
-                    f"H1 = {self.awg_h1}\n"
-                    f"H2 = {self.awg_h2}\n"
-                    f"H3 = {self.awg_h3}\n"
-                    f"H4 = {self.awg_h4}\n"
+                raw_params = self.ssh.run(
+                    f"grep -E '^(Jc|Jmin|Jmax|S1|S2|H1|H2|H3|H4) =' {wg_conf} || true",
+                    sudo=True,
+                    check=False,
                 )
+                if raw_params.strip():
+                    awg_params = raw_params.strip() + "\n"
+                else:
+                    awg_params = (
+                        f"Jc = {self.awg_jc}\n"
+                        f"Jmin = {self.awg_jmin}\n"
+                        f"Jmax = {self.awg_jmax}\n"
+                        f"S1 = {self.awg_s1}\n"
+                        f"S2 = {self.awg_s2}\n"
+                        f"H1 = {self.awg_h1}\n"
+                        f"H2 = {self.awg_h2}\n"
+                        f"H3 = {self.awg_h3}\n"
+                        f"H4 = {self.awg_h4}\n"
+                    )
             else:
                 # For existing awg0, we must read from the file to match server config.
                 # Use a safer read approach to avoid stripping issues
