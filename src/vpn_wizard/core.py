@@ -861,7 +861,7 @@ class WireGuardProvisioner:
                 cmd_genkey = "awg genkey"
                 cmd_pubkey = "awg pubkey"
                 rebuild_cmd = self.rebuild_awg1_from_clients
-                self.listen_port = 123 # Tyumen port (mobile-friendly UDP)
+                self.listen_port = 3478 # Tyumen port (mobile-friendly UDP)
                 self.server_cidr = "10.11.0.1/24" # Tyumen subnet
                 # Mutate obfuscation params for Tyumen to be different from default
                 self.awg_jc += 1
