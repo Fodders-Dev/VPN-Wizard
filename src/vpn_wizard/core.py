@@ -659,9 +659,19 @@ class WireGuardProvisioner:
         # Always ensure firewall is open for this port, in case it was missed
         self.ssh.run(f"ufw allow {self.listen_port}/udp || true", sudo=True, check=False)
 
+        # Check if exists AND if the port matches
         exists = self.ssh.run("test -f /etc/amnezia/amneziawg/awg1.conf && echo yes || echo no", check=False).strip()
         if exists == "yes":
-             return
+             # Verify port
+             current_port = self.ssh.run("awk -F'= ' '/^ListenPort/ {print $2}' /etc/amnezia/amneziawg/awg1.conf", sudo=True, check=False).strip()
+             if current_port == str(self.listen_port):
+                  return
+             
+             # Port mismatch? Migration needed!
+             self.progress(f"Tyumen interface port mismatch (found {current_port}, need {self.listen_port}). Rebuilding...")
+             self.ssh.run("systemctl stop awg-quick@awg1", sudo=True, check=False)
+             self.ssh.run("rm -f /etc/amnezia/amneziawg/awg1.conf", sudo=True, check=False)
+
 
         self.progress("Initializing Tyumen interface (awg1)...")
         self.ssh.run("mkdir -p /etc/amnezia/amneziawg/clients_tyumen", sudo=True)
@@ -836,10 +846,9 @@ class WireGuardProvisioner:
                 conf_dir = "/etc/amnezia/amneziawg"
                 wg_conf = f"{conf_dir}/awg1.conf"
                 clients_dir = f"{conf_dir}/clients_tyumen"
-                cmd_genkey = "awg genkey"
                 cmd_pubkey = "awg pubkey"
                 rebuild_cmd = self.rebuild_awg1_from_clients
-                self.listen_port = 51821 # Tyumen port
+                self.listen_port = 80 # Tyumen port (fallback on standard UDP)
                 self.server_cidr = "10.11.0.1/24" # Tyumen subnet
                 # Mutate obfuscation params for Tyumen to be different from default
                 self.awg_jc += 1
