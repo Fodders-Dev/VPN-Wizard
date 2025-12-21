@@ -829,8 +829,9 @@ class WireGuardProvisioner:
         return clients
 
     def add_client(self, client_name: Optional[str] = None, client_ip: Optional[str] = None) -> dict:
-        name = client_name or self.next_client_name()
+        name = (client_name or self.next_client_name()).strip()
         self._validate_client_name(name)
+        is_tyumen = name.lower().startswith("tyumen")
         
         # Auto-detect protocol if config is missing (robustness against frontend defaults)
         # Check standard paths
@@ -848,7 +849,7 @@ class WireGuardProvisioner:
         # Protocol-specific paths and commands
         if self.protocol == "amneziawg":
             # Tyumen "Magic" Interface Logic
-            if name.startswith("tyumen"):
+            if is_tyumen:
                 conf_dir = "/etc/amnezia/amneziawg"
                 wg_conf = f"{conf_dir}/awg1.conf"
                 clients_dir = f"{conf_dir}/clients_tyumen"
@@ -887,7 +888,25 @@ class WireGuardProvisioner:
             check=False,
         ).strip()
         if has_conf != "yes":
-            raise RuntimeError(f"{os.path.basename(wg_conf)} not found. Run provision first.")
+            if is_tyumen:
+                self._ensure_tyumen_interface_exists()
+                has_conf = self.ssh.run(
+                    f"test -f {wg_conf} && echo yes || echo no",
+                    sudo=True,
+                    check=False,
+                ).strip()
+            if has_conf != "yes":
+                dir_listing = ""
+                if self.protocol == "amneziawg":
+                    dir_listing = self.ssh.run(
+                        "ls -la /etc/amnezia/amneziawg 2>/dev/null || true",
+                        sudo=True,
+                        check=False,
+                    ).strip()
+                details = f"check={has_conf}"
+                if dir_listing:
+                    details += f"; dir=/etc/amnezia/amneziawg: {dir_listing}"
+                raise RuntimeError(f"{os.path.basename(wg_conf)} not found. {details}")
             
         exists = self.ssh.run(
             f"test -f {clients_dir}/{name}.conf && echo yes || echo no",
@@ -912,7 +931,7 @@ class WireGuardProvisioner:
 
         self.ssh.run(f"mkdir -p {clients_dir}", sudo=True)
 
-        if self.protocol == "amneziawg" and name.startswith("tyumen"):
+        if self.protocol == "amneziawg" and is_tyumen:
             server_priv_path = f"{conf_dir}/server_private_awg1.key"
             server_pub_path = f"{conf_dir}/server_public_awg1.key"
         else:
@@ -942,7 +961,7 @@ class WireGuardProvisioner:
         awg_params = ""
         if self.protocol == "amneziawg":
             # For Tyumen, prefer server-side params to avoid mismatch; fall back to self.* if missing.
-            if name.startswith("tyumen"):
+            if is_tyumen:
                 raw_params = self.ssh.run(
                     f"grep -E '^(Jc|Jmin|Jmax|S1|S2|H1|H2|H3|H4) =' {wg_conf} || true",
                     sudo=True,
