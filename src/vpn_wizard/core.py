@@ -70,6 +70,8 @@ class SSHRunner:
                 wrapped = f"sudo {wrapped}"
 
         self.log(f"$ {command}")
+        if sudo and self.config.password and pty:
+            pty = False  # Avoid echoing the sudo password into stdout/stderr
         stdin, stdout, stderr = self.client.exec_command(wrapped, get_pty=pty)
         if sudo and self.config.password:
             stdin.write(self.config.password + "\n")
@@ -77,6 +79,9 @@ class SSHRunner:
 
         out = stdout.read().decode("utf-8", "ignore").strip()
         err = stderr.read().decode("utf-8", "ignore").strip()
+        if self.config.password:
+            out = out.replace(self.config.password, "***")
+            err = err.replace(self.config.password, "***")
         status = stdout.channel.recv_exit_status()
         if check and status != 0:
             msg = f"Command failed ({status}): {command}"
