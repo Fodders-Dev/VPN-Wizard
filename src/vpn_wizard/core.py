@@ -717,6 +717,12 @@ class WireGuardProvisioner:
             "systemctl enable --now awg-quick@awg1",
             sudo=True
         )
+        
+        # Verify creation immediately
+        verified = self.ssh.run("test -f /etc/amnezia/amneziawg/awg1.conf && echo yes || echo no", sudo=True, check=False).strip()
+        if verified != "yes":
+             raise RuntimeError("Failed to create /etc/amnezia/amneziawg/awg1.conf during Tyumen init")
+        self.progress("Tyumen interface initialized successfully.")
 
     def start_awg_service(self) -> None:
         """Start AmneziaWG service using awg-quick."""
