@@ -659,19 +659,25 @@ class WireGuardProvisioner:
         # Always ensure firewall is open for this port, in case it was missed
         self.ssh.run(f"ufw allow {self.listen_port}/udp || true", sudo=True, check=False)
 
-        # Check if exists AND if the port matches
         exists = self.ssh.run("test -f /etc/amnezia/amneziawg/awg1.conf && echo yes || echo no", check=False).strip()
         if exists == "yes":
-             # Verify port
-             current_port = self.ssh.run("awk -F'= ' '/^ListenPort/ {print $2}' /etc/amnezia/amneziawg/awg1.conf", sudo=True, check=False).strip()
-             if current_port == str(self.listen_port):
-                  return
-             
-             # Port mismatch? Migration needed!
-             self.progress(f"Tyumen interface port mismatch (found {current_port}, need {self.listen_port}). Rebuilding...")
-             self.ssh.run("systemctl stop awg-quick@awg1", sudo=True, check=False)
-             self.ssh.run("rm -f /etc/amnezia/amneziawg/awg1.conf", sudo=True, check=False)
-
+            current_port = self.ssh.run(
+                "awk -F'= ' '/^ListenPort/ {print $2; exit}' /etc/amnezia/amneziawg/awg1.conf",
+                sudo=True,
+                check=False,
+            ).strip()
+            if current_port != str(self.listen_port):
+                shown_port = current_port or "missing"
+                self.progress(
+                    f"Tyumen interface port mismatch (found {shown_port}, need {self.listen_port}). Updating..."
+                )
+                self.ssh.run(
+                    f"sed -i 's/^ListenPort.*/ListenPort = {self.listen_port}/' /etc/amnezia/amneziawg/awg1.conf",
+                    sudo=True,
+                    check=False,
+                )
+                self.ssh.run("systemctl restart awg-quick@awg1", sudo=True, check=False)
+            return
 
         self.progress("Initializing Tyumen interface (awg1)...")
         self.ssh.run("mkdir -p /etc/amnezia/amneziawg/clients_tyumen", sudo=True)
@@ -717,12 +723,6 @@ class WireGuardProvisioner:
             "systemctl enable --now awg-quick@awg1",
             sudo=True
         )
-        
-        # Verify creation immediately
-        verified = self.ssh.run("test -f /etc/amnezia/amneziawg/awg1.conf && echo yes || echo no", sudo=True, check=False).strip()
-        if verified != "yes":
-             raise RuntimeError("Failed to create /etc/amnezia/amneziawg/awg1.conf during Tyumen init")
-        self.progress("Tyumen interface initialized successfully.")
 
     def start_awg_service(self) -> None:
         """Start AmneziaWG service using awg-quick."""
@@ -852,9 +852,10 @@ class WireGuardProvisioner:
                 conf_dir = "/etc/amnezia/amneziawg"
                 wg_conf = f"{conf_dir}/awg1.conf"
                 clients_dir = f"{conf_dir}/clients_tyumen"
+                cmd_genkey = "awg genkey"
                 cmd_pubkey = "awg pubkey"
                 rebuild_cmd = self.rebuild_awg1_from_clients
-                self.listen_port = 80 # Tyumen port (fallback on standard UDP)
+                self.listen_port = 51821 # Tyumen port
                 self.server_cidr = "10.11.0.1/24" # Tyumen subnet
                 # Mutate obfuscation params for Tyumen to be different from default
                 self.awg_jc += 1
