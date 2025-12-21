@@ -656,6 +656,9 @@ class WireGuardProvisioner:
     
     def _ensure_tyumen_interface_exists(self) -> None:
         """Create awg1.conf if it does not exist (Tyumen interface)."""
+        # Always ensure firewall is open for this port, in case it was missed
+        self.ssh.run(f"ufw allow {self.listen_port}/udp || true", sudo=True, check=False)
+
         exists = self.ssh.run("test -f /etc/amnezia/amneziawg/awg1.conf && echo yes || echo no", check=False).strip()
         if exists == "yes":
              return
@@ -701,7 +704,6 @@ class WireGuardProvisioner:
             f"PostDown = {postdown}\n"
             "EOF\n"
             "chmod 600 /etc/amnezia/amneziawg/awg1.conf\n"
-            f"ufw allow {self.listen_port}/udp || true\n"
             "systemctl enable --now awg-quick@awg1",
             sudo=True
         )
