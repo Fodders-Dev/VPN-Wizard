@@ -654,6 +654,57 @@ class WireGuardProvisioner:
         )
         self.rebuild_awg0_from_clients()
     
+    def _ensure_tyumen_interface_exists(self) -> None:
+        """Create awg1.conf if it does not exist (Tyumen interface)."""
+        exists = self.ssh.run("test -f /etc/amnezia/amneziawg/awg1.conf && echo yes || echo no", check=False).strip()
+        if exists == "yes":
+             return
+
+        self.progress("Initializing Tyumen interface (awg1)...")
+        self.ssh.run("mkdir -p /etc/amnezia/amneziawg/clients_tyumen", sudo=True)
+        
+        # Ensure server keys for awg1
+        self.ssh.run(
+             "if [ ! -f /etc/amnezia/amneziawg/server_private_awg1.key ]; then\n"
+             "  umask 077\n"
+             "  awg genkey | tee /etc/amnezia/amneziawg/server_private_awg1.key | awg pubkey > /etc/amnezia/amneziawg/server_public_awg1.key\n"
+             "fi",
+             sudo=True
+        )
+        
+        postup, postdown = self._post_rules("awg1")
+        
+        # AWG params are already mutated in self by add_client at this point
+        awg_params = (
+            f"Jc = {self.awg_jc}\n"
+            f"Jmin = {self.awg_jmin}\n"
+            f"Jmax = {self.awg_jmax}\n"
+            f"S1 = {self.awg_s1}\n"
+            f"S2 = {self.awg_s2}\n"
+            f"H1 = {self.awg_h1}\n"
+            f"H2 = {self.awg_h2}\n"
+            f"H3 = {self.awg_h3}\n"
+            f"H4 = {self.awg_h4}\n"
+        )
+
+        self.ssh.run(
+            "set -e\n"
+            "server_priv=$(cat /etc/amnezia/amneziawg/server_private_awg1.key)\n"
+            "cat > /etc/amnezia/amneziawg/awg1.conf <<EOF\n"
+            "[Interface]\n"
+            f"Address = {self.server_cidr}\n"
+            f"ListenPort = {self.listen_port}\n"
+            "PrivateKey = $server_priv\n"
+            "MTU = 1280\n"
+            f"{awg_params}"
+            f"PostUp = {postup}\n"
+            f"PostDown = {postdown}\n"
+            "EOF\n"
+            "chmod 600 /etc/amnezia/amneziawg/awg1.conf\n"
+            "systemctl enable --now awg-quick@awg1",
+            sudo=True
+        )
+
     def start_awg_service(self) -> None:
         """Start AmneziaWG service using awg-quick."""
         self.ssh.run("systemctl enable --now awg-quick@awg0", sudo=True)
@@ -777,12 +828,31 @@ class WireGuardProvisioner:
         
         # Protocol-specific paths and commands
         if self.protocol == "amneziawg":
-            conf_dir = "/etc/amnezia/amneziawg"
-            wg_conf = f"{conf_dir}/awg0.conf"
-            clients_dir = f"{conf_dir}/clients"
-            cmd_genkey = "awg genkey"
-            cmd_pubkey = "awg pubkey"
-            rebuild_cmd = self.rebuild_awg0_from_clients
+            # Tyumen "Magic" Interface Logic
+            if name.startswith("tyumen"):
+                conf_dir = "/etc/amnezia/amneziawg"
+                wg_conf = f"{conf_dir}/awg1.conf"
+                clients_dir = f"{conf_dir}/clients_tyumen"
+                cmd_genkey = "awg genkey"
+                cmd_pubkey = "awg pubkey"
+                rebuild_cmd = self.rebuild_awg1_from_clients
+                self.listen_port = 51821 # Tyumen port
+                self.server_cidr = "10.11.0.1/24" # Tyumen subnet
+                # Mutate obfuscation params for Tyumen to be different from default
+                self.awg_jc += 1
+                self.awg_s1 += 5
+                self.awg_s2 += 5
+                self.awg_h1 += 123456
+                
+                # Ensure the secondary interface is actually initialized
+                self._ensure_tyumen_interface_exists()
+            else:
+                conf_dir = "/etc/amnezia/amneziawg"
+                wg_conf = f"{conf_dir}/awg0.conf"
+                clients_dir = f"{conf_dir}/clients"
+                cmd_genkey = "awg genkey"
+                cmd_pubkey = "awg pubkey"
+                rebuild_cmd = self.rebuild_awg0_from_clients
         else:
             conf_dir = "/etc/wireguard"
             wg_conf = f"{conf_dir}/wg0.conf"
@@ -985,6 +1055,30 @@ class WireGuardProvisioner:
             sudo=True,
         )
 
+    def rebuild_awg1_from_clients(self) -> None:
+        """Rebuild awg1.conf (Tyumen) from client configs."""
+        self.ssh.run(
+            "set -e\n"
+            "header=$(awk 'BEGIN{p=1} /^\[Peer\]/{p=0} {if(p) print}' /etc/amnezia/amneziawg/awg1.conf)\n"
+            "tmp=$(mktemp)\n"
+            "echo \"$header\" > $tmp\n"
+            "for conf in /etc/amnezia/amneziawg/clients_tyumen/*.conf; do\n"
+            "  [ -f \"$conf\" ] || continue\n"
+            "  name=$(basename \"$conf\" .conf)\n"
+            "  pub=$(cat /etc/amnezia/amneziawg/clients_tyumen/$name.pub)\n"
+            "  ip=$(grep '^Address' \"$conf\" | cut -d= -f2 | tr -d ' ' | tr -d '\\r' | head -n1)\n"
+            "  echo \"\" >> $tmp\n"
+            "  echo \"[Peer]\" >> $tmp\n"
+            "  echo \"PublicKey = $pub\" >> $tmp\n"
+            "  echo \"AllowedIPs = $ip\" >> $tmp\n"
+            "done\n"
+            "mv $tmp /etc/amnezia/amneziawg/awg1.conf\n"
+            "chmod 600 /etc/amnezia/amneziawg/awg1.conf\n"
+            "# Asynchronous restart\n"
+            "nohup sh -c 'sleep 1; systemctl restart awg-quick@awg1' >/dev/null 2>&1 &\n",
+            sudo=True,
+        )
+
     def next_client_name(self) -> str:
         existing = {client["name"] for client in self.list_clients()}
         idx = 1
@@ -996,11 +1090,12 @@ class WireGuardProvisioner:
 
     def next_client_ip(self) -> str:
         # Robustly find all used IPs by scanning the config files directly
-        conf_dir = (
-            "/etc/amnezia/amneziawg/clients"
-            if self.protocol == "amneziawg"
-            else "/etc/wireguard/clients"
-        )
+        if self.listen_port == 51821: # Tyumen mode check
+             conf_dir = "/etc/amnezia/amneziawg/clients_tyumen"
+        elif self.protocol == "amneziawg":
+            conf_dir = "/etc/amnezia/amneziawg/clients"
+        else:
+            conf_dir = "/etc/wireguard/clients"
         
         # Grep all Address lines from client configs
         # Output format: "Address = 10.10.0.2/32" -> "10.10.0.2"
@@ -1015,15 +1110,19 @@ class WireGuardProvisioner:
         used_ips_output = self.ssh.run(cmd, sudo=True, check=False).strip()
         used_ips = set(used_ips_output.splitlines()) if used_ips_output else set()
         
-        # Default server subnet is 10.10.0.0/24. 
-        # We assume 10.10.0.1 is server.
-        base = "10.10.0"
+        # Use server_cidr base to determine available IPs
+        # server_cidr example: "10.10.0.1/24" -> base "10.10.0"
+        network = ipaddress.ip_network(self.server_cidr, strict=False)
+        # Iterate over hosts in the subnet (skipping .0 and .1 likely)
+        # Using a simple heuristic compatible with earlier logic
+        base = str(network.network_address).rsplit(".", 1)[0]
+        
         for i in range(2, 255):
             ip = f"{base}.{i}"
             if ip not in used_ips:
                 return f"{ip}/32"
                 
-        raise RuntimeError("No free IPs available in 10.10.0.0/24 subnet")
+        raise RuntimeError(f"No free IPs available in {self.server_cidr} subnet")
 
     def _get_client_ip(self, client_name: str) -> Optional[str]:
         if self.protocol == "amneziawg":
