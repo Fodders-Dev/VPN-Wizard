@@ -701,6 +701,7 @@ class WireGuardProvisioner:
             f"PostDown = {postdown}\n"
             "EOF\n"
             "chmod 600 /etc/amnezia/amneziawg/awg1.conf\n"
+            f"ufw allow {self.listen_port}/udp || true\n"
             "systemctl enable --now awg-quick@awg1",
             sudo=True
         )
