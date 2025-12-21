@@ -911,12 +911,19 @@ class WireGuardProvisioner:
         allowed_ips = self._resolve_allowed_ips(clients_dir)
 
         self.ssh.run(f"mkdir -p {clients_dir}", sudo=True)
-        
+
+        if self.protocol == "amneziawg" and name.startswith("tyumen"):
+            server_priv_path = f"{conf_dir}/server_private_awg1.key"
+            server_pub_path = f"{conf_dir}/server_public_awg1.key"
+        else:
+            server_priv_path = f"{conf_dir}/server_private.key"
+            server_pub_path = f"{conf_dir}/server_public.key"
+
         # Ensure server keys exist (should be there if conf exists, but good to be safe)
         self.ssh.run(
-            f"if [ ! -f {conf_dir}/server_private.key ]; then\n"
+            f"if [ ! -f {server_priv_path} ]; then\n"
             "  umask 077\n"
-            f"  {cmd_genkey} | tee {conf_dir}/server_private.key | {cmd_pubkey} > {conf_dir}/server_public.key\n"
+            f"  {cmd_genkey} | tee {server_priv_path} | {cmd_pubkey} > {server_pub_path}\n"
             "fi",
             sudo=True,
         )
@@ -963,7 +970,7 @@ class WireGuardProvisioner:
         self.ssh.run(
             "set -e\n"
             f"client_priv=$(cat {clients_dir}/{name}.key)\n"
-            f"server_pub=$(cat {conf_dir}/server_public.key)\n"
+            f"server_pub=$(cat {server_pub_path})\n"
             f"public_ip={self.get_public_ip()}\n"
             f"cat > {clients_dir}/{name}.conf <<EOF\n"
             "[Interface]\n"
