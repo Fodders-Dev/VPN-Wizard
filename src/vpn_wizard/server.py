@@ -112,6 +112,7 @@ class ClientRequest(BaseModel):
 class ClientRemoveRequest(BaseModel):
     ssh: SSHPayload
     client_name: str
+    listen_port: Optional[int] = None
 
 
 class ClientListResponse(BaseModel):
@@ -126,6 +127,17 @@ class ClientAddResponse(BaseModel):
     client_ip: Optional[str] = None
     config: Optional[str] = None
     qr_png_base64: Optional[str] = None
+    interface: Optional[str] = None
+    error: Optional[str] = None
+
+
+class ClientExportResponse(BaseModel):
+    ok: bool
+    client_name: Optional[str] = None
+    client_ip: Optional[str] = None
+    config: Optional[str] = None
+    qr_png_base64: Optional[str] = None
+    interface: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -421,6 +433,7 @@ async def client_add(payload: ClientRequest) -> ClientAddResponse:
             client_ip=result["ip"],
             config=result["config"],
             qr_png_base64=qr_b64,
+            interface=result.get("interface"),
         )
     except Exception as exc:
         return ClientAddResponse(ok=False, error=str(exc))
@@ -485,9 +498,44 @@ async def client_rotate(payload: ClientRemoveRequest) -> ClientAddResponse:
             client_ip=result["ip"],
             config=result["config"],
             qr_png_base64=qr_b64,
+            interface=result.get("interface"),
         )
     except Exception as exc:
         return ClientAddResponse(ok=False, error=str(exc))
+    finally:
+        temp_key.cleanup()
+
+
+@app.post("/api/clients/export", response_model=ClientExportResponse)
+async def client_export(payload: ClientRemoveRequest) -> ClientExportResponse:
+    temp_key = TempKey()
+    try:
+        key_path = payload.ssh.key_path
+        if payload.ssh.key_content:
+            temp_key = _write_temp_key(payload.ssh.key_content)
+            key_path = temp_key.path
+
+        cfg = SSHConfig(
+            host=payload.ssh.host,
+            user=payload.ssh.user,
+            port=payload.ssh.port,
+            password=payload.ssh.password,
+            key_path=key_path,
+        )
+        with SSHRunner(cfg) as ssh:
+            prov = WireGuardProvisioner(ssh)
+            result = prov.export_client(payload.client_name)
+        qr_b64 = _build_qr_base64(result["config"])
+        return ClientExportResponse(
+            ok=True,
+            client_name=result["name"],
+            client_ip=result["ip"],
+            config=result["config"],
+            qr_png_base64=qr_b64,
+            interface=result.get("interface"),
+        )
+    except Exception as exc:
+        return ClientExportResponse(ok=False, error=str(exc))
     finally:
         temp_key.cleanup()
 
@@ -540,6 +588,14 @@ def _detect_server_status(ssh: SSHRunner) -> dict:
         check=False,
     ).strip()
     clients_count = int(clients_count_raw) if clients_count_raw.isdigit() else 0
+    if has_awg:
+        tyumen_count_raw = ssh.run(
+            "ls -1 /etc/amnezia/amneziawg/clients_tyumen/*.conf 2>/dev/null | wc -l",
+            sudo=True,
+            check=False,
+        ).strip()
+        if tyumen_count_raw.isdigit():
+            clients_count += int(tyumen_count_raw)
 
     tyumen_port_raw = ssh.run(
         "awk -F'= ' '/^ListenPort/{{print $2; exit}}' /etc/amnezia/amneziawg/awg1.conf 2>/dev/null || true",

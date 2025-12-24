@@ -70,6 +70,16 @@
       </form>
     </section>
 
+    <section class="card" id="onboarding-card">
+      <h2 data-i18n="onboarding_title">Быстрый старт</h2>
+      <ol class="onboarding-list">
+        <li data-i18n="onboarding_step1">1) Введите IP/хост, SSH пользователя и пароль или ключ.</li>
+        <li data-i18n="onboarding_step2">2) Нажмите "Проверить сервер" - если VPN уже есть, появятся клиенты.</li>
+        <li data-i18n="onboarding_step3">3) Если нет - нажмите "Настроить сервер" и скачайте конфиг и QR.</li>
+        <li data-i18n="onboarding_step4">4) При блокировках попробуйте другой UDP порт или префикс tyumen-.</li>
+      </ol>
+    </section>
+
     <section class="card" id="servers-card">
       <h2 data-i18n="servers_title">Мои серверы</h2>
       <div id="servers-empty" data-i18n="servers_empty">Пока нет сохранённых серверов.</div>
@@ -78,17 +88,46 @@
 
     <section class="card" id="progress-card">
       <h2 data-i18n="step2_title">Шаг 2. Прогресс</h2>
+      <div class="progress-bar" aria-hidden="true">
+        <div id="progress-fill" class="progress-fill"></div>
+      </div>
       <div class="spinner" aria-hidden="true"></div>
       <div id="status" data-i18n="status_waiting">Ожидание...</div>
-      <div id="progress-log" class="log"></div>
+      <button type="button" id="toggle-log-btn" class="secondary" data-i18n="toggle_log_btn">Показать лог</button>
+      <div id="progress-log" class="log hidden"></div>
+    </section>
+
+    <section class="card hidden" id="clients-card">
+      <h2 data-i18n="clients_title">Клиенты</h2>
+      <div id="clients-empty" data-i18n="clients_empty">Клиенты не найдены.</div>
+      <div id="clients-list" class="clients-list"></div>
     </section>
 
     <section class="card" id="result-card">
       <h2 data-i18n="step3_title">Шаг 3. Скачать</h2>
       <a id="download-link" class="download" href="#" download="client1.conf" data-i18n="download_btn">Скачать конфиг</a>
-      <button type="button" id="rollback-btn" class="secondary" data-i18n="rollback_btn">Откатить последний конфиг</button>
-      <button type="button" id="debug-btn" class="secondary" style="margin-top: 8px;" data-i18n="debug_btn">Показать Debug Info</button>
+      <a id="qr-download" class="secondary qr-download hidden" href="#" download="client1.png" data-i18n="download_qr_btn">Скачать QR</a>
       <img id="qr-image" alt="QR code" />
+    </section>
+
+    <section class="card" id="faq-card">
+      <h2 data-i18n="faq_title">FAQ</h2>
+      <details>
+        <summary data-i18n="faq_what_is_title">Что это за бот?</summary>
+        <p data-i18n="faq_what_is_body">VPN Wizard подключается к вашему серверу по SSH и автоматически настраивает быстрый VPN. В результате вы получаете готовые конфиги и QR.</p>
+      </details>
+      <details>
+        <summary data-i18n="faq_safe_title">Это безопасно?</summary>
+        <p data-i18n="faq_safe_body">Бот использует ваши SSH-данные только для настройки. Мы не храним пароли, всё выполняется на вашем сервере.</p>
+      </details>
+      <details>
+        <summary data-i18n="faq_ports_title">Что делать, если VPN не работает?</summary>
+        <p data-i18n="faq_ports_body">Попробуйте другой UDP порт в расширенных настройках (например 3478 или 33434).</p>
+      </details>
+      <details>
+        <summary data-i18n="faq_tyumen_title">Как добавить клиента?</summary>
+        <p data-i18n="faq_tyumen_body">Введите имя клиента и нажмите "Добавить клиента". Для обхода блокировок используйте префикс tyumen-.</p>
+      </details>
     </section>
   </main>
 

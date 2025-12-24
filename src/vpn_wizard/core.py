@@ -802,35 +802,154 @@ class WireGuardProvisioner:
             f"cat /etc/wireguard/clients/{self.client_name}.conf", sudo=True, pty=False
         )
 
-    def list_clients(self) -> list[dict]:
-        if self.protocol == "amneziawg":
-            clients_dir = "/etc/amnezia/amneziawg/clients"
-        else:
-            clients_dir = "/etc/wireguard/clients"
-
-        raw = self.ssh.run(
-            f"ls {clients_dir}/*.conf 2>/dev/null || true", sudo=True, check=False
+    def _auto_detect_protocol(self) -> None:
+        awg_path = "/etc/amnezia/amneziawg/awg0.conf"
+        wg_path = "/etc/wireguard/wg0.conf"
+        has_awg = (
+            self.ssh.run(f"test -f {awg_path} && echo yes || echo no", sudo=True, check=False).strip()
+            == "yes"
         )
-        names = []
-        for line in raw.splitlines():
-            if not line.strip():
+        has_wg = (
+            self.ssh.run(f"test -f {wg_path} && echo yes || echo no", sudo=True, check=False).strip()
+            == "yes"
+        )
+        if self.protocol == "amneziawg" and not has_awg and has_wg:
+            self.protocol = "wireguard"
+        elif self.protocol != "amneziawg" and not has_wg and has_awg:
+            self.protocol = "amneziawg"
+
+    def export_client(self, client_name: str) -> dict:
+        self._validate_client_name(client_name)
+        self._auto_detect_protocol()
+        if self.protocol == "amneziawg":
+            candidates = [
+                ("/etc/amnezia/amneziawg/clients", "awg0"),
+                ("/etc/amnezia/amneziawg/clients_tyumen", "awg1"),
+            ]
+        else:
+            candidates = [("/etc/wireguard/clients", "wg0")]
+
+        for clients_dir, iface in candidates:
+            exists = self.ssh.run(
+                f"test -f {clients_dir}/{client_name}.conf && echo yes || echo no",
+                sudo=True,
+                check=False,
+            ).strip()
+            if exists != "yes":
                 continue
-            name = line.strip().split("/")[-1].removesuffix(".conf")
-            names.append(name)
-        clients = []
-        for name in names:
+
             conf = self.ssh.run(
-                f"cat {clients_dir}/{name}.conf", sudo=True, check=False, pty=False
+                f"cat {clients_dir}/{client_name}.conf", sudo=True, check=False, pty=False
             )
             pub = self.ssh.run(
-                f"cat {clients_dir}/{name}.pub", sudo=True, check=False, pty=False
+                f"cat {clients_dir}/{client_name}.pub", sudo=True, check=False, pty=False
             ).strip()
             ip = ""
             for line in conf.splitlines():
                 if line.startswith("Address"):
                     ip = line.split("=", 1)[1].strip()
                     break
-            clients.append({"name": name, "ip": ip, "public_key": pub})
+            return {
+                "name": client_name,
+                "ip": ip,
+                "public_key": pub,
+                "config": conf,
+                "interface": iface,
+            }
+        raise RuntimeError("Client not found.")
+
+    def _parse_wg_show(self, output: str) -> dict[str, dict]:
+        peers: dict[str, dict] = {}
+        current = None
+        for raw in output.splitlines():
+            line = raw.strip()
+            if line.startswith("peer:"):
+                current = line.split(":", 1)[1].strip()
+                peers[current] = {}
+                continue
+            if not current or not line:
+                continue
+            if line.startswith("endpoint:"):
+                peers[current]["endpoint"] = line.split(":", 1)[1].strip()
+            elif line.startswith("latest handshake:"):
+                peers[current]["latest_handshake"] = line.split(":", 1)[1].strip()
+            elif line.startswith("transfer:"):
+                transfer = line.split(":", 1)[1].strip()
+                parts = [part.strip() for part in transfer.split(",")]
+                rx = parts[0].replace(" received", "").strip() if parts else ""
+                tx = parts[1].replace(" sent", "").strip() if len(parts) > 1 else ""
+                if rx:
+                    peers[current]["transfer_rx"] = rx
+                if tx:
+                    peers[current]["transfer_tx"] = tx
+        return peers
+
+    def list_clients(self) -> list[dict]:
+        self._auto_detect_protocol()
+        if self.protocol == "amneziawg":
+            dirs = [("/etc/amnezia/amneziawg/clients", "awg0")]
+            tyumen_probe = self.ssh.run(
+                "ls /etc/amnezia/amneziawg/clients_tyumen/*.conf 2>/dev/null | head -n 1 || true",
+                sudo=True,
+                check=False,
+            ).strip()
+            if tyumen_probe:
+                dirs.append(("/etc/amnezia/amneziawg/clients_tyumen", "awg1"))
+
+            stats_by_iface = {
+                "awg0": self._parse_wg_show(
+                    self.ssh.run("awg show awg0 || true", sudo=True, check=False)
+                )
+            }
+            if any(item[1] == "awg1" for item in dirs):
+                stats_by_iface["awg1"] = self._parse_wg_show(
+                    self.ssh.run("awg show awg1 || true", sudo=True, check=False)
+                )
+        else:
+            dirs = [("/etc/wireguard/clients", "wg0")]
+            stats_by_iface = {
+                "wg0": self._parse_wg_show(
+                    self.ssh.run("wg show wg0 || true", sudo=True, check=False)
+                )
+            }
+
+        clients = []
+        for clients_dir, iface in dirs:
+            raw = self.ssh.run(
+                f"ls {clients_dir}/*.conf 2>/dev/null || true", sudo=True, check=False
+            )
+            names = []
+            for line in raw.splitlines():
+                if not line.strip():
+                    continue
+                name = line.strip().split("/")[-1].removesuffix(".conf")
+                names.append(name)
+
+            for name in names:
+                conf = self.ssh.run(
+                    f"cat {clients_dir}/{name}.conf", sudo=True, check=False, pty=False
+                )
+                pub = self.ssh.run(
+                    f"cat {clients_dir}/{name}.pub", sudo=True, check=False, pty=False
+                ).strip()
+                ip = ""
+                for line in conf.splitlines():
+                    if line.startswith("Address"):
+                        ip = line.split("=", 1)[1].strip()
+                        break
+                stats = stats_by_iface.get(iface, {}).get(pub, {})
+                clients.append(
+                    {
+                        "name": name,
+                        "ip": ip,
+                        "public_key": pub,
+                        "endpoint": stats.get("endpoint"),
+                        "latest_handshake": stats.get("latest_handshake"),
+                        "transfer_rx": stats.get("transfer_rx"),
+                        "transfer_tx": stats.get("transfer_tx"),
+                        "interface": iface,
+                    }
+                )
         return clients
 
     def add_client(self, client_name: Optional[str] = None, client_ip: Optional[str] = None) -> dict:
@@ -1026,14 +1145,23 @@ class WireGuardProvisioner:
         config = self.ssh.run(
             f"cat {clients_dir}/{name}.conf", sudo=True, pty=False
         )
-        return {"name": name, "ip": ip, "config": config}
+        iface_name = "wg0"
+        if self.protocol == "amneziawg":
+            iface_name = "awg1" if is_tyumen else "awg0"
+        return {"name": name, "ip": ip, "config": config, "interface": iface_name}
 
     def remove_client(self, client_name: str) -> bool:
         self._validate_client_name(client_name)
-        
+        self._auto_detect_protocol()
+        is_tyumen = client_name.lower().startswith("tyumen")
+
         if self.protocol == "amneziawg":
-            clients_dir = "/etc/amnezia/amneziawg/clients"
-            rebuild_cmd = self.rebuild_awg0_from_clients
+            if is_tyumen:
+                clients_dir = "/etc/amnezia/amneziawg/clients_tyumen"
+                rebuild_cmd = self.rebuild_awg1_from_clients
+            else:
+                clients_dir = "/etc/amnezia/amneziawg/clients"
+                rebuild_cmd = self.rebuild_awg0_from_clients
         else:
             clients_dir = "/etc/wireguard/clients"
             rebuild_cmd = self.rebuild_wg0_from_clients
@@ -1198,8 +1326,12 @@ class WireGuardProvisioner:
         raise RuntimeError(f"No free IPs available in {self.server_cidr} subnet")
 
     def _get_client_ip(self, client_name: str) -> Optional[str]:
+        self._auto_detect_protocol()
         if self.protocol == "amneziawg":
-            clients_dir = "/etc/amnezia/amneziawg/clients"
+            if client_name.lower().startswith("tyumen"):
+                clients_dir = "/etc/amnezia/amneziawg/clients_tyumen"
+            else:
+                clients_dir = "/etc/amnezia/amneziawg/clients"
         else:
             clients_dir = "/etc/wireguard/clients"
 

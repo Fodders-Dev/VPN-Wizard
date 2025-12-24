@@ -23,14 +23,26 @@ from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
 
 STATE_HOST, STATE_USER, STATE_AUTH, STATE_PASSWORD, STATE_KEY, STATE_PORT = range(6)
 DEFAULT_PORT = 3478
+REQUIRED_CHANNEL = os.getenv("VPNW_REQUIRED_CHANNEL", "@fodders_dev")
 
 I18N = {
     "ru": {
         "start": (
-            "Добро пожаловать в VPN Wizard.\n"
-            "Отправьте IP или хост сервера (можно с :порт).\n"
-            "Подсказка: используйте /miniapp для веб-мастера."
+            "Добро пожаловать в VPN Wizard.\n\n"
+            "1) Отправьте IP или хост сервера (можно с :порт).\n"
+            "2) Укажите SSH пользователя и пароль/ключ.\n"
+            "3) Получите конфиг и QR.\n\n"
+            "Команда /miniapp откроет веб-мастер."
         ),
+        "help": (
+            "Как пользоваться ботом:\n"
+            "1) Отправьте IP/хост сервера.\n"
+            "2) Укажите SSH пользователя и пароль/ключ.\n"
+            "3) Выберите UDP порт (рекомендуем 3478).\n"
+            "4) Получите конфиг и QR.\n\n"
+            "Для веб-версии используйте /miniapp."
+        ),
+        "subscribe_required": "Подпишитесь на канал {channel} и нажмите /start, чтобы пользоваться ботом.",
         "ask_user": "SSH пользователь? (пример: root)",
         "choose_auth": "Выберите способ авторизации:",
         "auth_password": "пароль",
@@ -52,10 +64,21 @@ I18N = {
     },
     "en": {
         "start": (
-            "Welcome to VPN Wizard.\n"
-            "Send your server IP or host (optionally with :port).\n"
-            "Tip: use /miniapp to open the web wizard."
+            "Welcome to VPN Wizard.\n\n"
+            "1) Send your server IP or host (optionally with :port).\n"
+            "2) Provide SSH user and password/key.\n"
+            "3) Receive config and QR.\n\n"
+            "Use /miniapp to open the web wizard."
         ),
+        "help": (
+            "How to use:\n"
+            "1) Send your server IP/host.\n"
+            "2) Provide SSH user and password/key.\n"
+            "3) Pick UDP port (3478 recommended).\n"
+            "4) Receive config and QR.\n\n"
+            "Use /miniapp for the web UI."
+        ),
+        "subscribe_required": "Subscribe to {channel} and send /start to use the bot.",
         "ask_user": "SSH user? (example: root)",
         "choose_auth": "Choose auth method:",
         "auth_password": "password",
@@ -89,6 +112,35 @@ def _t(update: Update, key: str) -> str:
     lang = _lang(update)
     return I18N.get(lang, I18N["ru"]).get(key, key)
 
+def _channel_link() -> str:
+    channel = REQUIRED_CHANNEL or ""
+    if channel.startswith("http"):
+        return channel
+    if channel.startswith("@"):
+        return f"https://t.me/{channel[1:]}"
+    if channel:
+        return f"https://t.me/{channel}"
+    return ""
+
+
+async def _require_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    if not REQUIRED_CHANNEL:
+        return True
+    user = update.effective_user
+    if not user:
+        return False
+    try:
+        member = await context.bot.get_chat_member(REQUIRED_CHANNEL, user.id)
+    except Exception:
+        member = None
+    if not member or member.status in {"left", "kicked"}:
+        await update.message.reply_text(
+            _t(update, "subscribe_required").format(channel=_channel_link()),
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return False
+    return True
+
 
 def _parse_host_port(text: str) -> Tuple[str, int]:
     host = text.strip()
@@ -101,6 +153,8 @@ def _parse_host_port(text: str) -> Tuple[str, int]:
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not await _require_subscription(update, context):
+        return ConversationHandler.END
     await update.message.reply_text(
         _t(update, "start"),
         reply_markup=ReplyKeyboardRemove(),
@@ -267,6 +321,8 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def miniapp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _require_subscription(update, context):
+        return
     url = os.getenv("VPNW_MINIAPP_URL")
     if not url:
         await update.message.reply_text(_t(update, "miniapp_missing"))
@@ -276,6 +332,12 @@ async def miniapp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         resize_keyboard=True,
     )
     await update.message.reply_text(_t(update, "miniapp_open"), reply_markup=keyboard)
+
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _require_subscription(update, context):
+        return
+    await update.message.reply_text(_t(update, "help"), reply_markup=ReplyKeyboardRemove())
 
 
 def main() -> None:
@@ -298,6 +360,7 @@ def main() -> None:
     )
     app.add_handler(conv)
     app.add_handler(CommandHandler("miniapp", miniapp))
+    app.add_handler(CommandHandler("help", help_cmd))
     app.run_polling()
 
 

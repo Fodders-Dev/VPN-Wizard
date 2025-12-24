@@ -3,7 +3,7 @@
 ## BotFather
 1) Create a bot and copy the token.
 2) In BotFather, set a Mini App URL (must be HTTPS).
-3) Set bot commands: `/start`, `/miniapp`, `/cancel`.
+3) Set bot commands: `/start`, `/help`, `/miniapp`, `/cancel`.
 
 ## Run
 ```
@@ -20,3 +20,4 @@ python -m vpn_wizard.tg_bot
 - Enable CORS with `VPNW_CORS_ORIGINS="https://your-miniapp-domain"`.
 - You can also set the API on the fly via `?api=https://your-api-domain` in the miniapp URL.
 - For a single Railway service, run `python -m vpn_wizard.combined` with `VPNW_BOT_TOKEN` set.
+- To require a channel subscription, set `VPNW_REQUIRED_CHANNEL="@fodders_dev"`.
