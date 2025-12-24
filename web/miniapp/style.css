@@ -57,6 +57,7 @@ body {
   top: -80px;
   background: radial-gradient(circle, rgba(255, 255, 255, 0.18), transparent 70%);
   border-radius: 50%;
+  pointer-events: none;
 }
 
 .hero-top {
@@ -184,7 +185,6 @@ button.secondary {
 }
 
 #result-card {
-  display: none;
   text-align: center;
 }
 

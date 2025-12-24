@@ -109,6 +109,7 @@ Client config expectations:
 - Disable tuning with `--no-tune`, disable MTU with `--mtu 0`, disable auto-MTU with `--no-auto-mtu`.
 - Default UDP listen port: 3478 (override with `--listen-port` or miniapp advanced field).
 - Miniapp is served at `http://<host>:8000/miniapp` when running the API server.
+- Miniapp UI calls client configs "profiles" to reduce confusion for end users.
 - Telegram miniapp requires a public HTTPS URL configured in BotFather.
 - For cross-origin miniapp, set `VPNW_CORS_ORIGINS="https://your-miniapp-domain"` before running the API server.
 - Set `window.API_BASE` in `web/miniapp/config.js` to your API server URL when hosting separately.

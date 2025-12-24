@@ -5,7 +5,7 @@ const resultCard = document.getElementById("result-card");
 const downloadLink = document.getElementById("download-link");
 const qrImage = document.getElementById("qr-image");
 const qrDownload = document.getElementById("qr-download");
-const button = document.getElementById("provision-btn");
+const provisionBtn = document.getElementById("provision-btn");
 const progressLog = document.getElementById("progress-log");
 const progressFill = document.getElementById("progress-fill");
 const spinner = document.querySelector(".spinner");
@@ -14,6 +14,9 @@ const simpleToggle = document.getElementById("simple-toggle");
 const advancedFields = document.querySelectorAll(".advanced");
 const addClientBtn = document.getElementById("add-client-btn");
 const checkServerBtn = document.getElementById("check-server-btn");
+const onboardingCard = document.getElementById("onboarding-card");
+const serversCard = document.getElementById("servers-card");
+const faqCard = document.getElementById("faq-card");
 const serverStatusEl = document.getElementById("server-status");
 const serverMetaEl = document.getElementById("server-meta");
 const reconfigureToggle = document.getElementById("reconfigure-toggle");
@@ -36,7 +39,7 @@ const I18N = {
     ssh_user_placeholder: "root",
     ssh_password_label: "SSH пароль",
     ssh_password_placeholder: "если ключ - можно пусто",
-    client_name_label: "Имя клиента (необязательно)",
+    client_name_label: "Имя профиля (необязательно)",
     client_name_placeholder: "grandma-phone",
     ssh_key_label: "SSH ключ (необязательно)",
     ssh_key_placeholder: "вставьте приватный ключ",
@@ -46,8 +49,8 @@ const I18N = {
     reconfigure_label: "Показать настройку сервера",
     simple_mode_label: "Простой режим",
     simple_mode_hint: "Скрыть расширенные поля",
-    provision_btn: "Настроить сервер",
-    add_client_btn: "Добавить клиента",
+    provision_btn: "Настроить сервер и получить первый профиль",
+    add_client_btn: "Добавить профиль",
     step2_title: "Шаг 2. Прогресс",
     status_waiting: "Ожидание...",
     step3_title: "Шаг 3. Скачать",
@@ -58,11 +61,11 @@ const I18N = {
     servers_use_btn: "Использовать",
     onboarding_title: "Быстрый старт",
     onboarding_step1: "1) Введите IP/хост, SSH пользователя и пароль или ключ.",
-    onboarding_step2: "2) Нажмите \"Проверить сервер\" - если VPN уже есть, появятся клиенты.",
+    onboarding_step2: "2) Нажмите \"Проверить сервер\" - если VPN уже есть, появятся профили.",
     onboarding_step3: "3) Если нет - нажмите \"Настроить сервер\" и скачайте конфиг и QR.",
     onboarding_step4: "4) При блокировках попробуйте другой UDP порт или префикс tyumen-.",
-    clients_title: "Клиенты",
-    clients_empty: "Клиенты не найдены.",
+    clients_title: "Профили",
+    clients_empty: "Профили не найдены.",
     client_ip: "IP",
     client_handshake: "Рукопожатие",
     client_transfer: "Трафик",
@@ -75,14 +78,14 @@ const I18N = {
     toggle_log_hide: "Скрыть лог",
     status_creating_job: "Создаём задачу...",
     status_provisioning: "Настраиваем сервер... это может занять пару минут.",
-    status_adding_client: "Добавляем клиента...",
+    status_adding_client: "Добавляем профиль...",
     status_ready: "Готово.",
-    status_client_ready: "Клиент готов",
-    status_client_removed: "Клиент удален",
-    status_client_rotated: "Клиент перевыпущен",
+    status_client_ready: "Профиль готов",
+    status_client_removed: "Профиль удален",
+    status_client_rotated: "Профиль перевыпущен",
     status_failed: "Ошибка",
     status_checking: "Проверяем сервер...",
-    status_loading_clients: "Загружаем клиентов...",
+    status_loading_clients: "Загружаем профили...",
     status_server_configured: "Сервер уже настроен",
     status_server_needs_setup: "Сервер не настроен",
     status_server_error: "Не удалось проверить сервер",
@@ -96,14 +99,14 @@ const I18N = {
     job_error: "Ошибка",
     meta_protocol: "Протокол",
     meta_port: "Порт",
-    meta_clients: "Клиентов",
+    meta_clients: "Профилей",
     meta_tyumen: "Tyumen порт",
     protocol_amneziawg: "AmneziaWG",
     protocol_wireguard: "WireGuard",
     alert_fill_host_user: "Заполните поля Host и User.",
-    alert_remove_client: "Удалить клиента",
-    alert_remove_confirm: "Точно удалить клиента?",
-    alert_rotate_confirm: "Перевыпустить ключи для клиента?",
+    alert_remove_client: "Удалить профиль",
+    alert_remove_confirm: "Точно удалить профиль?",
+    alert_rotate_confirm: "Перевыпустить ключи для профиля?",
     alert_export_failed: "Не удалось получить конфиг",
     faq_title: "FAQ",
     faq_what_is_title: "Что это за бот?",
@@ -112,8 +115,8 @@ const I18N = {
     faq_safe_body: "Бот использует ваши SSH-данные только для настройки. Мы не храним пароли, всё выполняется на вашем сервере.",
     faq_ports_title: "Что делать, если VPN не работает?",
     faq_ports_body: "Попробуйте другой UDP порт в расширенных настройках (например 3478 или 33434).",
-    faq_tyumen_title: "Как добавить клиента?",
-    faq_tyumen_body: "Введите имя клиента и нажмите \"Добавить клиента\". Для обхода блокировок используйте префикс tyumen-.",
+    faq_tyumen_title: "Как добавить профиль?",
+    faq_tyumen_body: "Введите имя профиля и нажмите \"Добавить профиль\". Для обхода блокировок используйте префикс tyumen-.",
   },
   en: {
     app_title: "VPN Wizard",
@@ -125,7 +128,7 @@ const I18N = {
     ssh_user_placeholder: "root",
     ssh_password_label: "SSH password",
     ssh_password_placeholder: "optional if key",
-    client_name_label: "Client name (optional)",
+    client_name_label: "Profile name (optional)",
     client_name_placeholder: "grandma-phone",
     ssh_key_label: "SSH key (optional)",
     ssh_key_placeholder: "paste private key",
@@ -135,8 +138,8 @@ const I18N = {
     reconfigure_label: "Show server setup",
     simple_mode_label: "Simple mode",
     simple_mode_hint: "Hide advanced fields",
-    provision_btn: "Configure server",
-    add_client_btn: "Add new client",
+    provision_btn: "Configure server and get the first profile",
+    add_client_btn: "Add profile",
     step2_title: "Step 2: Progress",
     status_waiting: "Waiting...",
     step3_title: "Step 3: Download",
@@ -147,11 +150,11 @@ const I18N = {
     servers_use_btn: "Use",
     onboarding_title: "Quick start",
     onboarding_step1: "1) Enter host, SSH user, and password or key.",
-    onboarding_step2: "2) Click \"Check server\" - if VPN exists you will see clients.",
+    onboarding_step2: "2) Click \"Check server\" - if VPN exists you will see profiles.",
     onboarding_step3: "3) Otherwise click “Configure server” and download config + QR.",
     onboarding_step4: "4) If blocked, try another UDP port or the tyumen- prefix.",
-    clients_title: "Clients",
-    clients_empty: "No clients yet.",
+    clients_title: "Profiles",
+    clients_empty: "No profiles yet.",
     client_ip: "IP",
     client_handshake: "Handshake",
     client_transfer: "Traffic",
@@ -164,14 +167,14 @@ const I18N = {
     toggle_log_hide: "Hide log",
     status_creating_job: "Creating job...",
     status_provisioning: "Provisioning... this can take a few minutes.",
-    status_adding_client: "Adding client...",
+    status_adding_client: "Adding profile...",
     status_ready: "Ready.",
-    status_client_ready: "Client ready",
-    status_client_removed: "Client removed",
-    status_client_rotated: "Client rotated",
+    status_client_ready: "Profile ready",
+    status_client_removed: "Profile removed",
+    status_client_rotated: "Profile rotated",
     status_failed: "Failed",
     status_checking: "Checking server...",
-    status_loading_clients: "Loading clients...",
+    status_loading_clients: "Loading profiles...",
     status_server_configured: "Server already configured",
     status_server_needs_setup: "Server is not configured",
     status_server_error: "Failed to check server",
@@ -185,14 +188,14 @@ const I18N = {
     job_error: "Error",
     meta_protocol: "Protocol",
     meta_port: "Port",
-    meta_clients: "Clients",
+    meta_clients: "Profiles",
     meta_tyumen: "Tyumen port",
     protocol_amneziawg: "AmneziaWG",
     protocol_wireguard: "WireGuard",
     alert_fill_host_user: "Please fill in Host and User fields first.",
-    alert_remove_client: "Remove client",
-    alert_remove_confirm: "Delete this client?",
-    alert_rotate_confirm: "Rotate keys for this client?",
+    alert_remove_client: "Remove profile",
+    alert_remove_confirm: "Delete this profile?",
+    alert_rotate_confirm: "Rotate keys for this profile?",
     alert_export_failed: "Failed to export config",
     faq_title: "FAQ",
     faq_what_is_title: "What is this bot?",
@@ -201,8 +204,8 @@ const I18N = {
     faq_safe_body: "The bot uses your SSH credentials only for setup. We do not store passwords.",
     faq_ports_title: "VPN not working?",
     faq_ports_body: "Try another UDP port in advanced settings (for example 3478 or 33434).",
-    faq_tyumen_title: "How to add a client?",
-    faq_tyumen_body: "Enter a client name and click \"Add client\". For bypass, use the tyumen- prefix.",
+    faq_tyumen_title: "How to add a profile?",
+    faq_tyumen_body: "Enter a profile name and click \"Add profile\". For bypass, use the tyumen- prefix.",
   },
 };
 
@@ -233,6 +236,7 @@ const STATE = {
   clients: [],
   logVisible: false,
   lastAuth: null,
+  checked: false,
 };
 
 function t(key) {
@@ -266,6 +270,7 @@ function applyI18n() {
   renderServers();
   renderClients();
   setLogVisible(STATE.logVisible);
+  updateStageVisibility();
 }
 const tg = window.Telegram && window.Telegram.WebApp;
 if (tg) {
@@ -378,17 +383,48 @@ function setDownload(config, qrBase64, name) {
   } else if (qrDownload) {
     qrDownload.classList.add("hidden");
   }
-  resultCard.style.display = "block";
+  if (resultCard) {
+    resultCard.classList.remove("hidden");
+  }
 }
 
-function setConfigureVisibility() {
-  if (!button) {
+function setProgressVisible(visible) {
+  if (!progressCard) {
     return;
   }
-  const allow = !serverConfigured || (reconfigureCheckbox && reconfigureCheckbox.checked);
-  button.style.display = allow ? "inline-flex" : "none";
+  progressCard.classList.toggle("hidden", !visible);
+}
+
+function updateStageVisibility() {
+  const checked = STATE.checked;
+  const configured = serverConfigured;
+
+  if (serversCard) {
+    serversCard.classList.toggle("hidden", !checked);
+  }
+  if (faqCard) {
+    faqCard.classList.toggle("hidden", !checked);
+  }
+  if (onboardingCard) {
+    onboardingCard.classList.toggle("hidden", !checked || configured);
+  }
+  if (clientsCard) {
+    clientsCard.classList.toggle("hidden", !checked || !configured);
+  }
+  if (addClientBtn) {
+    addClientBtn.classList.toggle("hidden", !checked || !configured);
+  }
+  if (provisionBtn) {
+    provisionBtn.classList.toggle("hidden", !checked || configured);
+  }
   if (reconfigureToggle) {
-    reconfigureToggle.classList.toggle("hidden", !serverConfigured);
+    reconfigureToggle.classList.add("hidden");
+  }
+  if (!checked) {
+    if (resultCard) {
+      resultCard.classList.add("hidden");
+    }
+    setProgressVisible(false);
   }
 }
 
@@ -644,9 +680,9 @@ simpleToggle.addEventListener("change", () => {
 });
 
 if (reconfigureCheckbox) {
-  reconfigureCheckbox.addEventListener("change", setConfigureVisibility);
+  reconfigureCheckbox.addEventListener("change", updateStageVisibility);
 }
-setConfigureVisibility();
+updateStageVisibility();
 
 ["host", "user"].forEach((name) => {
   const field = form.elements[name];
@@ -655,7 +691,8 @@ setConfigureVisibility();
   }
   field.addEventListener("input", () => {
     serverConfigured = false;
-    setConfigureVisibility();
+    STATE.checked = false;
+    updateStageVisibility();
     if (serverStatusEl) {
       serverStatusEl.textContent = t("server_status_idle");
     }
@@ -697,7 +734,7 @@ function renderClients(list = STATE.clients) {
     const header = document.createElement("div");
     header.className = "client-header";
     const nameEl = document.createElement("div");
-    nameEl.textContent = client.name || "client";
+    nameEl.textContent = client.name || "profile";
     const ifaceEl = document.createElement("div");
     ifaceEl.className = "client-meta";
     ifaceEl.textContent = client.interface
@@ -829,7 +866,9 @@ async function pollJob(jobId, clientName, authData) {
     setProgressState("error");
     clearInterval(pollTimer);
     pollTimer = null;
-    button.disabled = false;
+    if (provisionBtn) {
+      provisionBtn.disabled = false;
+    }
     return;
   }
 
@@ -847,9 +886,11 @@ async function pollJob(jobId, clientName, authData) {
     } else {
       setStatus(t("download_ready"));
     }
-    button.disabled = false;
+    if (provisionBtn) {
+      provisionBtn.disabled = false;
+    }
     serverConfigured = true;
-    setConfigureVisibility();
+    updateStageVisibility();
     if (authData) {
       await refreshClients(authData);
     }
@@ -862,37 +903,96 @@ if (toggleLogBtn) {
   });
 }
 
-form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  button.disabled = true;
-  resultCard.style.display = "none";
+async function runServerCheck(data) {
+  if (!data.host || !data.user) {
+    alert(t("alert_fill_host_user"));
+    return;
+  }
+  if (checkServerBtn) {
+    checkServerBtn.disabled = true;
+  }
+  if (serverStatusEl) {
+    serverStatusEl.textContent = t("status_checking");
+  }
+  if (serverMetaEl) {
+    serverMetaEl.textContent = "";
+  }
+  setProgressVisible(false);
+  if (resultCard) {
+    resultCard.classList.add("hidden");
+  }
+
+  try {
+    const result = await fetchServerStatus(data);
+    if (!result.ok) {
+      if (serverStatusEl) {
+        serverStatusEl.textContent = `${t("status_server_error")}: ${result.error || "unknown error"}`;
+      }
+      serverConfigured = false;
+      STATE.checked = false;
+      updateStageVisibility();
+      renderClients([]);
+      return;
+    }
+    STATE.checked = true;
+    serverConfigured = Boolean(result.configured);
+    if (serverStatusEl) {
+      serverStatusEl.textContent = serverConfigured
+        ? t("status_server_configured")
+        : t("status_server_needs_setup");
+    }
+    if (result.listen_port && form.elements.listen_port) {
+      form.elements.listen_port.value = result.listen_port;
+    }
+    setServerMeta(result);
+    updateStageVisibility();
+    upsertServer({
+      host: data.host,
+      user: data.user,
+      listen_port: result.listen_port || data.listen_port || undefined,
+      clients_count: result.clients_count,
+    });
+    if (serverConfigured) {
+      await refreshClients(data);
+    } else {
+      renderClients([]);
+    }
+  } catch (err) {
+    if (serverStatusEl) {
+      serverStatusEl.textContent = `${t("status_server_error")}: ${err}`;
+    }
+    serverConfigured = false;
+    STATE.checked = false;
+    updateStageVisibility();
+    renderClients([]);
+  } finally {
+    if (checkServerBtn) {
+      checkServerBtn.disabled = false;
+    }
+  }
+}
+
+async function runProvision() {
+  const data = getFormData();
+  STATE.lastAuth = data;
+  STATE.checked = true;
+  updateStageVisibility();
+  if (!data.host || !data.user) {
+    alert(t("alert_fill_host_user"));
+    return;
+  }
+  if (provisionBtn) {
+    provisionBtn.disabled = true;
+  }
+  setProgressVisible(true);
   setStatus(t("status_creating_job"));
   setProgress([]);
   setProgressState("queued");
   setLogVisible(false);
-
-  const data = getFormData();
-  STATE.lastAuth = data;
-
-  if (reconfigureCheckbox && !reconfigureCheckbox.checked) {
-    try {
-      const status = await fetchServerStatus(data);
-      if (status.ok && status.configured) {
-        serverConfigured = true;
-        if (serverStatusEl) {
-          serverStatusEl.textContent = t("status_server_configured");
-        }
-        setServerMeta(status);
-        setConfigureVisibility();
-        setStatus(t("status_server_configured"));
-        button.disabled = false;
-        await refreshClients(data);
-        return;
-      }
-    } catch (err) {
-      console.error(err);
-    }
+  if (resultCard) {
+    resultCard.classList.add("hidden");
   }
+
   const payload = {
     ssh: buildSshPayload(data),
     options: {
@@ -930,27 +1030,56 @@ form.addEventListener("submit", async (event) => {
         setProgressState("error");
         clearInterval(pollTimer);
         pollTimer = null;
-        button.disabled = false;
+        if (provisionBtn) {
+          provisionBtn.disabled = false;
+        }
       });
     }, 2000);
     await pollJob(result.job_id, currentClientName, data);
   } catch (err) {
     setStatus(`${t("status_failed")}: ${err}`);
     setProgressState("error");
-    button.disabled = false;
+    if (provisionBtn) {
+      provisionBtn.disabled = false;
+    }
   } finally {
-    if (!pollTimer) {
-      button.disabled = false;
+    if (!pollTimer && provisionBtn) {
+      provisionBtn.disabled = false;
     }
   }
+}
+
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const data = getFormData();
+  STATE.lastAuth = data;
+  await runServerCheck(data);
 });
+
+if (provisionBtn) {
+  provisionBtn.addEventListener("click", async () => {
+    await runProvision();
+  });
+}
 
 addClientBtn.addEventListener("click", async () => {
   const data = getFormData();
   STATE.lastAuth = data;
+  STATE.checked = true;
+  updateStageVisibility();
+  if (!data.host || !data.user) {
+    alert(t("alert_fill_host_user"));
+    return;
+  }
+  addClientBtn.disabled = true;
+  setProgressVisible(true);
   setStatus(t("status_adding_client"));
   setProgress([]);
   setProgressState("running");
+  setLogVisible(false);
+  if (resultCard) {
+    resultCard.classList.add("hidden");
+  }
   try {
     const result = await fetchJson("/api/clients/add", {
       method: "POST",
@@ -970,68 +1099,12 @@ addClientBtn.addEventListener("click", async () => {
     setStatus(`${t("status_client_ready")}: ${result.client_name}`);
     upsertServer({ host: data.host, user: data.user, listen_port: data.listen_port || undefined });
     serverConfigured = true;
-    setConfigureVisibility();
+    updateStageVisibility();
     await refreshClients(data);
   } catch (err) {
     setStatus(`${t("status_failed")}: ${err}`);
     setProgressState("error");
+  } finally {
+    addClientBtn.disabled = false;
   }
 });
-
-if (checkServerBtn) {
-  checkServerBtn.addEventListener("click", async () => {
-    const data = getFormData();
-    STATE.lastAuth = data;
-    if (!data.host || !data.user) {
-      alert(t("alert_fill_host_user"));
-      return;
-    }
-    if (serverStatusEl) {
-      serverStatusEl.textContent = t("status_checking");
-    }
-    if (serverMetaEl) {
-      serverMetaEl.textContent = "";
-    }
-    try {
-      const result = await fetchServerStatus(data);
-      if (!result.ok) {
-        if (serverStatusEl) {
-          serverStatusEl.textContent = `${t("status_server_error")}: ${result.error || "unknown error"}`;
-        }
-        serverConfigured = false;
-        setConfigureVisibility();
-        renderClients([]);
-        return;
-      }
-      serverConfigured = Boolean(result.configured);
-      if (serverStatusEl) {
-        serverStatusEl.textContent = serverConfigured
-          ? t("status_server_configured")
-          : t("status_server_needs_setup");
-      }
-      if (result.listen_port && form.elements.listen_port) {
-        form.elements.listen_port.value = result.listen_port;
-      }
-      setServerMeta(result);
-      setConfigureVisibility();
-      upsertServer({
-        host: data.host,
-        user: data.user,
-        listen_port: result.listen_port || data.listen_port || undefined,
-        clients_count: result.clients_count,
-      });
-      if (serverConfigured) {
-        await refreshClients(data);
-      } else {
-        renderClients([]);
-      }
-    } catch (err) {
-      if (serverStatusEl) {
-        serverStatusEl.textContent = `${t("status_server_error")}: ${err}`;
-      }
-      serverConfigured = false;
-      setConfigureVisibility();
-      renderClients([]);
-    }
-  });
-}

@@ -38,7 +38,7 @@
           <input name="password" type="password" placeholder="optional if key" data-i18n-placeholder="ssh_password_placeholder" />
         </label>
         <label>
-          <span data-i18n="client_name_label">Имя клиента (необязательно)</span>
+          <span data-i18n="client_name_label">Имя профиля (необязательно)</span>
           <input name="client_name" placeholder="grandma-phone" data-i18n-placeholder="client_name_placeholder" />
         </label>
         <label class="advanced">
@@ -50,7 +50,7 @@
           <input name="listen_port" type="number" min="1" max="65535" value="3478" />
         </label>
         <div class="server-tools">
-          <button type="button" id="check-server-btn" class="secondary" data-i18n="check_server_btn">Проверить сервер</button>
+          <button type="submit" id="check-server-btn" data-i18n="check_server_btn">Проверить сервер</button>
           <div id="server-status" class="server-status" data-i18n="server_status_idle">Сервер не проверен</div>
           <div id="server-meta" class="server-meta"></div>
           <label class="toggle hidden" id="reconfigure-toggle">
@@ -65,28 +65,28 @@
           </label>
           <span class="toggle-hint" data-i18n="simple_mode_hint">Скрыть расширенные поля</span>
         </div>
-        <button type="submit" id="provision-btn" data-i18n="provision_btn">Настроить сервер</button>
-        <button type="button" id="add-client-btn" class="secondary" data-i18n="add_client_btn">Добавить клиента</button>
+        <button type="button" id="provision-btn" class="hidden" data-i18n="provision_btn">Настроить сервер и получить первый профиль</button>
+        <button type="button" id="add-client-btn" class="secondary hidden" data-i18n="add_client_btn">Добавить профиль</button>
       </form>
     </section>
 
-    <section class="card" id="onboarding-card">
+    <section class="card hidden" id="onboarding-card">
       <h2 data-i18n="onboarding_title">Быстрый старт</h2>
       <ol class="onboarding-list">
         <li data-i18n="onboarding_step1">1) Введите IP/хост, SSH пользователя и пароль или ключ.</li>
-        <li data-i18n="onboarding_step2">2) Нажмите "Проверить сервер" - если VPN уже есть, появятся клиенты.</li>
+        <li data-i18n="onboarding_step2">2) Нажмите "Проверить сервер" - если VPN уже есть, появятся профили.</li>
         <li data-i18n="onboarding_step3">3) Если нет - нажмите "Настроить сервер" и скачайте конфиг и QR.</li>
         <li data-i18n="onboarding_step4">4) При блокировках попробуйте другой UDP порт или префикс tyumen-.</li>
       </ol>
     </section>
 
-    <section class="card" id="servers-card">
+    <section class="card hidden" id="servers-card">
       <h2 data-i18n="servers_title">Мои серверы</h2>
       <div id="servers-empty" data-i18n="servers_empty">Пока нет сохранённых серверов.</div>
       <div id="servers-list" class="servers-list"></div>
     </section>
 
-    <section class="card" id="progress-card">
+    <section class="card hidden" id="progress-card">
       <h2 data-i18n="step2_title">Шаг 2. Прогресс</h2>
       <div class="progress-bar" aria-hidden="true">
         <div id="progress-fill" class="progress-fill"></div>
@@ -98,19 +98,19 @@
     </section>
 
     <section class="card hidden" id="clients-card">
-      <h2 data-i18n="clients_title">Клиенты</h2>
-      <div id="clients-empty" data-i18n="clients_empty">Клиенты не найдены.</div>
+      <h2 data-i18n="clients_title">Профили</h2>
+      <div id="clients-empty" data-i18n="clients_empty">Профили не найдены.</div>
       <div id="clients-list" class="clients-list"></div>
     </section>
 
-    <section class="card" id="result-card">
+    <section class="card hidden" id="result-card">
       <h2 data-i18n="step3_title">Шаг 3. Скачать</h2>
       <a id="download-link" class="download" href="#" download="client1.conf" data-i18n="download_btn">Скачать конфиг</a>
       <a id="qr-download" class="secondary qr-download hidden" href="#" download="client1.png" data-i18n="download_qr_btn">Скачать QR</a>
       <img id="qr-image" alt="QR code" />
     </section>
 
-    <section class="card" id="faq-card">
+    <section class="card hidden" id="faq-card">
       <h2 data-i18n="faq_title">FAQ</h2>
       <details>
         <summary data-i18n="faq_what_is_title">Что это за бот?</summary>
@@ -125,8 +125,8 @@
         <p data-i18n="faq_ports_body">Попробуйте другой UDP порт в расширенных настройках (например 3478 или 33434).</p>
       </details>
       <details>
-        <summary data-i18n="faq_tyumen_title">Как добавить клиента?</summary>
-        <p data-i18n="faq_tyumen_body">Введите имя клиента и нажмите "Добавить клиента". Для обхода блокировок используйте префикс tyumen-.</p>
+        <summary data-i18n="faq_tyumen_title">Как добавить профиль?</summary>
+        <p data-i18n="faq_tyumen_body">Введите имя профиля и нажмите "Добавить профиль". Для обхода блокировок используйте префикс tyumen-.</p>
       </details>
     </section>
   </main>
