@@ -6,4 +6,4 @@
 - [x] Implement GUI wizard
 - [x] Write SPEC/RUNBOOK
 
-Next: Add multi-client management and safe idempotent config updates.
+Next: Добавить учет профилей Telegram (персистентный список серверов и клиентов) и управление клиентами из миниаппа/бота.

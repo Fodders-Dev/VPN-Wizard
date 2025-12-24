@@ -102,7 +102,7 @@ class WireGuardProvisioner:
         client_name: str = "client1",
         client_ip: str = "10.10.0.2/32",
         server_cidr: str = "10.10.0.1/24",
-        listen_port: int = 443,
+        listen_port: int = 3478,
         dns: str = "1.1.1.1, 1.0.0.1",
         mtu: Optional[int] = None,
         auto_mtu: bool = True,
@@ -861,7 +861,6 @@ class WireGuardProvisioner:
                 cmd_genkey = "awg genkey"
                 cmd_pubkey = "awg pubkey"
                 rebuild_cmd = self.rebuild_awg1_from_clients
-                self.listen_port = 3478 # Tyumen port (mobile-friendly UDP)
                 self.server_cidr = "10.11.0.1/24" # Tyumen subnet
                 # Mutate obfuscation params for Tyumen to be different from default
                 self.awg_jc += 1

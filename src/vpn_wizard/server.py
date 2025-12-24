@@ -64,7 +64,7 @@ class ProvisionOptions(BaseModel):
     client_name: str = "client1"
     client_ip: Optional[str] = None
     server_cidr: str = "10.10.0.1/24"
-    listen_port: int = 443
+    listen_port: int = 3478
     dns: str = "1.1.1.1, 1.0.0.1"
     mtu: Optional[int] = None
     auto_mtu: bool = True
@@ -106,6 +106,7 @@ class ClientRequest(BaseModel):
     ssh: SSHPayload
     client_name: Optional[str] = None
     client_ip: Optional[str] = None
+    listen_port: Optional[int] = None
 
 
 class ClientRemoveRequest(BaseModel):
@@ -408,7 +409,10 @@ async def client_add(payload: ClientRequest) -> ClientAddResponse:
             key_path=key_path,
         )
         with SSHRunner(cfg) as ssh:
-            prov = WireGuardProvisioner(ssh)
+            prov_kwargs = {}
+            if payload.listen_port:
+                prov_kwargs["listen_port"] = payload.listen_port
+            prov = WireGuardProvisioner(ssh, **prov_kwargs)
             result = prov.add_client(client_name=payload.client_name, client_ip=payload.client_ip)
         qr_b64 = _build_qr_base64(result["config"])
         return ClientAddResponse(
@@ -469,7 +473,10 @@ async def client_rotate(payload: ClientRemoveRequest) -> ClientAddResponse:
             key_path=key_path,
         )
         with SSHRunner(cfg) as ssh:
-            prov = WireGuardProvisioner(ssh)
+            prov_kwargs = {}
+            if payload.listen_port:
+                prov_kwargs["listen_port"] = payload.listen_port
+            prov = WireGuardProvisioner(ssh, **prov_kwargs)
             result = prov.rotate_client(payload.client_name)
         qr_b64 = _build_qr_base64(result["config"])
         return ClientAddResponse(
@@ -489,6 +496,66 @@ class LogsResponse(BaseModel):
     ok: bool
     logs: Optional[str] = None
     error: Optional[str] = None
+
+
+class ServerStatusResponse(BaseModel):
+    ok: bool
+    configured: bool
+    protocol: Optional[str] = None
+    listen_port: Optional[int] = None
+    server_cidr: Optional[str] = None
+    clients_count: int = 0
+    tyumen_port: Optional[int] = None
+    error: Optional[str] = None
+
+
+def _detect_server_status(ssh: SSHRunner) -> dict:
+    awg_conf = "/etc/amnezia/amneziawg/awg0.conf"
+    wg_conf = "/etc/wireguard/wg0.conf"
+    has_awg = ssh.run(f"test -f {awg_conf} && echo yes || echo no", sudo=True, check=False).strip() == "yes"
+    has_wg = ssh.run(f"test -f {wg_conf} && echo yes || echo no", sudo=True, check=False).strip() == "yes"
+    if not has_awg and not has_wg:
+        return {"configured": False}
+
+    protocol = "amneziawg" if has_awg else "wireguard"
+    conf_path = awg_conf if has_awg else wg_conf
+    clients_dir = "/etc/amnezia/amneziawg/clients" if has_awg else "/etc/wireguard/clients"
+
+    listen_port_raw = ssh.run(
+        f"awk -F'= ' '/^ListenPort/{{print $2; exit}}' {conf_path} 2>/dev/null || true",
+        sudo=True,
+        check=False,
+    ).strip()
+    listen_port = int(listen_port_raw) if listen_port_raw.isdigit() else None
+
+    server_cidr = ssh.run(
+        f"awk -F'= ' '/^Address/{{print $2; exit}}' {conf_path} 2>/dev/null || true",
+        sudo=True,
+        check=False,
+    ).strip() or None
+
+    clients_count_raw = ssh.run(
+        f"ls -1 {clients_dir}/*.conf 2>/dev/null | wc -l",
+        sudo=True,
+        check=False,
+    ).strip()
+    clients_count = int(clients_count_raw) if clients_count_raw.isdigit() else 0
+
+    tyumen_port_raw = ssh.run(
+        "awk -F'= ' '/^ListenPort/{{print $2; exit}}' /etc/amnezia/amneziawg/awg1.conf 2>/dev/null || true",
+        sudo=True,
+        check=False,
+    ).strip()
+    tyumen_port = int(tyumen_port_raw) if tyumen_port_raw.isdigit() else None
+
+    return {
+        "configured": True,
+        "protocol": protocol,
+        "listen_port": listen_port,
+        "server_cidr": server_cidr,
+        "clients_count": clients_count,
+        "tyumen_port": tyumen_port,
+    }
 
 @app.post("/api/logs", response_model=LogsResponse)
 async def get_logs(payload: RollbackRequest) -> LogsResponse:
@@ -513,6 +580,43 @@ async def get_logs(payload: RollbackRequest) -> LogsResponse:
         return LogsResponse(ok=True, logs=report)
     except Exception as exc:
         return LogsResponse(ok=False, error=str(exc))
+    finally:
+        temp_key.cleanup()
+
+
+@app.post("/api/server/status", response_model=ServerStatusResponse)
+async def server_status(payload: RollbackRequest) -> ServerStatusResponse:
+    temp_key = TempKey()
+    try:
+        key_path = payload.ssh.key_path
+        if payload.ssh.key_content:
+            temp_key = _write_temp_key(payload.ssh.key_content)
+            key_path = temp_key.path
+
+        cfg = SSHConfig(
+            host=payload.ssh.host,
+            user=payload.ssh.user,
+            port=payload.ssh.port,
+            password=payload.ssh.password,
+            key_path=key_path,
+        )
+        with SSHRunner(cfg) as ssh:
+            status = _detect_server_status(ssh)
+
+        if not status.get("configured"):
+            return ServerStatusResponse(ok=True, configured=False)
+
+        return ServerStatusResponse(
+            ok=True,
+            configured=True,
+            protocol=status.get("protocol"),
+            listen_port=status.get("listen_port"),
+            server_cidr=status.get("server_cidr"),
+            clients_count=status.get("clients_count", 0),
+            tyumen_port=status.get("tyumen_port"),
+        )
+    except Exception as exc:
+        return ServerStatusResponse(ok=False, configured=False, error=str(exc))
     finally:
         temp_key.cleanup()
 

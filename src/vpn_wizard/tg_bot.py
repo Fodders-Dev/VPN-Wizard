@@ -21,7 +21,73 @@ import qrcode
 from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
 
 
-STATE_HOST, STATE_USER, STATE_AUTH, STATE_PASSWORD, STATE_KEY = range(5)
+STATE_HOST, STATE_USER, STATE_AUTH, STATE_PASSWORD, STATE_KEY, STATE_PORT = range(6)
+DEFAULT_PORT = 3478
+
+I18N = {
+    "ru": {
+        "start": (
+            "Добро пожаловать в VPN Wizard.\n"
+            "Отправьте IP или хост сервера (можно с :порт).\n"
+            "Подсказка: используйте /miniapp для веб-мастера."
+        ),
+        "ask_user": "SSH пользователь? (пример: root)",
+        "choose_auth": "Выберите способ авторизации:",
+        "auth_password": "пароль",
+        "auth_key": "ключ",
+        "ask_password": "Отправьте SSH пароль.",
+        "ask_key": "Отправьте SSH приватный ключ (текстом).",
+        "ask_port": "UDP порт для VPN? (по умолчанию 3478)",
+        "port_invalid": "Введите число порта от 1 до 65535.",
+        "port_default": "по умолчанию",
+        "auth_retry": "Введите «пароль» или «ключ».",
+        "provisioning": "Настраиваем... это может занять пару минут.",
+        "provision_failed": "Не удалось настроить: {error}",
+        "checks_ok": "Проверки: OK",
+        "checks_fail": "Проверки: Есть проблемы",
+        "canceled": "Отменено.",
+        "open_wizard": "Открыть мастер",
+        "miniapp_open": "Откройте мастер:",
+        "miniapp_missing": "VPNW_MINIAPP_URL не настроен.",
+    },
+    "en": {
+        "start": (
+            "Welcome to VPN Wizard.\n"
+            "Send your server IP or host (optionally with :port).\n"
+            "Tip: use /miniapp to open the web wizard."
+        ),
+        "ask_user": "SSH user? (example: root)",
+        "choose_auth": "Choose auth method:",
+        "auth_password": "password",
+        "auth_key": "key",
+        "ask_password": "Send SSH password.",
+        "ask_key": "Send SSH private key content (paste as text).",
+        "ask_port": "UDP port for VPN? (default 3478)",
+        "port_invalid": "Enter a port number from 1 to 65535.",
+        "port_default": "default",
+        "auth_retry": "Type 'password' or 'key'.",
+        "provisioning": "Provisioning... this can take a few minutes.",
+        "provision_failed": "Provision failed: {error}",
+        "checks_ok": "Checks: OK",
+        "checks_fail": "Checks: Issues",
+        "canceled": "Canceled.",
+        "open_wizard": "Open VPN Wizard",
+        "miniapp_open": "Open the wizard:",
+        "miniapp_missing": "VPNW_MINIAPP_URL is not configured.",
+    },
+}
+
+
+def _lang(update: Update) -> str:
+    code = (update.effective_user.language_code or "").lower()
+    if code and not code.startswith("ru"):
+        return "en"
+    return "ru"
+
+
+def _t(update: Update, key: str) -> str:
+    lang = _lang(update)
+    return I18N.get(lang, I18N["ru"]).get(key, key)
 
 
 def _parse_host_port(text: str) -> Tuple[str, int]:
@@ -36,8 +102,7 @@ def _parse_host_port(text: str) -> Tuple[str, int]:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text(
-        "Welcome to VPN Wizard.\nSend your server IP or host (optionally with :port).\n"
-        "Tip: use /miniapp to open the web wizard.",
+        _t(update, "start"),
         reply_markup=ReplyKeyboardRemove(),
     )
     context.user_data.clear()
@@ -48,28 +113,30 @@ async def host_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     host, port = _parse_host_port(update.message.text)
     context.user_data["host"] = host
     context.user_data["port"] = port
-    await update.message.reply_text("SSH user? (example: root)")
+    await update.message.reply_text(_t(update, "ask_user"))
     return STATE_USER
 
 
 async def user_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data["user"] = update.message.text.strip()
-    keyboard = ReplyKeyboardMarkup([["password", "key"]], one_time_keyboard=True, resize_keyboard=True)
-    await update.message.reply_text("Choose auth method:", reply_markup=keyboard)
+    keyboard = ReplyKeyboardMarkup(
+        [[_t(update, "auth_password"), _t(update, "auth_key")]],
+        one_time_keyboard=True,
+        resize_keyboard=True,
+    )
+    await update.message.reply_text(_t(update, "choose_auth"), reply_markup=keyboard)
     return STATE_AUTH
 
 
 async def auth_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     choice = update.message.text.strip().lower()
-    if choice == "password":
-        await update.message.reply_text("Send SSH password.", reply_markup=ReplyKeyboardRemove())
+    if choice in {"password", "пароль"}:
+        await update.message.reply_text(_t(update, "ask_password"), reply_markup=ReplyKeyboardRemove())
         return STATE_PASSWORD
-    if choice == "key":
-        await update.message.reply_text(
-            "Send SSH private key content (paste as text).", reply_markup=ReplyKeyboardRemove()
-        )
+    if choice in {"key", "ключ"}:
+        await update.message.reply_text(_t(update, "ask_key"), reply_markup=ReplyKeyboardRemove())
         return STATE_KEY
-    await update.message.reply_text("Type 'password' or 'key'.")
+    await update.message.reply_text(_t(update, "auth_retry"))
     return STATE_AUTH
 
 
@@ -96,8 +163,15 @@ def _provision(data: dict) -> tuple[str, list[dict]]:
             password=data.get("password"),
             key_path=key_path,
         )
+        listen_port = data.get("listen_port") or DEFAULT_PORT
         with SSHRunner(cfg) as ssh:
-            prov = WireGuardProvisioner(ssh, client_name="client1", auto_mtu=True, tune=True)
+            prov = WireGuardProvisioner(
+                ssh,
+                client_name="client1",
+                auto_mtu=True,
+                tune=True,
+                listen_port=listen_port,
+            )
             prov.provision()
             config = prov.export_client_config()
             checks = prov.post_check()
@@ -111,16 +185,16 @@ def _provision(data: dict) -> tuple[str, list[dict]]:
 
 
 async def _run_provision(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("Provisioning... this can take a few minutes.")
+    await update.message.reply_text(_t(update, "provisioning"), reply_markup=ReplyKeyboardRemove())
     data = context.user_data
     try:
         config, checks = await asyncio.to_thread(_provision, data)
     except Exception as exc:
-        await update.message.reply_text(f"Provision failed: {exc}")
+        await update.message.reply_text(_t(update, "provision_failed").format(error=exc))
         return ConversationHandler.END
 
     ok = all(item.get("ok") for item in checks) if checks else True
-    status = "Checks: OK" if ok else "Checks: Issues"
+    status = _t(update, "checks_ok") if ok else _t(update, "checks_fail")
     await update.message.reply_text(status)
 
     tmp_conf = tempfile.NamedTemporaryFile(delete=False, suffix=".conf", mode="w", encoding="utf-8")
@@ -145,29 +219,63 @@ async def _run_provision(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def password_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data["password"] = update.message.text
-    return await _run_provision(update, context)
+    keyboard = ReplyKeyboardMarkup(
+        [[str(DEFAULT_PORT), "33434", "27015", "443", _t(update, "port_default")]],
+        one_time_keyboard=True,
+        resize_keyboard=True,
+    )
+    await update.message.reply_text(_t(update, "ask_port"), reply_markup=keyboard)
+    return STATE_PORT
 
 
 async def key_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data["key_content"] = update.message.text
+    keyboard = ReplyKeyboardMarkup(
+        [[str(DEFAULT_PORT), "33434", "27015", "443", _t(update, "port_default")]],
+        one_time_keyboard=True,
+        resize_keyboard=True,
+    )
+    await update.message.reply_text(_t(update, "ask_port"), reply_markup=keyboard)
+    return STATE_PORT
+
+
+async def port_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    text = update.message.text.strip().lower()
+    default_labels = {
+        _t(update, "port_default").lower(),
+        "default",
+        "по умолчанию",
+        "по-умолчанию",
+    }
+    if text in {"", *default_labels}:
+        context.user_data["listen_port"] = DEFAULT_PORT
+    elif text.isdigit():
+        port = int(text)
+        if not 1 <= port <= 65535:
+            await update.message.reply_text(_t(update, "port_invalid"))
+            return STATE_PORT
+        context.user_data["listen_port"] = port
+    else:
+        await update.message.reply_text(_t(update, "port_invalid"))
+        return STATE_PORT
     return await _run_provision(update, context)
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("Canceled.", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text(_t(update, "canceled"), reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
 
 async def miniapp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     url = os.getenv("VPNW_MINIAPP_URL")
     if not url:
-        await update.message.reply_text("VPNW_MINIAPP_URL is not configured.")
+        await update.message.reply_text(_t(update, "miniapp_missing"))
         return
     keyboard = ReplyKeyboardMarkup(
-        [[KeyboardButton("Open VPN Wizard", web_app=WebAppInfo(url))]],
+        [[KeyboardButton(_t(update, "open_wizard"), web_app=WebAppInfo(url))]],
         resize_keyboard=True,
     )
-    await update.message.reply_text("Open the wizard:", reply_markup=keyboard)
+    await update.message.reply_text(_t(update, "miniapp_open"), reply_markup=keyboard)
 
 
 def main() -> None:
@@ -184,6 +292,7 @@ def main() -> None:
             STATE_AUTH: [MessageHandler(filters.TEXT & ~filters.COMMAND, auth_step)],
             STATE_PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, password_step)],
             STATE_KEY: [MessageHandler(filters.TEXT & ~filters.COMMAND, key_step)],
+            STATE_PORT: [MessageHandler(filters.TEXT & ~filters.COMMAND, port_step)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
