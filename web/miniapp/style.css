@@ -446,10 +446,12 @@ details summary {
 
 .modal.tour-modal {
   align-items: flex-end;
+  justify-content: flex-start;
 }
 
 .modal.tour-modal .modal-card {
   margin-bottom: 24px;
+  width: min(380px, 92vw);
 }
 
 .modal.hidden {

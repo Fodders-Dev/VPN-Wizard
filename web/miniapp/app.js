@@ -108,6 +108,7 @@ const I18N = {
     status_server_configured: "Сервер уже настроен",
     status_server_needs_setup: "Сервер не настроен",
     status_server_error: "Не удалось проверить сервер",
+    server_use_hint: "Введите пароль или ключ и нажмите \"Проверить сервер\".",
     download_ready: "Скачайте конфиг и отсканируйте QR.",
     check_ok: "ok",
     check_fail: "fail",
@@ -123,6 +124,7 @@ const I18N = {
     protocol_amneziawg: "AmneziaWG",
     protocol_wireguard: "WireGuard",
     alert_fill_host_user: "Заполните поля Host и User.",
+    alert_check_first: "Сначала нажмите \"Проверить сервер\".",
     alert_remove_client: "Удалить профиль",
     alert_remove_confirm: "Точно удалить профиль?",
     alert_rotate_confirm: "Перевыпустить ключи для профиля?",
@@ -147,7 +149,7 @@ const I18N = {
     faq_ports_title: "Что делать, если VPN не работает?",
     faq_ports_body: "Попробуйте другой UDP порт в расширенных настройках (например 3478 или 33434).",
     faq_tyumen_title: "Как добавить профиль?",
-    faq_tyumen_body: "Введите имя профиля и нажмите \"Добавить профиль\". Для обхода блокировок используйте префикс tyumen-.",
+    faq_tyumen_body: "Введите имя профиля и нажмите \"Добавить профиль\". Порт можно выбрать в расширенных полях.",
   },
   en: {
     app_title: "VPN Wizard",
@@ -219,6 +221,7 @@ const I18N = {
     status_server_configured: "Server already configured",
     status_server_needs_setup: "Server is not configured",
     status_server_error: "Failed to check server",
+    server_use_hint: "Enter password or key and click \"Check server\".",
     download_ready: "Ready. Download your config and scan the QR.",
     check_ok: "ok",
     check_fail: "fail",
@@ -234,6 +237,7 @@ const I18N = {
     protocol_amneziawg: "AmneziaWG",
     protocol_wireguard: "WireGuard",
     alert_fill_host_user: "Please fill in Host and User fields first.",
+    alert_check_first: "Please click \"Check server\" first.",
     alert_remove_client: "Remove profile",
     alert_remove_confirm: "Delete this profile?",
     alert_rotate_confirm: "Rotate keys for this profile?",
@@ -258,7 +262,7 @@ const I18N = {
     faq_ports_title: "VPN not working?",
     faq_ports_body: "Try another UDP port in advanced settings (for example 3478 or 33434).",
     faq_tyumen_title: "How to add a profile?",
-    faq_tyumen_body: "Enter a profile name and click \"Add profile\". For bypass, use the tyumen- prefix.",
+    faq_tyumen_body: "Enter a profile name and click \"Add profile\". You can change the UDP port in advanced fields.",
   },
 };
 
@@ -592,7 +596,8 @@ function updateStageVisibility() {
   const configured = serverConfigured;
 
   if (serversCard) {
-    serversCard.classList.toggle("hidden", !checked);
+    const hasServers = loadServers().length > 0;
+    serversCard.classList.toggle("hidden", !checked && !hasServers);
   }
   if (clientsCard) {
     clientsCard.classList.toggle("hidden", !checked || !configured);
@@ -820,7 +825,22 @@ function renderServers() {
     useBtn.addEventListener("click", () => {
       form.elements.host.value = server.host || "";
       form.elements.user.value = server.user || "";
-      setStatus(t("status_waiting"));
+      if (form.elements.listen_port && server.listen_port) {
+        form.elements.listen_port.value = server.listen_port;
+      }
+      if (form.elements.password) {
+        form.elements.password.value = "";
+      }
+      if (form.elements.key_content) {
+        form.elements.key_content.value = "";
+      }
+      serverConfigured = false;
+      STATE.checked = false;
+      updateStageVisibility();
+      if (serverStatusEl) {
+        serverStatusEl.textContent = t("server_use_hint");
+      }
+      scrollToCard(form.closest(".card"));
     });
     row.appendChild(info);
     row.appendChild(useBtn);
@@ -1357,12 +1377,16 @@ async function runServerCheck(data) {
 async function runProvision() {
   const data = getFormData();
   STATE.lastAuth = data;
-  STATE.checked = true;
-  updateStageVisibility();
   if (!data.host || !data.user) {
     alert(t("alert_fill_host_user"));
     return;
   }
+  if (!STATE.checked) {
+    alert(t("alert_check_first"));
+    return;
+  }
+  STATE.checked = true;
+  updateStageVisibility();
   if (provisionBtn) {
     provisionBtn.disabled = true;
   }
@@ -1448,12 +1472,16 @@ if (provisionBtn) {
 addClientBtn.addEventListener("click", async () => {
   const data = getFormData();
   STATE.lastAuth = data;
-  STATE.checked = true;
-  updateStageVisibility();
   if (!data.host || !data.user) {
     alert(t("alert_fill_host_user"));
     return;
   }
+  if (!STATE.checked) {
+    alert(t("alert_check_first"));
+    return;
+  }
+  STATE.checked = true;
+  updateStageVisibility();
   addClientBtn.disabled = true;
   setProgressVisible(true);
   scrollToCard(progressCard);
