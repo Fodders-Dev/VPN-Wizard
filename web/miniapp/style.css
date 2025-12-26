@@ -307,6 +307,11 @@ button.ghost {
   color: var(--muted);
 }
 
+.server-advice {
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .servers-list {
   display: grid;
   gap: 10px;
@@ -423,6 +428,12 @@ details summary {
   margin-top: 0;
 }
 
+.safe-row {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
 .inline-spinner {
   width: 14px;
   height: 14px;
@@ -493,6 +504,12 @@ details summary {
   display: grid;
   gap: 10px;
   color: var(--ink);
+}
+
+.faq-body {
+  white-space: pre-line;
+  color: var(--muted);
+  margin: 6px 0 0;
 }
 
 .modal-actions {

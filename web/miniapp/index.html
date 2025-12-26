@@ -56,10 +56,22 @@
           <span data-i18n="udp_port_label">UDP порт сервера</span>
           <input name="listen_port" type="number" min="1" max="65535" value="3478" />
         </label>
+        <div class="advanced safe-row">
+          <label class="toggle">
+            <input type="checkbox" id="safe-toggle" />
+            <span data-i18n="safe_mode_label">Безопасный режим (только проверка)</span>
+          </label>
+          <small class="field-hint" data-i18n="safe_mode_hint">
+            Показывает, что изменится, без установки.
+          </small>
+        </div>
         <div class="server-tools">
           <button type="submit" id="check-server-btn" data-i18n="check_server_btn">Проверить сервер</button>
           <div id="server-status" class="server-status" data-i18n="server_status_idle">Сервер не проверен</div>
           <div id="server-meta" class="server-meta"></div>
+          <div id="server-advice" class="server-advice" data-i18n="server_advice">
+            Если сервер пустой — можно смело настраивать. Если нет — прочитайте FAQ и включите расширенные настройки.
+          </div>
           <label class="toggle hidden" id="reconfigure-toggle">
             <input type="checkbox" id="reconfigure-checkbox" />
             <span data-i18n="reconfigure_label">Показать настройку сервера</span>

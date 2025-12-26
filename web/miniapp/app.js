@@ -25,6 +25,7 @@ const clientsCard = document.getElementById("clients-card");
 const clientsListEl = document.getElementById("clients-list");
 const clientsEmptyEl = document.getElementById("clients-empty");
 const langButtons = document.querySelectorAll(".lang-btn");
+const safeToggle = document.getElementById("safe-toggle");
 const tourBtn = document.getElementById("tour-btn");
 const faqBtn = document.getElementById("faq-btn");
 const faqModal = document.getElementById("faq-modal");
@@ -56,6 +57,8 @@ const I18N = {
     udp_port_label: "UDP порт сервера",
     tour_btn: "Обучение",
     faq_btn: "FAQ",
+    safe_mode_label: "Безопасный режим (только проверка)",
+    safe_mode_hint: "Показывает, что изменится, без установки.",
     check_server_btn: "Проверить сервер",
     server_status_idle: "Сервер не проверен",
     reconfigure_label: "Показать настройку сервера",
@@ -108,6 +111,8 @@ const I18N = {
     status_server_configured: "Сервер уже настроен",
     status_server_needs_setup: "Сервер не настроен",
     status_server_error: "Не удалось проверить сервер",
+    status_precheck: "Проверяем сервер и план изменений...",
+    status_precheck_done: "Предпросмотр готов. Чтобы установить VPN, выключите безопасный режим.",
     server_use_hint: "Введите пароль или ключ и нажмите \"Проверить сервер\".",
     download_ready: "Скачайте конфиг и отсканируйте QR.",
     check_ok: "ok",
@@ -120,7 +125,7 @@ const I18N = {
     meta_protocol: "Протокол",
     meta_port: "Порт",
     meta_clients: "Профилей",
-    meta_tyumen: "Tyumen порт",
+    meta_tyumen: "Доп. порт",
     protocol_amneziawg: "AmneziaWG",
     protocol_wireguard: "WireGuard",
     alert_fill_host_user: "Заполните поля Host и User.",
@@ -150,6 +155,14 @@ const I18N = {
     faq_ports_body: "Попробуйте другой UDP порт в расширенных настройках (например 3478 или 33434).",
     faq_tyumen_title: "Как добавить профиль?",
     faq_tyumen_body: "Введите имя профиля и нажмите \"Добавить профиль\". Порт можно выбрать в расширенных полях.",
+    faq_changes_title: "Что именно мы делаем на сервере?",
+    faq_changes_body:
+      "1) Подключаемся по SSH и проверяем ОС, sudo и свободный порт.\n2) Ставим WireGuard/AmneziaWG и зависимости.\n3) Создаём ключи и конфиги в /etc/amnezia/amneziawg или /etc/wireguard.\n4) Включаем IP forwarding и добавляем NAT (iptables).\n5) Поднимаем сервис awg-quick@ или wg-quick@ и делаем бэкапы конфигов.\n6) Генерируем ваш профиль и QR.\n\nЕсли у вас на сервере есть свои сервисы или строгий firewall — используйте безопасный режим и внимательно прочитайте пункты выше.",
+    faq_servers_title: "Как запоминаются серверы?",
+    faq_servers_body:
+      "Список серверов хранится локально на устройстве (без паролей и ключей). Кнопка \"Использовать\" подставляет IP/логин — пароль вводится заново перед проверкой.",
+    server_advice:
+      "Если сервер пустой — можно смело настраивать. Если нет — прочитайте FAQ и включите расширенные настройки.",
   },
   en: {
     app_title: "VPN Wizard",
@@ -169,6 +182,8 @@ const I18N = {
     udp_port_label: "Server UDP port",
     tour_btn: "Tour",
     faq_btn: "FAQ",
+    safe_mode_label: "Safe mode (check only)",
+    safe_mode_hint: "Shows what will change without installing.",
     check_server_btn: "Check server",
     server_status_idle: "Server not checked",
     reconfigure_label: "Show server setup",
@@ -221,6 +236,8 @@ const I18N = {
     status_server_configured: "Server already configured",
     status_server_needs_setup: "Server is not configured",
     status_server_error: "Failed to check server",
+    status_precheck: "Checking server and change plan...",
+    status_precheck_done: "Preview ready. Disable safe mode to install the VPN.",
     server_use_hint: "Enter password or key and click \"Check server\".",
     download_ready: "Ready. Download your config and scan the QR.",
     check_ok: "ok",
@@ -233,7 +250,7 @@ const I18N = {
     meta_protocol: "Protocol",
     meta_port: "Port",
     meta_clients: "Profiles",
-    meta_tyumen: "Tyumen port",
+    meta_tyumen: "Alt port",
     protocol_amneziawg: "AmneziaWG",
     protocol_wireguard: "WireGuard",
     alert_fill_host_user: "Please fill in Host and User fields first.",
@@ -263,6 +280,14 @@ const I18N = {
     faq_ports_body: "Try another UDP port in advanced settings (for example 3478 or 33434).",
     faq_tyumen_title: "How to add a profile?",
     faq_tyumen_body: "Enter a profile name and click \"Add profile\". You can change the UDP port in advanced fields.",
+    faq_changes_title: "What exactly do we change on the server?",
+    faq_changes_body:
+      "1) Connect over SSH and check OS, sudo, and free port.\n2) Install WireGuard/AmneziaWG and dependencies.\n3) Create keys/configs under /etc/amnezia/amneziawg or /etc/wireguard.\n4) Enable IP forwarding and add NAT (iptables).\n5) Start awg-quick@ or wg-quick@ and create config backups.\n6) Generate your profile and QR.\n\nIf your server hosts other services or strict firewall rules, use safe mode and review the steps above.",
+    faq_servers_title: "How are servers saved?",
+    faq_servers_body:
+      "Servers are stored locally on your device (no passwords/keys). The \"Use\" button fills IP/user; you enter the password again before checking.",
+    server_advice:
+      "Empty server? You can install safely. If not, read the FAQ and enable advanced settings.",
   },
 };
 
@@ -668,6 +693,8 @@ function renderFaq() {
     { titleKey: "faq_safe_title", bodyKey: "faq_safe_body" },
     { titleKey: "faq_ports_title", bodyKey: "faq_ports_body" },
     { titleKey: "faq_tyumen_title", bodyKey: "faq_tyumen_body" },
+    { titleKey: "faq_changes_title", bodyKey: "faq_changes_body" },
+    { titleKey: "faq_servers_title", bodyKey: "faq_servers_body" },
   ];
   faqContent.innerHTML = "";
   items.forEach((item) => {
@@ -675,6 +702,7 @@ function renderFaq() {
     const summary = document.createElement("summary");
     summary.textContent = t(item.titleKey);
     const body = document.createElement("p");
+    body.className = "faq-body";
     body.textContent = t(item.bodyKey);
     details.appendChild(summary);
     details.appendChild(body);
@@ -765,6 +793,7 @@ function getFormData() {
     key_content: keyContent || null,
     client_name: (data.client_name || "").trim(),
     listen_port: Number.isFinite(listenPort) ? listenPort : null,
+    safe_mode: Boolean(safeToggle?.checked) && !simpleToggle.checked,
   };
 }
 
@@ -887,6 +916,20 @@ async function fetchServerStatus(data) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       ssh: buildSshPayload(data),
+    }),
+  });
+}
+
+async function fetchServerPrecheck(data) {
+  return fetchJson("/api/server/precheck", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ssh: buildSshPayload(data),
+      options: {
+        listen_port: data.listen_port || undefined,
+        protocol: "amneziawg",
+      },
     }),
   });
 }
@@ -1383,6 +1426,45 @@ async function runProvision() {
   }
   if (!STATE.checked) {
     alert(t("alert_check_first"));
+    return;
+  }
+  if (data.safe_mode) {
+    if (provisionBtn) {
+      provisionBtn.disabled = true;
+    }
+    setProgressVisible(true);
+    scrollToCard(progressCard);
+    setStatus(t("status_precheck"));
+    setProgressState("running");
+    setLogVisible(true);
+    setProgress([]);
+    if (resultCard) {
+      resultCard.classList.add("hidden");
+    }
+    try {
+      const result = await fetchServerPrecheck(data);
+      if (!result.ok) {
+        setStatus(`${t("status_failed")}: ${result.error || "unknown error"}`);
+        setProgressState("error");
+        return;
+      }
+      const checks = result.checks || [];
+      const lines = checks.map((item) => {
+        const status = item.ok ? t("check_ok") : t("check_fail");
+        const details = item.details ? ` (${item.details})` : "";
+        return `precheck ${item.name}: ${status}${details}`;
+      });
+      setProgress(lines);
+      setStatus(t("status_precheck_done"));
+      setProgressState("done");
+    } catch (err) {
+      setStatus(`${t("status_failed")}: ${err}`);
+      setProgressState("error");
+    } finally {
+      if (provisionBtn) {
+        provisionBtn.disabled = false;
+      }
+    }
     return;
   }
   STATE.checked = true;

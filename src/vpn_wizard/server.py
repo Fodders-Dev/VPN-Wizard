@@ -557,6 +557,12 @@ class ServerStatusResponse(BaseModel):
     error: Optional[str] = None
 
 
+class PrecheckResponse(BaseModel):
+    ok: bool
+    checks: list[CheckItem] = []
+    error: Optional[str] = None
+
+
 def _detect_server_status(ssh: SSHRunner) -> dict:
     awg_conf = "/etc/amnezia/amneziawg/awg0.conf"
     wg_conf = "/etc/wireguard/wg0.conf"
@@ -673,6 +679,44 @@ async def server_status(payload: RollbackRequest) -> ServerStatusResponse:
         )
     except Exception as exc:
         return ServerStatusResponse(ok=False, configured=False, error=str(exc))
+    finally:
+        temp_key.cleanup()
+
+
+@app.post("/api/server/precheck", response_model=PrecheckResponse)
+async def server_precheck(payload: ProvisionRequest) -> PrecheckResponse:
+    temp_key = TempKey()
+    try:
+        key_path = payload.ssh.key_path
+        if payload.ssh.key_content:
+            temp_key = _write_temp_key(payload.ssh.key_content)
+            key_path = temp_key.path
+
+        cfg = SSHConfig(
+            host=payload.ssh.host,
+            user=payload.ssh.user,
+            port=payload.ssh.port,
+            password=payload.ssh.password,
+            key_path=key_path,
+        )
+        with SSHRunner(cfg) as ssh:
+            opts = payload.options
+            prov = WireGuardProvisioner(
+                ssh,
+                client_name=opts.client_name,
+                client_ip=opts.client_ip,
+                server_cidr=opts.server_cidr,
+                listen_port=opts.listen_port,
+                dns=opts.dns,
+                mtu=opts.mtu,
+                auto_mtu=opts.auto_mtu,
+                tune=opts.tune,
+                protocol=opts.protocol,
+            )
+            checks = prov.pre_check()
+        return PrecheckResponse(ok=True, checks=checks)
+    except Exception as exc:
+        return PrecheckResponse(ok=False, error=str(exc))
     finally:
         temp_key.cleanup()
 

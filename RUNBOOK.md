@@ -112,6 +112,7 @@ Client config expectations:
 - Miniapp UI calls client configs "profiles" to reduce confusion for end users.
 - Telegram miniapp requires a public HTTPS URL configured in BotFather.
 - В Telegram WebApp скачивание конфигов/QR идет через data: ссылки (если загрузка не стартует, нажмите еще раз или используйте десктоп).
+- В расширенных полях миниаппа есть безопасный режим (только проверка/precheck) — он не меняет сервер.
 - For cross-origin miniapp, set `VPNW_CORS_ORIGINS="https://your-miniapp-domain"` before running the API server.
 - Set `window.API_BASE` in `web/miniapp/config.js` to your API server URL when hosting separately.
 - You can also pass `?api=https://your-api-domain` in the miniapp URL to override API base.
