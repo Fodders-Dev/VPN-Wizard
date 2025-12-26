@@ -78,6 +78,7 @@ const I18N = {
     onboarding_step4: "4) При блокировках попробуйте другой UDP порт или префикс tyumen-.",
     clients_title: "Профили",
     clients_empty: "Профили не найдены.",
+    clients_loading: "Загружаем профили...",
     client_ip: "IP",
     client_handshake: "Рукопожатие",
     client_transfer: "Трафик",
@@ -131,13 +132,13 @@ const I18N = {
     tour_next: "Далее",
     tour_done: "Готово",
     tour_step1_title: "IP или хост",
-    tour_step1_body: "Введите IP-адрес или домен сервера.",
+    tour_step1_body: "IP-адрес или домен берите из панели хостинга (например 212.69.84.167).",
     tour_step2_title: "SSH пользователь",
-    tour_step2_body: "Обычно это root, если вы не меняли пользователя.",
+    tour_step2_body: "Обычно это root, если вы не меняли пользователя при покупке сервера.",
     tour_step3_title: "Пароль или ключ",
-    tour_step3_body: "Если используете SSH-ключ, пароль можно оставить пустым.",
+    tour_step3_body: "Пароль приходит от хостинга. Если вход по ключу — оставьте поле пустым и вставьте ключ в расширенных полях.",
     tour_step4_title: "Проверка сервера",
-    tour_step4_body: "Нажмите, чтобы узнать, нужен ли автоматический запуск VPN.",
+    tour_step4_body: "Нажмите, чтобы проверить сервер и увидеть готовые профили.",
     faq_title: "FAQ",
     faq_what_is_title: "Что это за бот?",
     faq_what_is_body: "VPN Wizard подключается к вашему серверу по SSH и автоматически настраивает быстрый VPN. В результате вы получаете готовые конфиги и QR.",
@@ -188,6 +189,7 @@ const I18N = {
     onboarding_step4: "4) If blocked, try another UDP port or the tyumen- prefix.",
     clients_title: "Profiles",
     clients_empty: "No profiles yet.",
+    clients_loading: "Loading profiles...",
     client_ip: "IP",
     client_handshake: "Handshake",
     client_transfer: "Traffic",
@@ -241,13 +243,13 @@ const I18N = {
     tour_next: "Next",
     tour_done: "Done",
     tour_step1_title: "Server host",
-    tour_step1_body: "Enter the server IP or domain.",
+    tour_step1_body: "Use the IP or domain from your hosting panel (for example 212.69.84.167).",
     tour_step2_title: "SSH user",
-    tour_step2_body: "Usually root unless you changed it.",
+    tour_step2_body: "Usually root unless you changed it when buying the server.",
     tour_step3_title: "Password or key",
-    tour_step3_body: "If you use an SSH key, you can keep the password empty.",
+    tour_step3_body: "Password comes from the hoster. If you use an SSH key, keep it empty and paste the key in advanced fields.",
     tour_step4_title: "Server check",
-    tour_step4_body: "Click to see if VPN is already configured.",
+    tour_step4_body: "Click to check the server and load profiles.",
     faq_title: "FAQ",
     faq_what_is_title: "What is this bot?",
     faq_what_is_body: "VPN Wizard connects to your server over SSH and configures a fast VPN. You get ready configs and QR.",
@@ -308,6 +310,7 @@ const STATE = {
   clientBusy: {},
   qrByClient: {},
   qrOpen: null,
+  clientsLoading: false,
   downloads: {
     configUrl: null,
     qrUrl: null,
@@ -1007,10 +1010,14 @@ function renderClients(list = STATE.clients) {
   }
   clientsListEl.innerHTML = "";
   const hasClients = list && list.length > 0;
-  clientsEmptyEl.classList.toggle("hidden", hasClients);
   if (!hasClients) {
+    clientsEmptyEl.classList.remove("hidden");
+    clientsEmptyEl.innerHTML = STATE.clientsLoading
+      ? `<span class="inline-spinner" aria-hidden="true"></span>${t("clients_loading")}`
+      : t("clients_empty");
     return;
   }
+  clientsEmptyEl.classList.add("hidden");
   list.forEach((client) => {
     const row = document.createElement("div");
     row.className = "client-row";
@@ -1189,10 +1196,16 @@ async function refreshClients(data) {
   if (!data?.host || !data?.user) {
     return;
   }
+  STATE.clientsLoading = true;
   setStatus(t("status_loading_clients"));
+  renderClients();
+  if (serverStatusEl && serverConfigured) {
+    serverStatusEl.textContent = `${t("status_server_configured")} · ${t("status_loading_clients")}`;
+  }
   try {
     const clients = await fetchClients(data);
     STATE.clients = clients;
+    STATE.clientsLoading = false;
     const names = new Set(clients.map((client) => client.name));
     Object.keys(STATE.qrByClient).forEach((name) => {
       if (!names.has(name)) {
@@ -1211,6 +1224,8 @@ async function refreshClients(data) {
     });
   } catch (err) {
     setStatus(`${t("status_failed")}: ${err}`);
+    STATE.clientsLoading = false;
+    renderClients();
   }
 }
 
@@ -1292,12 +1307,16 @@ async function runServerCheck(data) {
       }
       serverConfigured = false;
       STATE.checked = false;
+      STATE.clientsLoading = false;
       updateStageVisibility();
       renderClients([]);
       return;
     }
     STATE.checked = true;
     serverConfigured = Boolean(result.configured);
+    if (!serverConfigured) {
+      STATE.clientsLoading = false;
+    }
     if (serverStatusEl) {
       serverStatusEl.textContent = serverConfigured
         ? t("status_server_configured")
@@ -1325,6 +1344,7 @@ async function runServerCheck(data) {
     }
     serverConfigured = false;
     STATE.checked = false;
+    STATE.clientsLoading = false;
     updateStageVisibility();
     renderClients([]);
   } finally {

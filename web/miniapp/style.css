@@ -423,6 +423,17 @@ details summary {
   margin-top: 0;
 }
 
+.inline-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  display: inline-block;
+  margin-right: 8px;
+  animation: spin 1s linear infinite;
+}
+
 .modal {
   position: fixed;
   inset: 0;
@@ -431,6 +442,14 @@ details summary {
   justify-content: center;
   z-index: 50;
   padding: 16px;
+}
+
+.modal.tour-modal {
+  align-items: flex-end;
+}
+
+.modal.tour-modal .modal-card {
+  margin-bottom: 24px;
 }
 
 .modal.hidden {
