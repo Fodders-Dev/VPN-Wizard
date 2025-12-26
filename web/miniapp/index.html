@@ -14,9 +14,13 @@
     <header class="hero">
       <div class="hero-top">
         <div class="title" data-i18n="app_title">VPN Wizard</div>
-        <div class="lang-toggle" role="group" aria-label="Language">
-          <button type="button" class="lang-btn" data-lang="ru">RU</button>
-          <button type="button" class="lang-btn" data-lang="en">EN</button>
+        <div class="hero-actions">
+          <button type="button" class="ghost" id="tour-btn" data-i18n="tour_btn">Обучение</button>
+          <button type="button" class="ghost" id="faq-btn" data-i18n="faq_btn">FAQ</button>
+          <div class="lang-toggle" role="group" aria-label="Language">
+            <button type="button" class="lang-btn" data-lang="ru">RU</button>
+            <button type="button" class="lang-btn" data-lang="en">EN</button>
+          </div>
         </div>
       </div>
       <div class="subtitle" data-i18n="app_subtitle">Простая настройка AmneziaWG VPN на вашем сервере</div>
@@ -37,9 +41,12 @@
           <span data-i18n="ssh_password_label">SSH пароль</span>
           <input name="password" type="password" placeholder="optional if key" data-i18n-placeholder="ssh_password_placeholder" />
         </label>
-        <label>
+        <label class="profile-only hidden">
           <span data-i18n="client_name_label">Имя профиля (необязательно)</span>
           <input name="client_name" placeholder="grandma-phone" data-i18n-placeholder="client_name_placeholder" />
+          <small class="field-hint" data-i18n="profile_name_hint">
+            Нужно, чтобы разные устройства получали разные названия конфигов.
+          </small>
         </label>
         <label class="advanced">
           <span data-i18n="ssh_key_label">SSH ключ (необязательно)</span>
@@ -68,16 +75,6 @@
         <button type="button" id="provision-btn" class="hidden" data-i18n="provision_btn">Настроить сервер и получить первый профиль</button>
         <button type="button" id="add-client-btn" class="secondary hidden" data-i18n="add_client_btn">Добавить профиль</button>
       </form>
-    </section>
-
-    <section class="card hidden" id="onboarding-card">
-      <h2 data-i18n="onboarding_title">Быстрый старт</h2>
-      <ol class="onboarding-list">
-        <li data-i18n="onboarding_step1">1) Введите IP/хост, SSH пользователя и пароль или ключ.</li>
-        <li data-i18n="onboarding_step2">2) Нажмите "Проверить сервер" - если VPN уже есть, появятся профили.</li>
-        <li data-i18n="onboarding_step3">3) Если нет - нажмите "Настроить сервер" и скачайте конфиг и QR.</li>
-        <li data-i18n="onboarding_step4">4) При блокировках попробуйте другой UDP порт или префикс tyumen-.</li>
-      </ol>
     </section>
 
     <section class="card hidden" id="servers-card">
@@ -110,29 +107,39 @@
       <img id="qr-image" alt="QR code" />
     </section>
 
-    <section class="card hidden" id="faq-card">
-      <h2 data-i18n="faq_title">FAQ</h2>
-      <details>
-        <summary data-i18n="faq_what_is_title">Что это за бот?</summary>
-        <p data-i18n="faq_what_is_body">VPN Wizard подключается к вашему серверу по SSH и автоматически настраивает быстрый VPN. В результате вы получаете готовые конфиги и QR.</p>
-      </details>
-      <details>
-        <summary data-i18n="faq_safe_title">Это безопасно?</summary>
-        <p data-i18n="faq_safe_body">Бот использует ваши SSH-данные только для настройки. Мы не храним пароли, всё выполняется на вашем сервере.</p>
-      </details>
-      <details>
-        <summary data-i18n="faq_ports_title">Что делать, если VPN не работает?</summary>
-        <p data-i18n="faq_ports_body">Попробуйте другой UDP порт в расширенных настройках (например 3478 или 33434).</p>
-      </details>
-      <details>
-        <summary data-i18n="faq_tyumen_title">Как добавить профиль?</summary>
-        <p data-i18n="faq_tyumen_body">Введите имя профиля и нажмите "Добавить профиль". Для обхода блокировок используйте префикс tyumen-.</p>
-      </details>
-    </section>
   </main>
 
   <script src="config.js"></script>
   <script src="app.js"></script>
+
+  <div class="modal hidden" id="faq-modal" aria-hidden="true">
+    <div class="modal-backdrop" data-modal-close></div>
+    <div class="modal-card" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h3 data-i18n="faq_title">FAQ</h3>
+        <button type="button" class="ghost" data-modal-close>✕</button>
+      </div>
+      <div id="faq-content" class="modal-body"></div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="tour-modal" aria-hidden="true">
+    <div class="modal-backdrop" data-modal-close></div>
+    <div class="modal-card" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h3 data-i18n="tour_title">Обучение</h3>
+        <button type="button" class="ghost" data-modal-close>✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="tour-step-title" id="tour-step-title"></div>
+        <div class="tour-step-body" id="tour-step-body"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="secondary" id="tour-prev" data-i18n="tour_prev">Назад</button>
+        <button type="button" id="tour-next" data-i18n="tour_next">Далее</button>
+      </div>
+    </div>
+  </div>
 </body>
 
 </html>

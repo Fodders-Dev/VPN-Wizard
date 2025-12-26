@@ -17,7 +17,8 @@ Turn a rented VPS into a fast WireGuard VPN and deliver ready configs/QR codes.
 - gui: wizard flow (server access -> configure -> progress -> download config + QR)
 - miniapp: RU/EN локализация (RU по умолчанию), быстрый чек статуса сервера, выбор UDP порта, локальный список недавних серверов (без паролей)
 - miniapp: управление профилями доступа (список, статус/трафик, скачать конфиг/QR, удалить/перевыпустить), FAQ и онбординг
-- miniapp: первичный экран — только доступ к серверу и проверка; после проверки показываются настройка или список профилей
+- miniapp: первичный экран - только доступ к серверу и проверка; после проверки показываются настройка или список профилей
+- miniapp: QR для профилей открывается прямо в списке, с отдельной кнопкой скачивания (включая Telegram WebApp)
 - bot: онбординг и ограничение доступа только для подписчиков канала
 - distribution: API server + Telegram bot + miniapp wizard UI
 - distribution: async job queue + progress polling for miniapp

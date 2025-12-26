@@ -14,9 +14,7 @@ const simpleToggle = document.getElementById("simple-toggle");
 const advancedFields = document.querySelectorAll(".advanced");
 const addClientBtn = document.getElementById("add-client-btn");
 const checkServerBtn = document.getElementById("check-server-btn");
-const onboardingCard = document.getElementById("onboarding-card");
 const serversCard = document.getElementById("servers-card");
-const faqCard = document.getElementById("faq-card");
 const serverStatusEl = document.getElementById("server-status");
 const serverMetaEl = document.getElementById("server-meta");
 const reconfigureToggle = document.getElementById("reconfigure-toggle");
@@ -27,6 +25,17 @@ const clientsCard = document.getElementById("clients-card");
 const clientsListEl = document.getElementById("clients-list");
 const clientsEmptyEl = document.getElementById("clients-empty");
 const langButtons = document.querySelectorAll(".lang-btn");
+const tourBtn = document.getElementById("tour-btn");
+const faqBtn = document.getElementById("faq-btn");
+const faqModal = document.getElementById("faq-modal");
+const tourModal = document.getElementById("tour-modal");
+const faqContent = document.getElementById("faq-content");
+const tourStepTitle = document.getElementById("tour-step-title");
+const tourStepBody = document.getElementById("tour-step-body");
+const tourPrevBtn = document.getElementById("tour-prev");
+const tourNextBtn = document.getElementById("tour-next");
+const profileOnlyFields = document.querySelectorAll(".profile-only");
+const modalCloseEls = document.querySelectorAll("[data-modal-close]");
 
 const I18N = {
   ru: {
@@ -39,11 +48,14 @@ const I18N = {
     ssh_user_placeholder: "root",
     ssh_password_label: "SSH пароль",
     ssh_password_placeholder: "если ключ - можно пусто",
-    client_name_label: "Имя профиля (необязательно)",
+    client_name_label: "Имя профиля",
     client_name_placeholder: "grandma-phone",
+    profile_name_hint: "Нужно, чтобы разные устройства не перезаписывали конфиги. Можно оставить пустым.",
     ssh_key_label: "SSH ключ (необязательно)",
     ssh_key_placeholder: "вставьте приватный ключ",
     udp_port_label: "UDP порт сервера",
+    tour_btn: "Обучение",
+    faq_btn: "FAQ",
     check_server_btn: "Проверить сервер",
     server_status_idle: "Сервер не проверен",
     reconfigure_label: "Показать настройку сервера",
@@ -72,8 +84,14 @@ const I18N = {
     client_interface: "Интерфейс",
     client_download: "Конфиг",
     client_qr: "QR",
+    client_qr_hide: "Скрыть QR",
+    client_qr_download: "Скачать QR",
     client_remove: "Удалить",
     client_rotate: "Перевыпустить",
+    client_busy_remove: "Удаляем профиль...",
+    client_busy_rotate: "Перевыпускаем ключи...",
+    client_busy_export: "Готовим конфиг...",
+    client_busy_qr: "Готовим QR...",
     toggle_log_btn: "Показать лог",
     toggle_log_hide: "Скрыть лог",
     status_creating_job: "Создаём задачу...",
@@ -108,6 +126,18 @@ const I18N = {
     alert_remove_confirm: "Точно удалить профиль?",
     alert_rotate_confirm: "Перевыпустить ключи для профиля?",
     alert_export_failed: "Не удалось получить конфиг",
+    tour_title: "Обучение",
+    tour_prev: "Назад",
+    tour_next: "Далее",
+    tour_done: "Готово",
+    tour_step1_title: "IP или хост",
+    tour_step1_body: "Введите IP-адрес или домен сервера.",
+    tour_step2_title: "SSH пользователь",
+    tour_step2_body: "Обычно это root, если вы не меняли пользователя.",
+    tour_step3_title: "Пароль или ключ",
+    tour_step3_body: "Если используете SSH-ключ, пароль можно оставить пустым.",
+    tour_step4_title: "Проверка сервера",
+    tour_step4_body: "Нажмите, чтобы узнать, нужен ли автоматический запуск VPN.",
     faq_title: "FAQ",
     faq_what_is_title: "Что это за бот?",
     faq_what_is_body: "VPN Wizard подключается к вашему серверу по SSH и автоматически настраивает быстрый VPN. В результате вы получаете готовые конфиги и QR.",
@@ -128,11 +158,14 @@ const I18N = {
     ssh_user_placeholder: "root",
     ssh_password_label: "SSH password",
     ssh_password_placeholder: "optional if key",
-    client_name_label: "Profile name (optional)",
+    client_name_label: "Profile name",
     client_name_placeholder: "grandma-phone",
+    profile_name_hint: "Helps avoid overwriting configs between devices. You can leave it empty.",
     ssh_key_label: "SSH key (optional)",
     ssh_key_placeholder: "paste private key",
     udp_port_label: "Server UDP port",
+    tour_btn: "Tour",
+    faq_btn: "FAQ",
     check_server_btn: "Check server",
     server_status_idle: "Server not checked",
     reconfigure_label: "Show server setup",
@@ -151,7 +184,7 @@ const I18N = {
     onboarding_title: "Quick start",
     onboarding_step1: "1) Enter host, SSH user, and password or key.",
     onboarding_step2: "2) Click \"Check server\" - if VPN exists you will see profiles.",
-    onboarding_step3: "3) Otherwise click “Configure server” and download config + QR.",
+    onboarding_step3: "3) Otherwise click \"Configure server\" and download config + QR.",
     onboarding_step4: "4) If blocked, try another UDP port or the tyumen- prefix.",
     clients_title: "Profiles",
     clients_empty: "No profiles yet.",
@@ -161,8 +194,14 @@ const I18N = {
     client_interface: "Interface",
     client_download: "Config",
     client_qr: "QR",
+    client_qr_hide: "Hide QR",
+    client_qr_download: "Download QR",
     client_remove: "Remove",
     client_rotate: "Rotate",
+    client_busy_remove: "Removing profile...",
+    client_busy_rotate: "Rotating keys...",
+    client_busy_export: "Preparing config...",
+    client_busy_qr: "Preparing QR...",
     toggle_log_btn: "Show log",
     toggle_log_hide: "Hide log",
     status_creating_job: "Creating job...",
@@ -197,6 +236,18 @@ const I18N = {
     alert_remove_confirm: "Delete this profile?",
     alert_rotate_confirm: "Rotate keys for this profile?",
     alert_export_failed: "Failed to export config",
+    tour_title: "Tour",
+    tour_prev: "Back",
+    tour_next: "Next",
+    tour_done: "Done",
+    tour_step1_title: "Server host",
+    tour_step1_body: "Enter the server IP or domain.",
+    tour_step2_title: "SSH user",
+    tour_step2_body: "Usually root unless you changed it.",
+    tour_step3_title: "Password or key",
+    tour_step3_body: "If you use an SSH key, you can keep the password empty.",
+    tour_step4_title: "Server check",
+    tour_step4_body: "Click to see if VPN is already configured.",
     faq_title: "FAQ",
     faq_what_is_title: "What is this bot?",
     faq_what_is_body: "VPN Wizard connects to your server over SSH and configures a fast VPN. You get ready configs and QR.",
@@ -210,6 +261,23 @@ const I18N = {
 };
 
 const LANG_KEY = "vpnw_lang";
+const TOUR_STEPS = [
+  { titleKey: "tour_step1_title", bodyKey: "tour_step1_body", target: 'input[name="host"]' },
+  { titleKey: "tour_step2_title", bodyKey: "tour_step2_body", target: 'input[name="user"]' },
+  { titleKey: "tour_step3_title", bodyKey: "tour_step3_body", target: 'input[name="password"]' },
+  { titleKey: "tour_step4_title", bodyKey: "tour_step4_body", target: "#check-server-btn" },
+];
+
+function isLightColor(hex) {
+  if (!hex || !hex.startsWith("#") || hex.length !== 7) {
+    return false;
+  }
+  const r = Number.parseInt(hex.slice(1, 3), 16);
+  const g = Number.parseInt(hex.slice(3, 5), 16);
+  const b = Number.parseInt(hex.slice(5, 7), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.7;
+}
 
 function resolveLang(tgApp) {
   const url = new URL(window.location.href);
@@ -237,6 +305,14 @@ const STATE = {
   logVisible: false,
   lastAuth: null,
   checked: false,
+  clientBusy: {},
+  qrByClient: {},
+  qrOpen: null,
+  downloads: {
+    configUrl: null,
+    qrUrl: null,
+  },
+  tourIndex: 0,
 };
 
 function t(key) {
@@ -269,6 +345,8 @@ function applyI18n() {
   document.title = t("app_title");
   renderServers();
   renderClients();
+  renderFaq();
+  updateTourStep();
   setLogVisible(STATE.logVisible);
   updateStageVisibility();
 }
@@ -279,6 +357,7 @@ if (tg) {
   const root = document.documentElement.style;
   const secondary = theme.secondary_bg_color;
   const bg = theme.bg_color;
+  const textIsLight = isLightColor(theme.text_color || "");
   if (bg) {
     root.setProperty("--bg-top", bg);
     root.setProperty("--bg-bottom", bg);
@@ -286,6 +365,8 @@ if (tg) {
   if (secondary) {
     root.setProperty("--card-bg", secondary);
     root.setProperty("--input-bg", secondary);
+    root.setProperty("--surface-bg", secondary);
+    root.setProperty("--surface-border", "rgba(148, 163, 184, 0.2)");
   }
   if (theme.text_color) {
     root.setProperty("--ink", theme.text_color);
@@ -325,14 +406,30 @@ if (tg) {
         root.setProperty("--hero-bg", "#0f172a");
         root.setProperty("--hero-text", "#e2e8f0");
         root.setProperty("--button-text", "#f8fafc");
+        root.setProperty("--surface-bg", "rgba(15, 23, 42, 0.6)");
+        root.setProperty("--surface-border", "rgba(148, 163, 184, 0.35)");
       }
     }
+  }
+  if (textIsLight) {
+    root.setProperty("--card-bg", secondary || "#1f2937");
+    root.setProperty("--input-bg", secondary || "#111827");
+    root.setProperty("--border", "#334155");
+    root.setProperty("--muted", "#94a3b8");
+    root.setProperty("--surface-bg", "rgba(15, 23, 42, 0.6)");
+    root.setProperty("--surface-border", "rgba(148, 163, 184, 0.35)");
   }
 }
 
 applyI18n();
 setProgressState("idle");
 setLogVisible(false);
+if (downloadLink) {
+  downloadLink.addEventListener("click", handleDownloadClick);
+}
+if (qrDownload) {
+  qrDownload.addEventListener("click", handleDownloadClick);
+}
 langButtons.forEach((btn) => {
   btn.addEventListener("click", () => {
     currentLang = btn.dataset.lang === "en" ? "en" : "ru";
@@ -340,6 +437,52 @@ langButtons.forEach((btn) => {
     applyI18n();
   });
 });
+
+modalCloseEls.forEach((el) => {
+  el.addEventListener("click", () => {
+    const modal = el.closest(".modal");
+    closeModal(modal);
+    if (modal === tourModal) {
+      clearTourHighlight();
+    }
+  });
+});
+
+if (faqBtn) {
+  faqBtn.addEventListener("click", () => {
+    renderFaq();
+    openModal(faqModal);
+  });
+}
+
+if (tourBtn) {
+  tourBtn.addEventListener("click", () => {
+    STATE.tourIndex = 0;
+    openModal(tourModal);
+    updateTourStep();
+  });
+}
+
+if (tourPrevBtn) {
+  tourPrevBtn.addEventListener("click", () => {
+    if (STATE.tourIndex > 0) {
+      STATE.tourIndex -= 1;
+      updateTourStep();
+    }
+  });
+}
+
+if (tourNextBtn) {
+  tourNextBtn.addEventListener("click", () => {
+    if (STATE.tourIndex >= TOUR_STEPS.length - 1) {
+      closeModal(tourModal);
+      clearTourHighlight();
+      return;
+    }
+    STATE.tourIndex += 1;
+    updateTourStep();
+  });
+}
 
 function setStatus(text) {
   statusEl.textContent = text;
@@ -367,24 +510,70 @@ function setProgressState(state) {
   }
 }
 
-function setDownload(config, qrBase64, name) {
-  const safeName = name || "client1";
+function scrollToCard(el) {
+  if (!el) {
+    return;
+  }
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function handleDownloadClick(event) {
+  if (!tg?.openLink) {
+    return;
+  }
+  const url = event.currentTarget?.dataset?.url;
+  if (!url) {
+    return;
+  }
+  event.preventDefault();
+  tg.openLink(url);
+}
+
+function buildConfigUrl(config) {
+  if (tg?.openLink) {
+    return `data:text/plain;charset=utf-8,${encodeURIComponent(config)}`;
+  }
   const blob = new Blob([config], { type: "text/plain" });
+  return URL.createObjectURL(blob);
+}
+
+function buildQrUrl(qrBase64) {
+  return `data:image/png;base64,${qrBase64}`;
+}
+
+function setDownload(config, qrBase64, name, options = {}) {
+  const safeName = name || "client1";
+  const { showResult = true, scroll = true } = options;
+
+  if (STATE.downloads.configUrl?.startsWith("blob:")) {
+    URL.revokeObjectURL(STATE.downloads.configUrl);
+  }
+  const configUrl = buildConfigUrl(config);
+  STATE.downloads.configUrl = configUrl;
   downloadLink.download = `${safeName}.conf`;
-  downloadLink.href = URL.createObjectURL(blob);
+  downloadLink.href = configUrl;
+  downloadLink.dataset.url = configUrl;
+
   if (qrBase64) {
-    const qrData = `data:image/png;base64,${qrBase64}`;
+    const qrData = buildQrUrl(qrBase64);
+    STATE.downloads.qrUrl = qrData;
     qrImage.src = qrData;
     if (qrDownload) {
       qrDownload.href = qrData;
       qrDownload.download = `${safeName}.png`;
+      qrDownload.dataset.url = qrData;
       qrDownload.classList.remove("hidden");
     }
   } else if (qrDownload) {
+    qrImage.removeAttribute("src");
     qrDownload.classList.add("hidden");
   }
-  if (resultCard) {
+
+  if (showResult && resultCard) {
     resultCard.classList.remove("hidden");
+    if (scroll) {
+      scrollToCard(resultCard);
+    }
   }
 }
 
@@ -402,12 +591,6 @@ function updateStageVisibility() {
   if (serversCard) {
     serversCard.classList.toggle("hidden", !checked);
   }
-  if (faqCard) {
-    faqCard.classList.toggle("hidden", !checked);
-  }
-  if (onboardingCard) {
-    onboardingCard.classList.toggle("hidden", !checked || configured);
-  }
   if (clientsCard) {
     clientsCard.classList.toggle("hidden", !checked || !configured);
   }
@@ -417,6 +600,9 @@ function updateStageVisibility() {
   if (provisionBtn) {
     provisionBtn.classList.toggle("hidden", !checked || configured);
   }
+  profileOnlyFields.forEach((field) => {
+    field.classList.toggle("hidden", !checked);
+  });
   if (reconfigureToggle) {
     reconfigureToggle.classList.add("hidden");
   }
@@ -447,6 +633,88 @@ function setServerMeta(status) {
     parts.push(`${t("meta_tyumen")}: ${status.tyumen_port}`);
   }
   serverMetaEl.textContent = parts.join(" · ");
+}
+
+function openModal(modal) {
+  if (!modal) {
+    return;
+  }
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function closeModal(modal) {
+  if (!modal) {
+    return;
+  }
+  modal.classList.add("hidden");
+  modal.setAttribute("aria-hidden", "true");
+}
+
+function renderFaq() {
+  if (!faqContent) {
+    return;
+  }
+  const items = [
+    { titleKey: "faq_what_is_title", bodyKey: "faq_what_is_body" },
+    { titleKey: "faq_safe_title", bodyKey: "faq_safe_body" },
+    { titleKey: "faq_ports_title", bodyKey: "faq_ports_body" },
+    { titleKey: "faq_tyumen_title", bodyKey: "faq_tyumen_body" },
+  ];
+  faqContent.innerHTML = "";
+  items.forEach((item) => {
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = t(item.titleKey);
+    const body = document.createElement("p");
+    body.textContent = t(item.bodyKey);
+    details.appendChild(summary);
+    details.appendChild(body);
+    faqContent.appendChild(details);
+  });
+}
+
+function clearTourHighlight() {
+  document.querySelectorAll(".tour-highlight").forEach((el) => {
+    el.classList.remove("tour-highlight");
+  });
+}
+
+function highlightTourTarget(selector) {
+  clearTourHighlight();
+  if (!selector) {
+    return;
+  }
+  const target = document.querySelector(selector);
+  if (!target) {
+    return;
+  }
+  target.classList.add("tour-highlight");
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function updateTourStep() {
+  if (!tourModal || tourModal.classList.contains("hidden")) {
+    return;
+  }
+  const step = TOUR_STEPS[STATE.tourIndex] || TOUR_STEPS[0];
+  if (!step) {
+    return;
+  }
+  if (tourStepTitle) {
+    tourStepTitle.textContent = t(step.titleKey);
+  }
+  if (tourStepBody) {
+    tourStepBody.textContent = t(step.bodyKey);
+  }
+  if (tourPrevBtn) {
+    tourPrevBtn.disabled = STATE.tourIndex === 0;
+  }
+  if (tourNextBtn) {
+    tourNextBtn.textContent =
+      STATE.tourIndex === TOUR_STEPS.length - 1 ? t("tour_done") : t("tour_next");
+  }
+  highlightTourTarget(step.target);
 }
 
 function resolveApiBase() {
@@ -712,6 +980,22 @@ function formatTransfer(rx, tx) {
   return `${left} / ${right}`;
 }
 
+function setClientBusy(name, action) {
+  if (!name) {
+    return;
+  }
+  STATE.clientBusy[name] = action;
+  renderClients();
+}
+
+function clearClientBusy(name) {
+  if (!name) {
+    return;
+  }
+  delete STATE.clientBusy[name];
+  renderClients();
+}
+
 function renderClients(list = STATE.clients) {
   if (!clientsCard || !clientsListEl || !clientsEmptyEl) {
     return;
@@ -730,11 +1014,14 @@ function renderClients(list = STATE.clients) {
   list.forEach((client) => {
     const row = document.createElement("div");
     row.className = "client-row";
+    const busyAction = STATE.clientBusy[client.name];
+    const isBusy = Boolean(busyAction);
+    const clientLabel = client.name || "profile";
 
     const header = document.createElement("div");
     header.className = "client-header";
     const nameEl = document.createElement("div");
-    nameEl.textContent = client.name || "profile";
+    nameEl.textContent = clientLabel;
     const ifaceEl = document.createElement("div");
     ifaceEl.className = "client-meta";
     ifaceEl.textContent = client.interface
@@ -761,27 +1048,54 @@ function renderClients(list = STATE.clients) {
     configBtn.type = "button";
     configBtn.className = "secondary";
     configBtn.textContent = t("client_download");
+    configBtn.disabled = isBusy;
     configBtn.addEventListener("click", async () => {
       try {
+        setClientBusy(client.name, "export");
+        setStatus(t("client_busy_export"));
         const result = await exportClient(STATE.lastAuth, client.name);
         setDownload(result.config, result.qr_png_base64, result.client_name);
         setStatus(`${t("status_client_ready")}: ${result.client_name}`);
       } catch (err) {
         setStatus(`${t("status_failed")}: ${err}`);
+      } finally {
+        clearClientBusy(client.name);
       }
     });
 
     const qrBtn = document.createElement("button");
     qrBtn.type = "button";
     qrBtn.className = "secondary";
-    qrBtn.textContent = t("client_qr");
+    qrBtn.textContent = STATE.qrOpen === client.name ? t("client_qr_hide") : t("client_qr");
+    qrBtn.disabled = isBusy;
     qrBtn.addEventListener("click", async () => {
       try {
+        if (STATE.qrOpen === client.name) {
+          STATE.qrOpen = null;
+          renderClients();
+          return;
+        }
+        if (STATE.qrByClient[client.name]) {
+          STATE.qrOpen = client.name;
+          renderClients();
+          return;
+        }
+        setClientBusy(client.name, "qr");
+        setStatus(t("client_busy_qr"));
         const result = await exportClient(STATE.lastAuth, client.name);
-        setDownload(result.config, result.qr_png_base64, result.client_name);
+        if (result.qr_png_base64) {
+          STATE.qrByClient[client.name] = {
+            qr: result.qr_png_base64,
+            fileName: result.client_name || client.name || "profile",
+          };
+          STATE.qrOpen = client.name;
+          renderClients();
+        }
         setStatus(`${t("status_client_ready")}: ${result.client_name}`);
       } catch (err) {
         setStatus(`${t("status_failed")}: ${err}`);
+      } finally {
+        clearClientBusy(client.name);
       }
     });
 
@@ -789,17 +1103,22 @@ function renderClients(list = STATE.clients) {
     rotateBtn.type = "button";
     rotateBtn.className = "secondary";
     rotateBtn.textContent = t("client_rotate");
+    rotateBtn.disabled = isBusy;
     rotateBtn.addEventListener("click", async () => {
       if (!confirm(t("alert_rotate_confirm"))) {
         return;
       }
       try {
+        setClientBusy(client.name, "rotate");
+        setStatus(t("client_busy_rotate"));
         const result = await rotateClient(STATE.lastAuth, client.name);
         setDownload(result.config, result.qr_png_base64, result.client_name);
         setStatus(`${t("status_client_rotated")}: ${result.client_name}`);
         await refreshClients(STATE.lastAuth);
       } catch (err) {
         setStatus(`${t("status_failed")}: ${err}`);
+      } finally {
+        clearClientBusy(client.name);
       }
     });
 
@@ -807,16 +1126,25 @@ function renderClients(list = STATE.clients) {
     removeBtn.type = "button";
     removeBtn.className = "secondary";
     removeBtn.textContent = t("client_remove");
+    removeBtn.disabled = isBusy;
     removeBtn.addEventListener("click", async () => {
       if (!confirm(t("alert_remove_confirm"))) {
         return;
       }
       try {
+        setClientBusy(client.name, "remove");
+        setStatus(t("client_busy_remove"));
         await removeClient(STATE.lastAuth, client.name);
         setStatus(t("status_client_removed"));
+        if (STATE.qrOpen === client.name) {
+          STATE.qrOpen = null;
+        }
+        delete STATE.qrByClient[client.name];
         await refreshClients(STATE.lastAuth);
       } catch (err) {
         setStatus(`${t("status_failed")}: ${err}`);
+      } finally {
+        clearClientBusy(client.name);
       }
     });
 
@@ -828,6 +1156,31 @@ function renderClients(list = STATE.clients) {
     row.appendChild(header);
     row.appendChild(meta);
     row.appendChild(actions);
+    if (busyAction) {
+      const status = document.createElement("div");
+      status.className = "client-status";
+      status.textContent = t(`client_busy_${busyAction}`);
+      row.appendChild(status);
+    }
+    if (STATE.qrOpen === client.name && STATE.qrByClient[client.name]?.qr) {
+      const qrWrap = document.createElement("div");
+      qrWrap.className = "client-qr";
+      const img = document.createElement("img");
+      img.alt = "QR";
+      img.src = buildQrUrl(STATE.qrByClient[client.name].qr);
+      const qrLink = document.createElement("a");
+      qrLink.className = "secondary";
+      qrLink.textContent = t("client_qr_download");
+      const qrData = buildQrUrl(STATE.qrByClient[client.name].qr);
+      const qrName = STATE.qrByClient[client.name].fileName || clientLabel;
+      qrLink.href = qrData;
+      qrLink.download = `${qrName}.png`;
+      qrLink.dataset.url = qrData;
+      qrLink.addEventListener("click", handleDownloadClick);
+      qrWrap.appendChild(img);
+      qrWrap.appendChild(qrLink);
+      row.appendChild(qrWrap);
+    }
     clientsListEl.appendChild(row);
   });
 }
@@ -840,6 +1193,15 @@ async function refreshClients(data) {
   try {
     const clients = await fetchClients(data);
     STATE.clients = clients;
+    const names = new Set(clients.map((client) => client.name));
+    Object.keys(STATE.qrByClient).forEach((name) => {
+      if (!names.has(name)) {
+        delete STATE.qrByClient[name];
+      }
+    });
+    if (STATE.qrOpen && !names.has(STATE.qrOpen)) {
+      STATE.qrOpen = null;
+    }
     renderClients();
     upsertServer({
       host: data.host,
@@ -985,6 +1347,7 @@ async function runProvision() {
     provisionBtn.disabled = true;
   }
   setProgressVisible(true);
+  scrollToCard(progressCard);
   setStatus(t("status_creating_job"));
   setProgress([]);
   setProgressState("queued");
@@ -1073,6 +1436,7 @@ addClientBtn.addEventListener("click", async () => {
   }
   addClientBtn.disabled = true;
   setProgressVisible(true);
+  scrollToCard(progressCard);
   setStatus(t("status_adding_client"));
   setProgress([]);
   setProgressState("running");
@@ -1097,6 +1461,7 @@ addClientBtn.addEventListener("click", async () => {
     }
     setDownload(result.config, result.qr_png_base64, result.client_name);
     setStatus(`${t("status_client_ready")}: ${result.client_name}`);
+    setProgressState("done");
     upsertServer({ host: data.host, user: data.user, listen_port: data.listen_port || undefined });
     serverConfigured = true;
     updateStageVisibility();
