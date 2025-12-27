@@ -164,6 +164,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def host_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not await _require_subscription(update, context):
+        return ConversationHandler.END
     host, port = _parse_host_port(update.message.text)
     context.user_data["host"] = host
     context.user_data["port"] = port
@@ -172,6 +174,8 @@ async def host_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def user_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not await _require_subscription(update, context):
+        return ConversationHandler.END
     context.user_data["user"] = update.message.text.strip()
     keyboard = ReplyKeyboardMarkup(
         [[_t(update, "auth_password"), _t(update, "auth_key")]],
@@ -183,6 +187,8 @@ async def user_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def auth_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not await _require_subscription(update, context):
+        return ConversationHandler.END
     choice = update.message.text.strip().lower()
     if choice in {"password", "пароль"}:
         await update.message.reply_text(_t(update, "ask_password"), reply_markup=ReplyKeyboardRemove())
@@ -272,6 +278,8 @@ async def _run_provision(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def password_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not await _require_subscription(update, context):
+        return ConversationHandler.END
     context.user_data["password"] = update.message.text
     keyboard = ReplyKeyboardMarkup(
         [[str(DEFAULT_PORT), "33434", "27015", "443", _t(update, "port_default")]],
@@ -283,6 +291,8 @@ async def password_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 
 async def key_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not await _require_subscription(update, context):
+        return ConversationHandler.END
     context.user_data["key_content"] = update.message.text
     keyboard = ReplyKeyboardMarkup(
         [[str(DEFAULT_PORT), "33434", "27015", "443", _t(update, "port_default")]],
@@ -294,6 +304,8 @@ async def key_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def port_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not await _require_subscription(update, context):
+        return ConversationHandler.END
     text = update.message.text.strip().lower()
     default_labels = {
         _t(update, "port_default").lower(),
@@ -316,6 +328,8 @@ async def port_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not await _require_subscription(update, context):
+        return ConversationHandler.END
     await update.message.reply_text(_t(update, "canceled"), reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 

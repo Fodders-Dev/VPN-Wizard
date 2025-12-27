@@ -78,7 +78,7 @@ $env:VPNW_MINIAPP_URL="https://your-domain/miniapp"
 python -m vpn_wizard.tg_bot
 ```
 Commands: `/start`, `/help`, `/miniapp`, `/cancel`.
-Optional: require subscription with `VPNW_REQUIRED_CHANNEL="@fodders_dev"`.
+Default: bot requires subscription to `VPNW_REQUIRED_CHANNEL` (по умолчанию `@fodders_dev`). Set empty to disable.
 
 ## Tests
 ```
