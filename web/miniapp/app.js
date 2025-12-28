@@ -58,8 +58,8 @@ const I18N = {
     udp_port_label: "UDP порт сервера",
     tour_btn: "Обучение",
     faq_btn: "FAQ",
-    safe_mode_label: "Безопасный режим (только проверка)",
-    safe_mode_hint: "Для серверов с другими сервисами: показывает план изменений без установки.",
+    safe_mode_label: "Предпросмотр изменений (только для установки)",
+    safe_mode_hint: "Нужен, если на сервере есть сервисы. Проверка сервера всегда безопасна.",
     check_server_btn: "Проверить сервер",
     server_status_idle: "Сервер не проверен",
     reconfigure_label: "Показать настройку сервера",
@@ -169,7 +169,7 @@ const I18N = {
     faq_servers_body:
       "Список серверов хранится локально на устройстве (без паролей и ключей). Кнопка \"Использовать\" подставляет IP/логин — пароль вводится заново перед проверкой.",
     server_advice:
-      "Проверка не меняет сервер. Если сервер пустой — можно смело настраивать. Если нет — прочитайте FAQ и включите расширенные настройки.",
+      "Если сервер пустой — можно смело настраивать. Если нет — прочитайте FAQ и включите расширенные настройки.",
   },
   en: {
     app_title: "VPN Wizard",
@@ -189,8 +189,8 @@ const I18N = {
     udp_port_label: "Server UDP port",
     tour_btn: "Tour",
     faq_btn: "FAQ",
-    safe_mode_label: "Safe mode (check only)",
-    safe_mode_hint: "For servers with other services: shows the change plan without installing.",
+    safe_mode_label: "Preview changes (setup only)",
+    safe_mode_hint: "Use for servers with other services. Server check is always safe.",
     check_server_btn: "Check server",
     server_status_idle: "Server not checked",
     reconfigure_label: "Show server setup",
@@ -300,7 +300,7 @@ const I18N = {
     faq_servers_body:
       "Servers are stored locally on your device (no passwords/keys). The \"Use\" button fills IP/user; you enter the password again before checking.",
     server_advice:
-      "The check does not change the server. Empty server? You can install safely. If not, read the FAQ and enable advanced settings.",
+      "Empty server? You can install safely. If not, read the FAQ and enable advanced settings.",
   },
 };
 
@@ -1619,3 +1619,5 @@ addClientBtn.addEventListener("click", async () => {
     addClientBtn.disabled = false;
   }
 });
+    check_safe_hint: "Проверка не меняет сервер. Установка — отдельной кнопкой.",
+    check_safe_hint: "Checking does not change the server. Installation is a separate button.",

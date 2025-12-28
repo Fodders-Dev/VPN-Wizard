@@ -335,6 +335,11 @@ button.ghost {
   color: var(--muted);
 }
 
+.check-hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .servers-list {
   display: grid;
   gap: 10px;
