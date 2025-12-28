@@ -26,6 +26,7 @@ const clientsListEl = document.getElementById("clients-list");
 const clientsEmptyEl = document.getElementById("clients-empty");
 const langButtons = document.querySelectorAll(".lang-btn");
 const safeToggle = document.getElementById("safe-toggle");
+const safeRow = document.querySelector(".safe-row");
 const externalLinks = document.querySelectorAll(".external-link");
 const tourBtn = document.getElementById("tour-btn");
 const faqBtn = document.getElementById("faq-btn");
@@ -58,9 +59,10 @@ const I18N = {
     udp_port_label: "UDP порт сервера",
     tour_btn: "Обучение",
     faq_btn: "FAQ",
-    safe_mode_label: "Предпросмотр изменений (только для установки)",
-    safe_mode_hint: "Нужен, если на сервере есть сервисы. Проверка сервера всегда безопасна.",
+    safe_mode_label: "Предпросмотр изменений перед установкой",
+    safe_mode_hint: "Нужен только при установке, если на сервере есть другие сервисы.",
     check_server_btn: "Проверить сервер",
+    check_safe_hint: "Проверить сервер - безопасно: ничего не устанавливается. Установка - отдельной кнопкой.",
     server_status_idle: "Сервер не проверен",
     reconfigure_label: "Показать настройку сервера",
     simple_mode_label: "Простой режим",
@@ -72,7 +74,7 @@ const I18N = {
     step3_title: "Шаг 3. Скачать",
     download_btn: "Скачать конфиг",
     download_qr_btn: "Скачать QR",
-    step3_hint: "Откройте AmneziaWG и нажмите «+», чтобы добавить файл конфигурации.",
+    step3_hint: "Откройте AmneziaWG и нажмите \"+\", чтобы добавить файл конфигурации.",
     apps_title: "Скачать приложение AmneziaWG",
     apps_android: "Android (Google Play)",
     apps_ios: "iOS (App Store)",
@@ -84,7 +86,7 @@ const I18N = {
     onboarding_step1: "1) Введите IP/хост, SSH пользователя и пароль или ключ.",
     onboarding_step2: "2) Нажмите \"Проверить сервер\" - если VPN уже есть, появятся профили.",
     onboarding_step3: "3) Если нет - нажмите \"Настроить сервер\" и скачайте конфиг и QR.",
-    onboarding_step4: "4) При блокировках попробуйте другой UDP порт или префикс tyumen-.",
+    onboarding_step4: "4) При блокировках попробуйте другой UDP порт (например 3478 или 33434).",
     clients_title: "Профили",
     clients_empty: "Профили не найдены.",
     clients_loading: "Загружаем профили...",
@@ -118,7 +120,7 @@ const I18N = {
     status_server_needs_setup: "Сервер не настроен",
     status_server_error: "Не удалось проверить сервер",
     status_precheck: "Проверяем сервер и план изменений... ничего не устанавливаем.",
-    status_precheck_done: "Предпросмотр готов. Чтобы установить VPN, выключите безопасный режим.",
+    status_precheck_done: "Предпросмотр готов. Чтобы установить VPN, отключите предпросмотр.",
     server_use_hint: "Введите пароль или ключ и нажмите \"Проверить сервер\".",
     download_ready: "Скачайте конфиг и отсканируйте QR.",
     check_ok: "ok",
@@ -189,9 +191,10 @@ const I18N = {
     udp_port_label: "Server UDP port",
     tour_btn: "Tour",
     faq_btn: "FAQ",
-    safe_mode_label: "Preview changes (setup only)",
-    safe_mode_hint: "Use for servers with other services. Server check is always safe.",
+    safe_mode_label: "Preview changes before setup",
+    safe_mode_hint: "Only for setup when the server hosts other services.",
     check_server_btn: "Check server",
+    check_safe_hint: "Checking the server is safe: nothing is installed. Setup uses a separate button.",
     server_status_idle: "Server not checked",
     reconfigure_label: "Show server setup",
     simple_mode_label: "Simple mode",
@@ -203,7 +206,7 @@ const I18N = {
     step3_title: "Step 3: Download",
     download_btn: "Download config",
     download_qr_btn: "Download QR",
-    step3_hint: "Open AmneziaWG and press “+” to add the configuration file.",
+    step3_hint: "Open AmneziaWG and press \"+\" to add the configuration file.",
     apps_title: "Get AmneziaWG",
     apps_android: "Android (Google Play)",
     apps_ios: "iOS (App Store)",
@@ -215,7 +218,7 @@ const I18N = {
     onboarding_step1: "1) Enter host, SSH user, and password or key.",
     onboarding_step2: "2) Click \"Check server\" - if VPN exists you will see profiles.",
     onboarding_step3: "3) Otherwise click \"Configure server\" and download config + QR.",
-    onboarding_step4: "4) If blocked, try another UDP port or the tyumen- prefix.",
+    onboarding_step4: "4) If blocked, try another UDP port (for example 3478 or 33434).",
     clients_title: "Profiles",
     clients_empty: "No profiles yet.",
     clients_loading: "Loading profiles...",
@@ -249,7 +252,7 @@ const I18N = {
     status_server_needs_setup: "Server is not configured",
     status_server_error: "Failed to check server",
     status_precheck: "Checking server and change plan... nothing is installed.",
-    status_precheck_done: "Preview ready. Disable safe mode to install the VPN.",
+    status_precheck_done: "Preview ready. Disable preview to install the VPN.",
     server_use_hint: "Enter password or key and click \"Check server\".",
     download_ready: "Ready. Download your config and scan the QR.",
     check_ok: "ok",
@@ -661,6 +664,7 @@ function updateStageVisibility() {
     }
     setProgressVisible(false);
   }
+  setSafeVisibility();
 }
 
 function setServerMeta(status) {
@@ -1018,13 +1022,25 @@ async function rotateClient(data, clientName) {
   return result;
 }
 
+function setSafeVisibility() {
+  if (!safeRow || !safeToggle) {
+    return;
+  }
+  const shouldShow = !simpleToggle.checked && STATE.checked && !serverConfigured;
+  safeRow.classList.toggle("hidden", !shouldShow);
+  if (!shouldShow) {
+    safeToggle.checked = false;
+  }
+}
+
 function setSimpleMode(enabled) {
   advancedFields.forEach((field) => {
     field.classList.toggle("hidden", enabled);
   });
+  setSafeVisibility();
 }
 
-setSimpleMode(true);
+setSimpleMode(simpleToggle?.checked ?? true);
 simpleToggle.addEventListener("change", () => {
   setSimpleMode(simpleToggle.checked);
 });
@@ -1619,5 +1635,3 @@ addClientBtn.addEventListener("click", async () => {
     addClientBtn.disabled = false;
   }
 });
-    check_safe_hint: "Проверка не меняет сервер. Установка — отдельной кнопкой.",
-    check_safe_hint: "Checking does not change the server. Installation is a separate button.",

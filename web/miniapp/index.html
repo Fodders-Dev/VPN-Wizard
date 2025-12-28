@@ -56,20 +56,20 @@
           <span data-i18n="udp_port_label">UDP порт сервера</span>
           <input name="listen_port" type="number" min="1" max="65535" value="3478" />
         </label>
-        <div class="advanced safe-row">
+        <div class="advanced safe-row hidden">
           <label class="toggle">
             <input type="checkbox" id="safe-toggle" />
-            <span data-i18n="safe_mode_label">Безопасный режим (только проверка)</span>
+            <span data-i18n="safe_mode_label">Предпросмотр изменений перед установкой</span>
           </label>
           <small class="field-hint" data-i18n="safe_mode_hint">
-            Показывает, что изменится, без установки.
+            Нужен только при установке, если на сервере есть другие сервисы.
           </small>
         </div>
         <div class="server-tools">
           <button type="submit" id="check-server-btn" data-i18n="check_server_btn">Проверить сервер</button>
           <div id="server-status" class="server-status" data-i18n="server_status_idle">Сервер не проверен</div>
           <div id="check-hint" class="check-hint" data-i18n="check_safe_hint">
-            Проверка не меняет сервер. Установка — отдельной кнопкой.
+            Проверить сервер — безопасно: ничего не устанавливается. Установка — отдельной кнопкой.
           </div>
           <div id="server-meta" class="server-meta"></div>
           <div id="server-advice" class="server-advice" data-i18n="server_advice">
@@ -121,7 +121,7 @@
       <a id="qr-download" class="secondary qr-download hidden" href="#" download="client1.png" data-i18n="download_qr_btn">Скачать QR</a>
       <img id="qr-image" alt="QR code" />
       <p class="step3-hint" data-i18n="step3_hint">
-        Откройте AmneziaWG и нажмите «+», чтобы добавить файл конфигурации.
+        Откройте AmneziaWG и нажмите "+", чтобы добавить файл конфигурации.
       </p>
       <div class="app-links">
         <div class="app-links-title" data-i18n="apps_title">Скачать приложение AmneziaWG</div>
