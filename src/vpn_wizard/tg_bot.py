@@ -35,6 +35,8 @@ I18N = {
             "Android: https://play.google.com/store/apps/details?id=org.amnezia.awg\n"
             "iOS: https://apps.apple.com/us/app/amneziavpn/id1600529900\n"
             "Windows/macOS/Linux: https://github.com/amnezia-vpn/amnezia-client/releases\n\n"
+            "Гайд по аренде сервера (HostKey):\n"
+            "https://telegra.ph/Kak-arendovat-minimalnyj-server-VPS-na-HostKey-dlya-VPN-12-28\n\n"
             "После получения конфига откройте AmneziaWG и нажмите «+», чтобы добавить файл."
         ),
         "help": (
@@ -44,6 +46,8 @@ I18N = {
             "Android: https://play.google.com/store/apps/details?id=org.amnezia.awg\n"
             "iOS: https://apps.apple.com/us/app/amneziavpn/id1600529900\n"
             "Windows/macOS/Linux: https://github.com/amnezia-vpn/amnezia-client/releases\n\n"
+            "Гайд по аренде сервера (HostKey):\n"
+            "https://telegra.ph/Kak-arendovat-minimalnyj-server-VPS-na-HostKey-dlya-VPN-12-28\n\n"
             "После получения конфига откройте AmneziaWG и нажмите «+»."
         ),
         "bot_use_miniapp": "Бот работает через миниапп. Нажмите кнопку ниже или используйте /miniapp.",
@@ -80,6 +84,8 @@ I18N = {
             "Android: https://play.google.com/store/apps/details?id=org.amnezia.awg\n"
             "iOS: https://apps.apple.com/us/app/amneziavpn/id1600529900\n"
             "Windows/macOS/Linux: https://github.com/amnezia-vpn/amnezia-client/releases\n\n"
+            "VPS rental guide (HostKey):\n"
+            "https://telegra.ph/Kak-arendovat-minimalnyj-server-VPS-na-HostKey-dlya-VPN-12-28\n\n"
             "After you get the config, open AmneziaWG and press “+” to add it."
         ),
         "help": (
@@ -89,6 +95,8 @@ I18N = {
             "Android: https://play.google.com/store/apps/details?id=org.amnezia.awg\n"
             "iOS: https://apps.apple.com/us/app/amneziavpn/id1600529900\n"
             "Windows/macOS/Linux: https://github.com/amnezia-vpn/amnezia-client/releases\n\n"
+            "VPS rental guide (HostKey):\n"
+            "https://telegra.ph/Kak-arendovat-minimalnyj-server-VPS-na-HostKey-dlya-VPN-12-28\n\n"
             "After you get the config, open AmneziaWG and press “+”."
         ),
         "bot_use_miniapp": "The bot works via the miniapp. Tap the button below or use /miniapp.",

@@ -171,7 +171,8 @@ const I18N = {
     faq_servers_body:
       "Список серверов хранится локально на устройстве (без паролей и ключей). Кнопка \"Использовать\" подставляет IP/логин — пароль вводится заново перед проверкой.",
     server_advice:
-      "Если сервер пустой — можно смело настраивать. Если нет — прочитайте FAQ и включите расширенные настройки.",
+      "Если сервер пустой - можно смело настраивать. Если нет - прочитайте FAQ и включите расширенные настройки.",
+    server_rent_link: "Как арендовать сервер: пошаговый гайд",
   },
   en: {
     app_title: "VPN Wizard",
@@ -304,6 +305,7 @@ const I18N = {
       "Servers are stored locally on your device (no passwords/keys). The \"Use\" button fills IP/user; you enter the password again before checking.",
     server_advice:
       "Empty server? You can install safely. If not, read the FAQ and enable advanced settings.",
+    server_rent_link: "How to rent a VPS: step-by-step guide",
   },
 };
 

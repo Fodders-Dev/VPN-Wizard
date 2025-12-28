@@ -335,6 +335,17 @@ button.ghost {
   color: var(--muted);
 }
 
+.server-link {
+  font-size: 12px;
+  color: var(--accent);
+  text-decoration: underline;
+  width: fit-content;
+}
+
+.server-link:hover {
+  opacity: 0.9;
+}
+
 .check-hint {
   font-size: 12px;
   color: var(--muted);
