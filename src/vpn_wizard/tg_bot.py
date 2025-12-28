@@ -28,10 +28,13 @@ REQUIRED_CHANNEL = os.getenv("VPNW_REQUIRED_CHANNEL", "@fodders_dev")
 I18N = {
     "ru": {
         "start": (
-            "Добро пожаловать в VPN Wizard.\n\n"
+            "Привет! Это VPN Wizard — быстрый способ поднять VPN на вашем сервере.\n\n"
+            "Как начать:\n"
             "1) Отправьте IP или хост сервера (можно с :порт).\n"
             "2) Укажите SSH пользователя и пароль/ключ.\n"
-            "3) Получите конфиг и QR.\n\n"
+            "3) Выберите UDP порт и получите конфиг + QR.\n\n"
+            "Если сервер пустой — можно смело настраивать.\n"
+            "Если на сервере уже есть сервисы — сначала изучите FAQ в миниаппе.\n\n"
             "Команда /miniapp откроет веб-мастер."
         ),
         "help": (
@@ -64,10 +67,13 @@ I18N = {
     },
     "en": {
         "start": (
-            "Welcome to VPN Wizard.\n\n"
+            "Hi! VPN Wizard helps you set up a fast VPN on your server.\n\n"
+            "How to start:\n"
             "1) Send your server IP or host (optionally with :port).\n"
             "2) Provide SSH user and password/key.\n"
-            "3) Receive config and QR.\n\n"
+            "3) Choose UDP port and receive config + QR.\n\n"
+            "Empty server? You can safely install.\n"
+            "Existing services? Check the FAQ in the miniapp first.\n\n"
             "Use /miniapp to open the web wizard."
         ),
         "help": (
@@ -127,6 +133,7 @@ async def _require_subscription(update: Update, context: ContextTypes.DEFAULT_TY
     if not REQUIRED_CHANNEL:
         return True
     user = update.effective_user
+    message = update.effective_message
     if not user:
         return False
     try:
@@ -134,10 +141,11 @@ async def _require_subscription(update: Update, context: ContextTypes.DEFAULT_TY
     except Exception:
         member = None
     if not member or member.status in {"left", "kicked"}:
-        await update.message.reply_text(
-            _t(update, "subscribe_required").format(channel=_channel_link()),
-            reply_markup=ReplyKeyboardRemove(),
-        )
+        if message:
+            await message.reply_text(
+                _t(update, "subscribe_required").format(channel=_channel_link()),
+                reply_markup=ReplyKeyboardRemove(),
+            )
         return False
     return True
 
@@ -155,10 +163,19 @@ def _parse_host_port(text: str) -> Tuple[str, int]:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if not await _require_subscription(update, context):
         return ConversationHandler.END
-    await update.message.reply_text(
-        _t(update, "start"),
-        reply_markup=ReplyKeyboardRemove(),
-    )
+    message = update.effective_message
+    url = os.getenv("VPNW_MINIAPP_URL")
+    if message and url:
+        keyboard = ReplyKeyboardMarkup(
+            [[KeyboardButton(_t(update, "open_wizard"), web_app=WebAppInfo(url))]],
+            resize_keyboard=True,
+        )
+        await message.reply_text(_t(update, "start"), reply_markup=keyboard)
+    elif message:
+        await message.reply_text(
+            _t(update, "start"),
+            reply_markup=ReplyKeyboardRemove(),
+        )
     context.user_data.clear()
     return STATE_HOST
 
