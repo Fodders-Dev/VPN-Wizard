@@ -19,5 +19,5 @@ python -m vpn_wizard.tg_bot
 - If miniapp is hosted separately (Vercel), set `window.API_BASE` in `web/miniapp/config.js`.
 - Enable CORS with `VPNW_CORS_ORIGINS="https://your-miniapp-domain"`.
 - You can also set the API on the fly via `?api=https://your-api-domain` in the miniapp URL.
-- For a single Railway service, run `python -m vpn_wizard.combined` with `VPNW_BOT_TOKEN` set.
+- For a single Railway service, run `python -m vpn_wizard.combined` with `VPNW_BOT_TOKEN` set (Railway стартует именно так).
 - To require a channel subscription, set `VPNW_REQUIRED_CHANNEL="@fodders_dev"`.

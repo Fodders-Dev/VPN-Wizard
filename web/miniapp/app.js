@@ -58,7 +58,7 @@ const I18N = {
     tour_btn: "Обучение",
     faq_btn: "FAQ",
     safe_mode_label: "Безопасный режим (только проверка)",
-    safe_mode_hint: "Показывает, что изменится, без установки.",
+    safe_mode_hint: "Для серверов с другими сервисами: показывает план изменений без установки.",
     check_server_btn: "Проверить сервер",
     server_status_idle: "Сервер не проверен",
     reconfigure_label: "Показать настройку сервера",
@@ -111,7 +111,7 @@ const I18N = {
     status_server_configured: "Сервер уже настроен",
     status_server_needs_setup: "Сервер не настроен",
     status_server_error: "Не удалось проверить сервер",
-    status_precheck: "Проверяем сервер и план изменений...",
+    status_precheck: "Проверяем сервер и план изменений... ничего не устанавливаем.",
     status_precheck_done: "Предпросмотр готов. Чтобы установить VPN, выключите безопасный режим.",
     server_use_hint: "Введите пароль или ключ и нажмите \"Проверить сервер\".",
     download_ready: "Скачайте конфиг и отсканируйте QR.",
@@ -145,7 +145,8 @@ const I18N = {
     tour_step3_title: "Пароль или ключ",
     tour_step3_body: "Пароль приходит от хостинга. Если вход по ключу — оставьте поле пустым и вставьте ключ в расширенных полях.",
     tour_step4_title: "Проверка сервера",
-    tour_step4_body: "Нажмите, чтобы проверить сервер и увидеть готовые профили.",
+    tour_step4_body:
+      "Проверка ничего не устанавливает: она лишь определяет, пустой сервер или уже настроен. После проверки появятся нужные кнопки.",
     faq_title: "FAQ",
     faq_what_is_title: "Что это за бот?",
     faq_what_is_body: "VPN Wizard подключается к вашему серверу по SSH и автоматически настраивает быстрый VPN. В результате вы получаете готовые конфиги и QR.",
@@ -162,7 +163,7 @@ const I18N = {
     faq_servers_body:
       "Список серверов хранится локально на устройстве (без паролей и ключей). Кнопка \"Использовать\" подставляет IP/логин — пароль вводится заново перед проверкой.",
     server_advice:
-      "Если сервер пустой — можно смело настраивать. Если нет — прочитайте FAQ и включите расширенные настройки.",
+      "Проверка не меняет сервер. Если сервер пустой — можно смело настраивать. Если нет — прочитайте FAQ и включите расширенные настройки.",
   },
   en: {
     app_title: "VPN Wizard",
@@ -183,7 +184,7 @@ const I18N = {
     tour_btn: "Tour",
     faq_btn: "FAQ",
     safe_mode_label: "Safe mode (check only)",
-    safe_mode_hint: "Shows what will change without installing.",
+    safe_mode_hint: "For servers with other services: shows the change plan without installing.",
     check_server_btn: "Check server",
     server_status_idle: "Server not checked",
     reconfigure_label: "Show server setup",
@@ -236,7 +237,7 @@ const I18N = {
     status_server_configured: "Server already configured",
     status_server_needs_setup: "Server is not configured",
     status_server_error: "Failed to check server",
-    status_precheck: "Checking server and change plan...",
+    status_precheck: "Checking server and change plan... nothing is installed.",
     status_precheck_done: "Preview ready. Disable safe mode to install the VPN.",
     server_use_hint: "Enter password or key and click \"Check server\".",
     download_ready: "Ready. Download your config and scan the QR.",
@@ -270,7 +271,8 @@ const I18N = {
     tour_step3_title: "Password or key",
     tour_step3_body: "Password comes from the hoster. If you use an SSH key, keep it empty and paste the key in advanced fields.",
     tour_step4_title: "Server check",
-    tour_step4_body: "Click to check the server and load profiles.",
+    tour_step4_body:
+      "The check does not install anything. It only detects if the server is empty or already configured, then shows the next buttons.",
     faq_title: "FAQ",
     faq_what_is_title: "What is this bot?",
     faq_what_is_body: "VPN Wizard connects to your server over SSH and configures a fast VPN. You get ready configs and QR.",
@@ -287,7 +289,7 @@ const I18N = {
     faq_servers_body:
       "Servers are stored locally on your device (no passwords/keys). The \"Use\" button fills IP/user; you enter the password again before checking.",
     server_advice:
-      "Empty server? You can install safely. If not, read the FAQ and enable advanced settings.",
+      "The check does not change the server. Empty server? You can install safely. If not, read the FAQ and enable advanced settings.",
   },
 };
 
