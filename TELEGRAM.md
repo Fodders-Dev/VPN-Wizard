@@ -21,3 +21,4 @@ python -m vpn_wizard.tg_bot
 - You can also set the API on the fly via `?api=https://your-api-domain` in the miniapp URL.
 - For a single Railway service, run `python -m vpn_wizard.combined` with `VPNW_BOT_TOKEN` set (Railway стартует именно так).
 - To require a channel subscription, set `VPNW_REQUIRED_CHANNEL="@fodders_dev"`.
+- Для проверки подписки бот должен быть админом канала (иначе Telegram не отдаёт статус участников).

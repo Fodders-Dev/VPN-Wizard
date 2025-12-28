@@ -46,6 +46,10 @@ I18N = {
             "Для веб-версии используйте /miniapp."
         ),
         "subscribe_required": "Подпишитесь на канал {channel} и нажмите /start, чтобы пользоваться ботом.",
+        "subscribe_check_failed": (
+            "Не могу проверить подписку. Добавьте бота в канал {channel} как администратора "
+            "и снова нажмите /start."
+        ),
         "ask_user": "SSH пользователь? (пример: root)",
         "choose_auth": "Выберите способ авторизации:",
         "auth_password": "пароль",
@@ -85,6 +89,10 @@ I18N = {
             "Use /miniapp for the web UI."
         ),
         "subscribe_required": "Subscribe to {channel} and send /start to use the bot.",
+        "subscribe_check_failed": (
+            "I cannot verify the subscription. Add the bot to {channel} as an admin "
+            "and send /start again."
+        ),
         "ask_user": "SSH user? (example: root)",
         "choose_auth": "Choose auth method:",
         "auth_password": "password",
@@ -139,7 +147,12 @@ async def _require_subscription(update: Update, context: ContextTypes.DEFAULT_TY
     try:
         member = await context.bot.get_chat_member(REQUIRED_CHANNEL, user.id)
     except Exception:
-        member = None
+        if message:
+            await message.reply_text(
+                _t(update, "subscribe_check_failed").format(channel=_channel_link()),
+                reply_markup=ReplyKeyboardRemove(),
+            )
+        return False
     if not member or member.status in {"left", "kicked"}:
         if message:
             await message.reply_text(
