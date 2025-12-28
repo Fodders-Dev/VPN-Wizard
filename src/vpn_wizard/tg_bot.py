@@ -28,23 +28,25 @@ REQUIRED_CHANNEL = os.getenv("VPNW_REQUIRED_CHANNEL", "@fodders_dev")
 I18N = {
     "ru": {
         "start": (
-            "Привет! Это VPN Wizard — быстрый способ поднять VPN на вашем сервере.\n\n"
-            "Как начать:\n"
-            "1) Отправьте IP или хост сервера (можно с :порт).\n"
-            "2) Укажите SSH пользователя и пароль/ключ.\n"
-            "3) Выберите UDP порт и получите конфиг + QR.\n\n"
-            "Если сервер пустой — можно смело настраивать.\n"
-            "Если на сервере уже есть сервисы — сначала изучите FAQ в миниаппе.\n\n"
-            "Команда /miniapp откроет веб-мастер."
+            "Привет! Это VPN Wizard.\n\n"
+            "Бот работает через миниапп: там вся настройка и получение профилей.\n"
+            "Нажмите кнопку ниже или используйте /miniapp.\n\n"
+            "Где взять приложение AmneziaWG:\n"
+            "Android: https://play.google.com/store/apps/details?id=org.amnezia.awg\n"
+            "iOS: https://apps.apple.com/us/app/amneziavpn/id1600529900\n"
+            "Windows/macOS/Linux: https://github.com/amnezia-vpn/amnezia-client/releases\n\n"
+            "После получения конфига откройте AmneziaWG и нажмите «+», чтобы добавить файл."
         ),
         "help": (
-            "Как пользоваться ботом:\n"
-            "1) Отправьте IP/хост сервера.\n"
-            "2) Укажите SSH пользователя и пароль/ключ.\n"
-            "3) Выберите UDP порт (рекомендуем 3478).\n"
-            "4) Получите конфиг и QR.\n\n"
-            "Для веб-версии используйте /miniapp."
+            "Для настройки используйте миниапп — бот не настраивает сервер напрямую.\n"
+            "Нажмите /miniapp и следуйте шагам.\n\n"
+            "Приложение AmneziaWG:\n"
+            "Android: https://play.google.com/store/apps/details?id=org.amnezia.awg\n"
+            "iOS: https://apps.apple.com/us/app/amneziavpn/id1600529900\n"
+            "Windows/macOS/Linux: https://github.com/amnezia-vpn/amnezia-client/releases\n\n"
+            "После получения конфига откройте AmneziaWG и нажмите «+»."
         ),
+        "bot_use_miniapp": "Бот работает через миниапп. Нажмите кнопку ниже или используйте /miniapp.",
         "subscribe_required": "Подпишитесь на канал {channel} и нажмите /start, чтобы пользоваться ботом.",
         "subscribe_check_failed": (
             "Не могу проверить подписку. Добавьте бота в канал {channel} как администратора "
@@ -71,23 +73,25 @@ I18N = {
     },
     "en": {
         "start": (
-            "Hi! VPN Wizard helps you set up a fast VPN on your server.\n\n"
-            "How to start:\n"
-            "1) Send your server IP or host (optionally with :port).\n"
-            "2) Provide SSH user and password/key.\n"
-            "3) Choose UDP port and receive config + QR.\n\n"
-            "Empty server? You can safely install.\n"
-            "Existing services? Check the FAQ in the miniapp first.\n\n"
-            "Use /miniapp to open the web wizard."
+            "Hi! This is VPN Wizard.\n\n"
+            "The bot works via the miniapp: all setup and profiles are there.\n"
+            "Tap the button below or use /miniapp.\n\n"
+            "Get AmneziaWG:\n"
+            "Android: https://play.google.com/store/apps/details?id=org.amnezia.awg\n"
+            "iOS: https://apps.apple.com/us/app/amneziavpn/id1600529900\n"
+            "Windows/macOS/Linux: https://github.com/amnezia-vpn/amnezia-client/releases\n\n"
+            "After you get the config, open AmneziaWG and press “+” to add it."
         ),
         "help": (
-            "How to use:\n"
-            "1) Send your server IP/host.\n"
-            "2) Provide SSH user and password/key.\n"
-            "3) Pick UDP port (3478 recommended).\n"
-            "4) Receive config and QR.\n\n"
-            "Use /miniapp for the web UI."
+            "Use the miniapp for setup — the bot no longer provisions directly.\n"
+            "Open /miniapp and follow the steps.\n\n"
+            "Get AmneziaWG:\n"
+            "Android: https://play.google.com/store/apps/details?id=org.amnezia.awg\n"
+            "iOS: https://apps.apple.com/us/app/amneziavpn/id1600529900\n"
+            "Windows/macOS/Linux: https://github.com/amnezia-vpn/amnezia-client/releases\n\n"
+            "After you get the config, open AmneziaWG and press “+”."
         ),
+        "bot_use_miniapp": "The bot works via the miniapp. Tap the button below or use /miniapp.",
         "subscribe_required": "Subscribe to {channel} and send /start to use the bot.",
         "subscribe_check_failed": (
             "I cannot verify the subscription. Add the bot to {channel} as an admin "
@@ -136,6 +140,25 @@ def _channel_link() -> str:
         return f"https://t.me/{channel}"
     return ""
 
+def _build_miniapp_keyboard(url: Optional[str], update: Update) -> Optional[ReplyKeyboardMarkup]:
+    if not url:
+        return None
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton(_t(update, "open_wizard"), web_app=WebAppInfo(url))]],
+        resize_keyboard=True,
+    )
+
+async def _send_miniapp_intro(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    if not message:
+        return
+    url = os.getenv("VPNW_MINIAPP_URL")
+    keyboard = _build_miniapp_keyboard(url, update)
+    await message.reply_text(
+        _t(update, "start"),
+        reply_markup=keyboard or ReplyKeyboardRemove(),
+    )
+
 
 async def _require_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     if not REQUIRED_CHANNEL:
@@ -176,21 +199,9 @@ def _parse_host_port(text: str) -> Tuple[str, int]:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if not await _require_subscription(update, context):
         return ConversationHandler.END
-    message = update.effective_message
-    url = os.getenv("VPNW_MINIAPP_URL")
-    if message and url:
-        keyboard = ReplyKeyboardMarkup(
-            [[KeyboardButton(_t(update, "open_wizard"), web_app=WebAppInfo(url))]],
-            resize_keyboard=True,
-        )
-        await message.reply_text(_t(update, "start"), reply_markup=keyboard)
-    elif message:
-        await message.reply_text(
-            _t(update, "start"),
-            reply_markup=ReplyKeyboardRemove(),
-        )
+    await _send_miniapp_intro(update, context)
     context.user_data.clear()
-    return STATE_HOST
+    return ConversationHandler.END
 
 
 async def host_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -371,17 +382,25 @@ async def miniapp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not url:
         await update.message.reply_text(_t(update, "miniapp_missing"))
         return
-    keyboard = ReplyKeyboardMarkup(
-        [[KeyboardButton(_t(update, "open_wizard"), web_app=WebAppInfo(url))]],
-        resize_keyboard=True,
-    )
+    keyboard = _build_miniapp_keyboard(url, update)
     await update.message.reply_text(_t(update, "miniapp_open"), reply_markup=keyboard)
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _require_subscription(update, context):
         return
-    await update.message.reply_text(_t(update, "help"), reply_markup=ReplyKeyboardRemove())
+    keyboard = _build_miniapp_keyboard(os.getenv("VPNW_MINIAPP_URL"), update)
+    await update.message.reply_text(_t(update, "help"), reply_markup=keyboard or ReplyKeyboardRemove())
+
+
+async def fallback_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _require_subscription(update, context):
+        return
+    message = update.effective_message
+    if not message:
+        return
+    keyboard = _build_miniapp_keyboard(os.getenv("VPNW_MINIAPP_URL"), update)
+    await message.reply_text(_t(update, "bot_use_miniapp"), reply_markup=keyboard or ReplyKeyboardRemove())
 
 
 def main() -> None:
@@ -405,6 +424,7 @@ def main() -> None:
     app.add_handler(conv)
     app.add_handler(CommandHandler("miniapp", miniapp))
     app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, fallback_text))
     app.run_polling()
 
 

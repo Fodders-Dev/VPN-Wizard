@@ -26,6 +26,7 @@ const clientsListEl = document.getElementById("clients-list");
 const clientsEmptyEl = document.getElementById("clients-empty");
 const langButtons = document.querySelectorAll(".lang-btn");
 const safeToggle = document.getElementById("safe-toggle");
+const externalLinks = document.querySelectorAll(".external-link");
 const tourBtn = document.getElementById("tour-btn");
 const faqBtn = document.getElementById("faq-btn");
 const faqModal = document.getElementById("faq-modal");
@@ -71,6 +72,11 @@ const I18N = {
     step3_title: "Шаг 3. Скачать",
     download_btn: "Скачать конфиг",
     download_qr_btn: "Скачать QR",
+    step3_hint: "Откройте AmneziaWG и нажмите «+», чтобы добавить файл конфигурации.",
+    apps_title: "Скачать приложение AmneziaWG",
+    apps_android: "Android (Google Play)",
+    apps_ios: "iOS (App Store)",
+    apps_desktop: "Windows / macOS / Linux",
     servers_title: "Мои серверы",
     servers_empty: "Пока нет сохранённых серверов.",
     servers_use_btn: "Использовать",
@@ -197,6 +203,11 @@ const I18N = {
     step3_title: "Step 3: Download",
     download_btn: "Download config",
     download_qr_btn: "Download QR",
+    step3_hint: "Open AmneziaWG and press “+” to add the configuration file.",
+    apps_title: "Get AmneziaWG",
+    apps_android: "Android (Google Play)",
+    apps_ios: "iOS (App Store)",
+    apps_desktop: "Windows / macOS / Linux",
     servers_title: "My servers",
     servers_empty: "No saved servers yet.",
     servers_use_btn: "Use",
@@ -464,6 +475,9 @@ if (downloadLink) {
 if (qrDownload) {
   qrDownload.addEventListener("click", handleDownloadClick);
 }
+externalLinks.forEach((link) => {
+  link.addEventListener("click", handleDownloadClick);
+});
 langButtons.forEach((btn) => {
   btn.addEventListener("click", () => {
     currentLang = btn.dataset.lang === "en" ? "en" : "ru";

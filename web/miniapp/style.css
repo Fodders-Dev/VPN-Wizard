@@ -220,6 +220,29 @@ button.ghost {
   height: 220px;
 }
 
+.step3-hint {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.app-links {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.app-links-title {
+  font-weight: 600;
+  color: var(--ink);
+  text-align: left;
+}
+
+.app-links a.secondary {
+  margin-top: 0;
+  justify-content: flex-start;
+}
+
 .download {
   display: inline-block;
   margin-top: 8px;
