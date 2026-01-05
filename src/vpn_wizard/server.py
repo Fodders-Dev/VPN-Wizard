@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import base64
+from collections import OrderedDict
 from io import BytesIO
 import os
 from pathlib import Path
@@ -10,7 +11,7 @@ from typing import Optional
 import threading
 import uuid
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -88,6 +89,7 @@ class ProvisionResponse(BaseModel):
     ok: bool
     config: Optional[str] = None
     qr_png_base64: Optional[str] = None
+    download_id: Optional[str] = None
     checks: list[CheckItem] = []
     error: Optional[str] = None
 
@@ -127,6 +129,7 @@ class ClientAddResponse(BaseModel):
     client_ip: Optional[str] = None
     config: Optional[str] = None
     qr_png_base64: Optional[str] = None
+    download_id: Optional[str] = None
     interface: Optional[str] = None
     error: Optional[str] = None
 
@@ -137,6 +140,7 @@ class ClientExportResponse(BaseModel):
     client_ip: Optional[str] = None
     config: Optional[str] = None
     qr_png_base64: Optional[str] = None
+    download_id: Optional[str] = None
     interface: Optional[str] = None
     error: Optional[str] = None
 
@@ -176,10 +180,14 @@ def _write_temp_key(content: str) -> TempKey:
 
 
 def _build_qr_base64(config: str) -> str:
+    return base64.b64encode(_build_qr_png(config)).decode("ascii")
+
+
+def _build_qr_png(config: str) -> bytes:
     img = qrcode.make(config)
     buf = BytesIO()
     img.save(buf, format="PNG")
-    return base64.b64encode(buf.getvalue()).decode("ascii")
+    return buf.getvalue()
 
 
 @dataclass
@@ -190,6 +198,8 @@ class Job:
     checks: list[dict] = field(default_factory=list)
     config: Optional[str] = None
     qr_png_base64: Optional[str] = None
+    download_id: Optional[str] = None
+    client_name: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -217,6 +227,8 @@ class JobStore:
                 checks=list(job.checks),
                 config=job.config,
                 qr_png_base64=job.qr_png_base64,
+                download_id=job.download_id,
+                client_name=job.client_name,
                 error=job.error,
             )
 
@@ -239,6 +251,48 @@ class JobStore:
 
 
 JOB_STORE = JobStore()
+
+
+@dataclass
+class DownloadItem:
+    config: str
+    qr_png: bytes
+    name: str
+
+
+class DownloadStore:
+    def __init__(self, limit: int = 200) -> None:
+        self._items: "OrderedDict[str, DownloadItem]" = OrderedDict()
+        self._lock = threading.Lock()
+        self._limit = limit
+
+    def create(self, config: str, qr_png: bytes, name: Optional[str]) -> str:
+        download_id = uuid.uuid4().hex
+        safe_name = _safe_name(name)
+        with self._lock:
+            self._items[download_id] = DownloadItem(config=config, qr_png=qr_png, name=safe_name)
+            if len(self._items) > self._limit:
+                self._items.popitem(last=False)
+        return download_id
+
+    def get(self, download_id: str) -> Optional[DownloadItem]:
+        with self._lock:
+            return self._items.get(download_id)
+
+
+DOWNLOAD_STORE = DownloadStore()
+
+
+def _safe_name(name: Optional[str]) -> str:
+    if not name:
+        return "client1"
+    cleaned = "".join(ch for ch in name if ch.isalnum() or ch in {"-", "_"})
+    return cleaned or "client1"
+
+
+def _download_filename(name: Optional[str], suffix: str) -> str:
+    safe = _safe_name(name)
+    return f"{safe}.{suffix}"
 
 
 def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
@@ -264,6 +318,7 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
         )
         with SSHRunner(cfg, logger=progress) as ssh:
             opts = payload.options
+            JOB_STORE.update(job_id, client_name=opts.client_name)
             prov = WireGuardProvisioner(
                 ssh,
                 client_name=opts.client_name,
@@ -290,12 +345,15 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
             config = prov.export_client_config()
             checks = prov.post_check() if opts.check else []
 
-        qr_b64 = _build_qr_base64(config)
+        qr_png = _build_qr_png(config)
+        qr_b64 = base64.b64encode(qr_png).decode("ascii")
+        download_id = DOWNLOAD_STORE.create(config, qr_png, opts.client_name)
         JOB_STORE.update(
             job_id,
             status="done",
             config=config,
             qr_png_base64=qr_b64,
+            download_id=download_id,
             checks=checks,
             error=None,
         )
@@ -345,8 +403,35 @@ def job_result(job_id: str) -> ProvisionResponse:
         ok=True,
         config=job.config,
         qr_png_base64=job.qr_png_base64,
+        download_id=job.download_id,
         checks=job.checks,
         error=None,
+    )
+
+
+@app.get("/api/download/{download_id}/config")
+def download_config(download_id: str) -> Response:
+    item = DOWNLOAD_STORE.get(download_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Download not found")
+    filename = _download_filename(item.name, "conf")
+    return Response(
+        content=item.config,
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/download/{download_id}/qr")
+def download_qr(download_id: str) -> Response:
+    item = DOWNLOAD_STORE.get(download_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Download not found")
+    filename = _download_filename(item.name, "png")
+    return Response(
+        content=item.qr_png,
+        media_type="image/png",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -426,13 +511,16 @@ async def client_add(payload: ClientRequest) -> ClientAddResponse:
                 prov_kwargs["listen_port"] = payload.listen_port
             prov = WireGuardProvisioner(ssh, **prov_kwargs)
             result = prov.add_client(client_name=payload.client_name, client_ip=payload.client_ip)
-        qr_b64 = _build_qr_base64(result["config"])
+        qr_png = _build_qr_png(result["config"])
+        qr_b64 = base64.b64encode(qr_png).decode("ascii")
+        download_id = DOWNLOAD_STORE.create(result["config"], qr_png, result.get("name"))
         return ClientAddResponse(
             ok=True,
             client_name=result["name"],
             client_ip=result["ip"],
             config=result["config"],
             qr_png_base64=qr_b64,
+            download_id=download_id,
             interface=result.get("interface"),
         )
     except Exception as exc:
@@ -491,13 +579,16 @@ async def client_rotate(payload: ClientRemoveRequest) -> ClientAddResponse:
                 prov_kwargs["listen_port"] = payload.listen_port
             prov = WireGuardProvisioner(ssh, **prov_kwargs)
             result = prov.rotate_client(payload.client_name)
-        qr_b64 = _build_qr_base64(result["config"])
+        qr_png = _build_qr_png(result["config"])
+        qr_b64 = base64.b64encode(qr_png).decode("ascii")
+        download_id = DOWNLOAD_STORE.create(result["config"], qr_png, result.get("name"))
         return ClientAddResponse(
             ok=True,
             client_name=result["name"],
             client_ip=result["ip"],
             config=result["config"],
             qr_png_base64=qr_b64,
+            download_id=download_id,
             interface=result.get("interface"),
         )
     except Exception as exc:
@@ -525,13 +616,16 @@ async def client_export(payload: ClientRemoveRequest) -> ClientExportResponse:
         with SSHRunner(cfg) as ssh:
             prov = WireGuardProvisioner(ssh)
             result = prov.export_client(payload.client_name)
-        qr_b64 = _build_qr_base64(result["config"])
+        qr_png = _build_qr_png(result["config"])
+        qr_b64 = base64.b64encode(qr_png).decode("ascii")
+        download_id = DOWNLOAD_STORE.create(result["config"], qr_png, result.get("name"))
         return ClientExportResponse(
             ok=True,
             client_name=result["name"],
             client_ip=result["ip"],
             config=result["config"],
             qr_png_base64=qr_b64,
+            download_id=download_id,
             interface=result.get("interface"),
         )
     except Exception as exc:

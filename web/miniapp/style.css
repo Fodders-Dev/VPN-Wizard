@@ -220,6 +220,36 @@ button.ghost {
   height: 220px;
 }
 
+.config-copy {
+  margin-top: 12px;
+  text-align: left;
+}
+
+.config-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+#config-text {
+  width: 100%;
+  min-height: 140px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  color: var(--ink);
+  font-family: "JetBrains Mono", "Consolas", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.config-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .step3-hint {
   margin-top: 12px;
   font-size: 13px;
@@ -235,6 +265,12 @@ button.ghost {
 .app-links-title {
   font-weight: 600;
   color: var(--ink);
+  text-align: left;
+}
+
+.app-note {
+  font-size: 13px;
+  color: var(--muted);
   text-align: left;
 }
 

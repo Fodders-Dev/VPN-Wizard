@@ -128,8 +128,14 @@
     <section class="card hidden" id="result-card">
       <h2 data-i18n="step3_title">Шаг 3. Скачать</h2>
       <a id="download-link" class="download" href="#" download="client1.conf" data-i18n="download_btn">Скачать конфиг</a>
+      <button type="button" id="copy-config-btn" class="secondary hidden" data-i18n="copy_btn">Скопировать конфиг</button>
       <a id="qr-download" class="secondary qr-download hidden" href="#" download="client1.png" data-i18n="download_qr_btn">Скачать QR</a>
       <img id="qr-image" alt="QR code" />
+      <div id="config-copy" class="config-copy hidden">
+        <div class="config-title" data-i18n="copy_title">Конфиг для ручного копирования</div>
+        <textarea id="config-text" readonly></textarea>
+        <div class="config-hint" data-i18n="copy_hint">Можно выделить и скопировать вручную.</div>
+      </div>
       <p class="step3-hint" data-i18n="step3_hint">
         Откройте AmneziaWG и нажмите "+", чтобы добавить файл конфигурации.
       </p>
@@ -138,12 +144,16 @@
         <a class="secondary external-link" data-url="https://play.google.com/store/apps/details?id=org.amnezia.awg" href="https://play.google.com/store/apps/details?id=org.amnezia.awg" target="_blank" rel="noopener" data-i18n="apps_android">
           Android (Google Play)
         </a>
-        <a class="secondary external-link" data-url="https://apps.apple.com/us/app/amneziavpn/id1600529900" href="https://apps.apple.com/us/app/amneziavpn/id1600529900" target="_blank" rel="noopener" data-i18n="apps_ios">
+        <a class="secondary external-link" data-url="https://apps.apple.com/us/app/amneziawg/id6478942365" href="https://apps.apple.com/us/app/amneziawg/id6478942365" target="_blank" rel="noopener" data-i18n="apps_ios">
           iOS (App Store)
         </a>
-        <a class="secondary external-link" data-url="https://github.com/amnezia-vpn/amnezia-client/releases" href="https://github.com/amnezia-vpn/amnezia-client/releases" target="_blank" rel="noopener" data-i18n="apps_desktop">
-          Windows / macOS / Linux
+        <a class="secondary external-link" data-url="https://github.com/amnezia-vpn/amneziawg-windows-client/releases" href="https://github.com/amnezia-vpn/amneziawg-windows-client/releases" target="_blank" rel="noopener" data-i18n="apps_windows">
+          Windows
         </a>
+        <a class="secondary external-link" data-url="https://github.com/amnezia-vpn/amneziawg-linux-kernel-module" href="https://github.com/amnezia-vpn/amneziawg-linux-kernel-module" target="_blank" rel="noopener" data-i18n="apps_linux">
+          Linux
+        </a>
+        <div class="app-note" data-i18n="apps_macos_missing">macOS: пока нет приложения</div>
       </div>
     </section>
 

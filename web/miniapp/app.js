@@ -3,6 +3,9 @@ const statusEl = document.getElementById("status");
 const progressCard = document.getElementById("progress-card");
 const resultCard = document.getElementById("result-card");
 const downloadLink = document.getElementById("download-link");
+const copyConfigBtn = document.getElementById("copy-config-btn");
+const configCopy = document.getElementById("config-copy");
+const configText = document.getElementById("config-text");
 const qrImage = document.getElementById("qr-image");
 const qrDownload = document.getElementById("qr-download");
 const provisionBtn = document.getElementById("provision-btn");
@@ -74,11 +77,19 @@ const I18N = {
     step3_title: "Шаг 3. Скачать",
     download_btn: "Скачать конфиг",
     download_qr_btn: "Скачать QR",
+    copy_btn: "Скопировать конфиг",
+    copy_done: "Конфиг скопирован.",
+    copy_failed: "Не удалось скопировать конфиг.",
+    copy_empty: "Сначала получите конфиг.",
+    copy_title: "Конфиг для ручного копирования",
+    copy_hint: "Можно выделить и скопировать вручную.",
     step3_hint: "Откройте AmneziaWG и нажмите \"+\", чтобы добавить файл конфигурации.",
     apps_title: "Скачать приложение AmneziaWG",
     apps_android: "Android (Google Play)",
     apps_ios: "iOS (App Store)",
-    apps_desktop: "Windows / macOS / Linux",
+    apps_windows: "Windows",
+    apps_linux: "Linux",
+    apps_macos_missing: "macOS: приложения пока нет",
     servers_title: "Мои серверы",
     servers_empty: "Пока нет сохранённых серверов.",
     servers_use_btn: "Использовать",
@@ -207,11 +218,19 @@ const I18N = {
     step3_title: "Step 3: Download",
     download_btn: "Download config",
     download_qr_btn: "Download QR",
+    copy_btn: "Copy config",
+    copy_done: "Config copied.",
+    copy_failed: "Failed to copy config.",
+    copy_empty: "Generate a config first.",
+    copy_title: "Config for manual copy",
+    copy_hint: "Select and copy manually if needed.",
     step3_hint: "Open AmneziaWG and press \"+\" to add the configuration file.",
     apps_title: "Get AmneziaWG",
     apps_android: "Android (Google Play)",
     apps_ios: "iOS (App Store)",
-    apps_desktop: "Windows / macOS / Linux",
+    apps_windows: "Windows",
+    apps_linux: "Linux",
+    apps_macos_missing: "macOS: no official app yet",
     servers_title: "My servers",
     servers_empty: "No saved servers yet.",
     servers_use_btn: "Use",
@@ -361,6 +380,7 @@ const STATE = {
   downloads: {
     configUrl: null,
     qrUrl: null,
+    configText: null,
   },
   tourIndex: 0,
 };
@@ -480,6 +500,34 @@ if (downloadLink) {
 if (qrDownload) {
   qrDownload.addEventListener("click", handleDownloadClick);
 }
+if (copyConfigBtn) {
+  copyConfigBtn.addEventListener("click", async () => {
+    const config = STATE.downloads.configText;
+    if (!config) {
+      setStatus(t("copy_empty"));
+      return;
+    }
+    try {
+      const ok = await copyToClipboard(config);
+      if (!ok && configText) {
+        configText.focus();
+        configText.select();
+      }
+      setStatus(ok ? t("copy_done") : t("copy_failed"));
+    } catch (err) {
+      if (configText) {
+        configText.focus();
+        configText.select();
+      }
+      setStatus(t("copy_failed"));
+    }
+  });
+}
+if (configText) {
+  configText.addEventListener("focus", () => {
+    configText.select();
+  });
+}
 externalLinks.forEach((link) => {
   link.addEventListener("click", handleDownloadClick);
 });
@@ -570,22 +618,37 @@ function scrollToCard(el) {
   el.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function handleDownloadClick(event) {
-  if (!tg?.openLink) {
-    return;
+function triggerDownload(url, filename) {
+  const link = document.createElement("a");
+  link.href = url;
+  if (filename) {
+    link.download = filename;
   }
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function handleDownloadClick(event) {
   const url = event.currentTarget?.dataset?.url;
   if (!url) {
     return;
   }
-  event.preventDefault();
-  tg.openLink(url);
+  if (url.startsWith("data:") || url.startsWith("blob:")) {
+    if (tg?.openLink) {
+      event.preventDefault();
+      triggerDownload(url, event.currentTarget?.download);
+    }
+    return;
+  }
+  if (tg?.openLink) {
+    event.preventDefault();
+    tg.openLink(url);
+  }
 }
 
 function buildConfigUrl(config) {
-  if (tg?.openLink) {
-    return `data:text/plain;charset=utf-8,${encodeURIComponent(config)}`;
-  }
   const blob = new Blob([config], { type: "text/plain" });
   return URL.createObjectURL(blob);
 }
@@ -594,23 +657,68 @@ function buildQrUrl(qrBase64) {
   return `data:image/png;base64,${qrBase64}`;
 }
 
+function buildDownloadUrl(downloadId, kind) {
+  if (!downloadId) {
+    return null;
+  }
+  return `${API_BASE}/api/download/${downloadId}/${kind}`;
+}
+
+async function copyToClipboard(text) {
+  if (!text) {
+    return false;
+  }
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return true;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "absolute";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const ok = document.execCommand("copy");
+  textarea.remove();
+  return ok;
+}
+
 function setDownload(config, qrBase64, name, options = {}) {
   const safeName = name || "client1";
-  const { showResult = true, scroll = true } = options;
+  const { showResult = true, scroll = true, downloadId = null } = options;
 
   if (STATE.downloads.configUrl?.startsWith("blob:")) {
     URL.revokeObjectURL(STATE.downloads.configUrl);
   }
-  const configUrl = buildConfigUrl(config);
+  const remoteConfigUrl = buildDownloadUrl(downloadId, "config");
+  const configUrl = config ? remoteConfigUrl || buildConfigUrl(config) : null;
   STATE.downloads.configUrl = configUrl;
-  downloadLink.download = `${safeName}.conf`;
-  downloadLink.href = configUrl;
-  downloadLink.dataset.url = configUrl;
+  STATE.downloads.configText = config || null;
+  if (configUrl && downloadLink) {
+    downloadLink.download = `${safeName}.conf`;
+    downloadLink.href = configUrl;
+    downloadLink.dataset.url = configUrl;
+    downloadLink.classList.remove("hidden");
+  } else if (downloadLink) {
+    downloadLink.classList.add("hidden");
+  }
+  if (copyConfigBtn) {
+    copyConfigBtn.classList.toggle("hidden", !config);
+  }
+  if (configCopy) {
+    configCopy.classList.toggle("hidden", !config);
+  }
+  if (configText) {
+    configText.value = config || "";
+  }
 
   if (qrBase64) {
-    const qrData = buildQrUrl(qrBase64);
+    const remoteQrUrl = buildDownloadUrl(downloadId, "qr");
+    const qrDisplay = buildQrUrl(qrBase64);
+    const qrData = remoteQrUrl || qrDisplay;
     STATE.downloads.qrUrl = qrData;
-    qrImage.src = qrData;
+    qrImage.src = qrDisplay;
     if (qrDownload) {
       qrDownload.href = qrData;
       qrDownload.download = `${safeName}.png`;
@@ -663,6 +771,13 @@ function updateStageVisibility() {
   if (!checked) {
     if (resultCard) {
       resultCard.classList.add("hidden");
+    }
+    STATE.downloads.configText = null;
+    if (copyConfigBtn) {
+      copyConfigBtn.classList.add("hidden");
+    }
+    if (configCopy) {
+      configCopy.classList.add("hidden");
     }
     setProgressVisible(false);
   }
@@ -794,7 +909,11 @@ function resolveApiBase() {
   return "";
 }
 
-const API_BASE = resolveApiBase();
+function normalizeApiBase(value) {
+  return value ? value.replace(/\/+$/, "") : "";
+}
+
+const API_BASE = normalizeApiBase(resolveApiBase());
 const SERVERS_KEY = "vpnw_servers";
 const LEGACY_KEYS = ["vpnw_creds", "vpnw_salt", "vpnw_iv"];
 
@@ -1158,7 +1277,9 @@ function renderClients(list = STATE.clients) {
         setClientBusy(client.name, "export");
         setStatus(t("client_busy_export"));
         const result = await exportClient(STATE.lastAuth, client.name);
-        setDownload(result.config, result.qr_png_base64, result.client_name);
+        setDownload(result.config, result.qr_png_base64, result.client_name, {
+          downloadId: result.download_id,
+        });
         setStatus(`${t("status_client_ready")}: ${result.client_name}`);
       } catch (err) {
         setStatus(`${t("status_failed")}: ${err}`);
@@ -1191,6 +1312,7 @@ function renderClients(list = STATE.clients) {
           STATE.qrByClient[client.name] = {
             qr: result.qr_png_base64,
             fileName: result.client_name || client.name || "profile",
+            downloadId: result.download_id,
           };
           STATE.qrOpen = client.name;
           renderClients();
@@ -1216,7 +1338,9 @@ function renderClients(list = STATE.clients) {
         setClientBusy(client.name, "rotate");
         setStatus(t("client_busy_rotate"));
         const result = await rotateClient(STATE.lastAuth, client.name);
-        setDownload(result.config, result.qr_png_base64, result.client_name);
+        setDownload(result.config, result.qr_png_base64, result.client_name, {
+          downloadId: result.download_id,
+        });
         setStatus(`${t("status_client_rotated")}: ${result.client_name}`);
         await refreshClients(STATE.lastAuth);
       } catch (err) {
@@ -1275,7 +1399,9 @@ function renderClients(list = STATE.clients) {
       const qrLink = document.createElement("a");
       qrLink.className = "secondary";
       qrLink.textContent = t("client_qr_download");
-      const qrData = buildQrUrl(STATE.qrByClient[client.name].qr);
+      const qrData =
+        buildDownloadUrl(STATE.qrByClient[client.name].downloadId, "qr") ||
+        buildQrUrl(STATE.qrByClient[client.name].qr);
       const qrName = STATE.qrByClient[client.name].fileName || clientLabel;
       qrLink.href = qrData;
       qrLink.download = `${qrName}.png`;
@@ -1350,7 +1476,9 @@ async function pollJob(jobId, clientName, authData) {
     clearInterval(pollTimer);
     pollTimer = null;
     const result = await fetchJson(`/api/jobs/${jobId}/result`);
-    setDownload(result.config, result.qr_png_base64, clientName || "client1");
+    setDownload(result.config, result.qr_png_base64, clientName || "client1", {
+      downloadId: result.download_id,
+    });
     const checks = result.checks || [];
     if (checks.length) {
       const checkText = checks
@@ -1623,7 +1751,9 @@ addClientBtn.addEventListener("click", async () => {
       setProgressState("error");
       return;
     }
-    setDownload(result.config, result.qr_png_base64, result.client_name);
+        setDownload(result.config, result.qr_png_base64, result.client_name, {
+          downloadId: result.download_id,
+        });
     setStatus(`${t("status_client_ready")}: ${result.client_name}`);
     setProgressState("done");
     upsertServer({ host: data.host, user: data.user, listen_port: data.listen_port || undefined });
