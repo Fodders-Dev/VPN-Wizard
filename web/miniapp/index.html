@@ -127,9 +127,11 @@
 
     <section class="card hidden" id="result-card">
       <h2 data-i18n="step3_title">Шаг 3. Скачать</h2>
-      <a id="download-link" class="download" href="#" download="client1.conf" data-i18n="download_btn">Скачать конфиг</a>
-      <button type="button" id="copy-config-btn" class="secondary hidden" data-i18n="copy_btn">Скопировать конфиг</button>
-      <a id="qr-download" class="secondary qr-download hidden" href="#" download="client1.png" data-i18n="download_qr_btn">Скачать QR</a>
+      <div class="download-row">
+        <a id="download-link" class="download" href="#" download="client1.conf" data-i18n="download_btn">Скачать конфиг</a>
+        <button type="button" id="copy-config-btn" class="secondary hidden" data-i18n="copy_btn">Скопировать конфиг</button>
+        <a id="qr-download" class="secondary qr-download hidden" href="#" download="client1.png" data-i18n="download_qr_btn">Скачать QR</a>
+      </div>
       <img id="qr-image" alt="QR code" />
       <div id="config-copy" class="config-copy hidden">
         <div class="config-title" data-i18n="copy_title">Конфиг для ручного копирования</div>

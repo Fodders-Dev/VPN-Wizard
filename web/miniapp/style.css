@@ -281,7 +281,6 @@ button.ghost {
 
 .download {
   display: inline-block;
-  margin-top: 8px;
   padding: 10px 16px;
   border-radius: 10px;
   background: var(--accent-dark);
@@ -291,8 +290,20 @@ button.ghost {
 
 .qr-download {
   display: inline-block;
-  margin-top: 8px;
   text-decoration: none;
+}
+
+.download-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.download-row .download,
+.download-row .secondary,
+.download-row button {
+  margin-top: 0;
 }
 
 .log {

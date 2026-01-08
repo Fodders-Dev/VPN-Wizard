@@ -956,6 +956,7 @@ class WireGuardProvisioner:
         name = (client_name or self.next_client_name()).strip()
         self._validate_client_name(name)
         is_tyumen = name.lower().startswith("tyumen")
+        use_alt_iface = False
         
         # Auto-detect protocol if config is missing (robustness against frontend defaults)
         # Check standard paths
@@ -969,19 +970,31 @@ class WireGuardProvisioner:
              self.protocol = "wireguard"
         elif self.protocol != "amneziawg" and not has_wg and has_awg:
              self.protocol = "amneziawg"
+
+        if self.protocol == "amneziawg":
+            use_alt_iface = is_tyumen
+            if not use_alt_iface and has_awg:
+                awg0_port_raw = self.ssh.run(
+                    "awk -F'= ' '/^ListenPort/ {print $2; exit}' /etc/amnezia/amneziawg/awg0.conf",
+                    sudo=True,
+                    check=False,
+                ).strip()
+                awg0_port = int(awg0_port_raw) if awg0_port_raw.isdigit() else None
+                if awg0_port and self.listen_port and awg0_port != self.listen_port:
+                    use_alt_iface = True
         
         # Protocol-specific paths and commands
         if self.protocol == "amneziawg":
             # Tyumen "Magic" Interface Logic
-            if is_tyumen:
+            if use_alt_iface:
                 conf_dir = "/etc/amnezia/amneziawg"
                 wg_conf = f"{conf_dir}/awg1.conf"
                 clients_dir = f"{conf_dir}/clients_tyumen"
                 cmd_genkey = "awg genkey"
                 cmd_pubkey = "awg pubkey"
                 rebuild_cmd = self.rebuild_awg1_from_clients
-                self.server_cidr = "10.11.0.1/24" # Tyumen subnet
-                # Mutate obfuscation params for Tyumen to be different from default
+                self.server_cidr = "10.11.0.1/24" # Alternate subnet
+                # Mutate obfuscation params for the alternate interface
                 self.awg_jc += 1
                 self.awg_s1 += 5
                 self.awg_s2 += 5
@@ -1011,7 +1024,7 @@ class WireGuardProvisioner:
             check=False,
         ).strip()
         if has_conf != "yes":
-            if is_tyumen:
+            if use_alt_iface:
                 self._ensure_tyumen_interface_exists()
                 has_conf = self.ssh.run(
                     f"test -f {wg_conf} && echo yes || echo no",
@@ -1054,7 +1067,7 @@ class WireGuardProvisioner:
 
         self.ssh.run(f"mkdir -p {clients_dir}", sudo=True)
 
-        if self.protocol == "amneziawg" and is_tyumen:
+        if self.protocol == "amneziawg" and use_alt_iface:
             server_priv_path = f"{conf_dir}/server_private_awg1.key"
             server_pub_path = f"{conf_dir}/server_public_awg1.key"
         else:
@@ -1084,7 +1097,7 @@ class WireGuardProvisioner:
         awg_params = ""
         if self.protocol == "amneziawg":
             # For Tyumen, prefer server-side params to avoid mismatch; fall back to self.* if missing.
-            if is_tyumen:
+            if use_alt_iface:
                 raw_params = self.ssh.run(
                     f"grep -E '^(Jc|Jmin|Jmax|S1|S2|H1|H2|H3|H4) =' {wg_conf} || true",
                     sudo=True,
@@ -1147,32 +1160,35 @@ class WireGuardProvisioner:
         )
         iface_name = "wg0"
         if self.protocol == "amneziawg":
-            iface_name = "awg1" if is_tyumen else "awg0"
+            iface_name = "awg1" if use_alt_iface else "awg0"
         return {"name": name, "ip": ip, "config": config, "interface": iface_name}
+
+    def _locate_client(self, client_name: str) -> Optional[tuple[str, Callable[[], None], str]]:
+        self._auto_detect_protocol()
+        if self.protocol == "amneziawg":
+            candidates = [
+                ("/etc/amnezia/amneziawg/clients", self.rebuild_awg0_from_clients, "awg0"),
+                ("/etc/amnezia/amneziawg/clients_tyumen", self.rebuild_awg1_from_clients, "awg1"),
+            ]
+        else:
+            candidates = [("/etc/wireguard/clients", self.rebuild_wg0_from_clients, "wg0")]
+
+        for clients_dir, rebuild_cmd, iface in candidates:
+            exists = self.ssh.run(
+                f"test -f {clients_dir}/{client_name}.conf && echo yes || echo no",
+                sudo=True,
+                check=False,
+            ).strip()
+            if exists == "yes":
+                return clients_dir, rebuild_cmd, iface
+        return None
 
     def remove_client(self, client_name: str) -> bool:
         self._validate_client_name(client_name)
-        self._auto_detect_protocol()
-        is_tyumen = client_name.lower().startswith("tyumen")
-
-        if self.protocol == "amneziawg":
-            if is_tyumen:
-                clients_dir = "/etc/amnezia/amneziawg/clients_tyumen"
-                rebuild_cmd = self.rebuild_awg1_from_clients
-            else:
-                clients_dir = "/etc/amnezia/amneziawg/clients"
-                rebuild_cmd = self.rebuild_awg0_from_clients
-        else:
-            clients_dir = "/etc/wireguard/clients"
-            rebuild_cmd = self.rebuild_wg0_from_clients
-
-        exists = self.ssh.run(
-            f"test -f {clients_dir}/{client_name}.conf && echo yes || echo no",
-            sudo=True,
-            check=False,
-        ).strip()
-        if exists != "yes":
+        location = self._locate_client(client_name)
+        if not location:
             return False
+        clients_dir, rebuild_cmd, _iface = location
             
         self.ssh.run(
             f"rm -f {clients_dir}/{client_name}.conf "
@@ -1186,6 +1202,17 @@ class WireGuardProvisioner:
 
     def rotate_client(self, client_name: str) -> dict:
         self._validate_client_name(client_name)
+        location = self._locate_client(client_name)
+        if not location:
+            raise RuntimeError("Client not found.")
+        _clients_dir, _rebuild_cmd, iface = location
+        if self.protocol == "amneziawg":
+            if iface == "awg1":
+                self.listen_port = self._resolve_listen_port("/etc/amnezia/amneziawg/awg1.conf")
+                self.server_cidr = "10.11.0.1/24"
+            else:
+                self.listen_port = self._resolve_listen_port("/etc/amnezia/amneziawg/awg0.conf")
+                self.server_cidr = "10.10.0.1/24"
         current_ip = self._get_client_ip(client_name)
         if not current_ip:
             raise RuntimeError("Client not found.")
@@ -1326,15 +1353,10 @@ class WireGuardProvisioner:
         raise RuntimeError(f"No free IPs available in {self.server_cidr} subnet")
 
     def _get_client_ip(self, client_name: str) -> Optional[str]:
-        self._auto_detect_protocol()
-        if self.protocol == "amneziawg":
-            if client_name.lower().startswith("tyumen"):
-                clients_dir = "/etc/amnezia/amneziawg/clients_tyumen"
-            else:
-                clients_dir = "/etc/amnezia/amneziawg/clients"
-        else:
-            clients_dir = "/etc/wireguard/clients"
-
+        location = self._locate_client(client_name)
+        if not location:
+            return None
+        clients_dir, _rebuild_cmd, _iface = location
         conf = self.ssh.run(
             f"cat {clients_dir}/{client_name}.conf", sudo=True, check=False
         )
