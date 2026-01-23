@@ -1287,7 +1287,7 @@ class WireGuardProvisioner:
         """Rebuild awg1.conf (Tyumen) from client configs."""
         self.ssh.run(
             "set -e\n"
-            "header=$(awk 'BEGIN{p=1} /^\[Peer\]/{p=0} {if(p) print}' /etc/amnezia/amneziawg/awg1.conf)\n"
+            "header=$(awk 'BEGIN{p=1} /^\\[Peer\\]/{p=0} {if(p) print}' /etc/amnezia/amneziawg/awg1.conf)\n"
             "tmp=$(mktemp)\n"
             "echo \"$header\" > $tmp\n"
             "for conf in /etc/amnezia/amneziawg/clients_tyumen/*.conf; do\n"
