@@ -896,12 +896,22 @@ function resolveApiBase() {
   if (param) {
     localStorage.setItem("vpnw_api_base", param);
   }
-  const stored = localStorage.getItem("vpnw_api_base");
+  const stored = normalizeApiBase(localStorage.getItem("vpnw_api_base"));
   if (stored) {
-    return stored;
+    const isRailway = stored.includes("railway.app");
+    const isHttp = stored.startsWith("https://") || stored.startsWith("http://");
+    if (window.location.host.endsWith("vercel.app") && !isRailway) {
+      // Avoid stale override pointing to the miniapp host.
+      localStorage.removeItem("vpnw_api_base");
+    } else if (isHttp) {
+      return stored;
+    }
   }
   if (window.API_BASE) {
     return window.API_BASE;
+  }
+  if (window.location.host.endsWith("railway.app")) {
+    return window.location.origin;
   }
   if (window.location.host.endsWith("vercel.app")) {
     return "https://vpn-wizard-production.up.railway.app";
