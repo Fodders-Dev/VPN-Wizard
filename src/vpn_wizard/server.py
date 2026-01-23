@@ -6,6 +6,7 @@ from collections import OrderedDict
 from io import BytesIO
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 import tempfile
 from typing import Optional
 import threading
@@ -23,22 +24,27 @@ from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
 
 app = FastAPI(title="VPN Wizard API")
 raw_origins = os.getenv("VPNW_CORS_ORIGINS", "")
-cors_origins = []
+cors_origins: list[str] = []
 if raw_origins:
     for origin in raw_origins.split(","):
-        # Cleanup: remove whitespace, quotes, trailing slashes
-        clean = origin.strip().strip("'").strip('"').rstrip("/")
+        clean = origin.strip().strip("'").strip('"')
         if not clean:
             continue
         if clean == "*":
             cors_origins.append("*")
             continue
-        # Auto-fix: add https if missing
-        if not clean.startswith("http"):
+        if "://" in clean:
+            parsed = urlparse(clean)
+            if parsed.scheme and parsed.netloc:
+                cors_origins.append(f"{parsed.scheme}://{parsed.netloc}")
+                continue
+        clean = clean.split("?", 1)[0].split("/", 1)[0]
+        if clean:
             cors_origins.append(f"https://{clean}")
-            cors_origins.append(f"http://{clean}")  # Allow http for testing
-        else:
-            cors_origins.append(clean)
+            cors_origins.append(f"http://{clean}")
+
+if cors_origins and "*" not in cors_origins:
+    cors_origins = list(dict.fromkeys(cors_origins))
 
 print(f"VPN Wizard: Loaded CORS origins: {cors_origins}")
 
