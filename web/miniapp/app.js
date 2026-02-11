@@ -239,6 +239,11 @@ const I18N = {
     status_session_cleared: "Сохраненный вход удален.",
     status_install_requires_confirm: "Подтвердите чекбокс перед установкой, чтобы избежать случайных изменений.",
     status_install_cancelled: "Установка отменена.",
+    status_job_tracker_lost:
+      "Связь с задачей потеряна (возможен перезапуск сервиса). Пытаемся восстановить по состоянию сервера...",
+    status_job_tracker_recovered: "Задача восстановлена по текущему состоянию сервера.",
+    status_job_tracker_timeout:
+      "Не удалось восстановить задачу. Нажмите \"Подключиться\" снова и продолжите с текущего состояния сервера.",
     status_novice_preview_required: "Режим новичка: сначала сделайте предпросмотр изменений, чтобы ничего не сломать.",
     status_precheck: "Проверяем сервер и план изменений... ничего не устанавливаем.",
     status_precheck_done: "Предпросмотр готов. Чтобы установить VPN, отключите предпросмотр.",
@@ -474,6 +479,11 @@ const I18N = {
     status_session_cleared: "Saved login cleared.",
     status_install_requires_confirm: "Check the confirmation box before install to avoid accidental changes.",
     status_install_cancelled: "Install canceled.",
+    status_job_tracker_lost:
+      "Lost job tracker state (service restart is possible). Trying to recover from current server state...",
+    status_job_tracker_recovered: "Recovered job state from current server.",
+    status_job_tracker_timeout:
+      "Could not recover job state. Click \"Connect\" again and continue from current server state.",
     status_novice_preview_required: "Novice mode: run change preview first to avoid breaking your server.",
     status_precheck: "Checking server and change plan... nothing is installed.",
     status_precheck_done: "Preview ready. Disable preview to install the VPN.",
@@ -619,6 +629,7 @@ const STATE = {
   qrByClient: {},
   qrOpen: null,
   clientsLoading: false,
+  missingJobPolls: {},
   downloads: {
     configUrl: null,
     qrUrl: null,
@@ -1990,6 +2001,55 @@ function humanizeError(error, data = null) {
   return message;
 }
 
+function isJobNotFoundError(error) {
+  return /job not found/i.test(`${error || ""}`);
+}
+
+async function tryRecoverProvisionFromServer(jobId, clientName, authData) {
+  if (!authData?.host || !authData?.user) {
+    return false;
+  }
+  const attempts = (STATE.missingJobPolls[jobId] || 0) + 1;
+  STATE.missingJobPolls[jobId] = attempts;
+  setStatus(t("status_job_tracker_lost"));
+  if (attempts > 30) {
+    throw new Error(t("status_job_tracker_timeout"));
+  }
+  if (attempts > 1 && attempts % 3 !== 0) {
+    return false;
+  }
+  try {
+    const status = await fetchServerStatus(authData);
+    if (!status?.ok || !status.configured) {
+      return false;
+    }
+    STATE.lastAuth = authData;
+    STATE.checked = true;
+    serverConfigured = true;
+    if (status.listen_port && form.elements.listen_port) {
+      form.elements.listen_port.value = status.listen_port;
+    }
+    setServerMeta(status);
+    updateStageVisibility();
+    await refreshClients(authData);
+    try {
+      const exportName = clientName || authData.client_name || "client1";
+      const exported = await exportClient(authData, exportName);
+      setDownload(exported.config, exported.qr_png_base64, exported.client_name || exportName, {
+        downloadId: exported.download_id,
+      });
+      setStatus(isProxyMode(authData) ? t("download_ready_proxy") : t("download_ready"));
+    } catch (exportErr) {
+      setStatus(t("status_job_tracker_recovered"));
+    }
+    delete STATE.missingJobPolls[jobId];
+    setProgressState("done");
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
 async function fetchServerStatus(data) {
   return fetchJson("/api/server/status", {
     method: "POST",
@@ -2583,7 +2643,24 @@ async function refreshClients(data) {
 }
 
 async function pollJob(jobId, clientName, authData) {
-  const status = await fetchJson(`/api/jobs/${jobId}`);
+  let status;
+  try {
+    status = await fetchJson(`/api/jobs/${jobId}`);
+  } catch (err) {
+    if (isJobNotFoundError(err)) {
+      const recovered = await tryRecoverProvisionFromServer(jobId, clientName, authData);
+      if (recovered) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+        if (provisionBtn) {
+          provisionBtn.disabled = false;
+        }
+      }
+      return;
+    }
+    throw err;
+  }
+  delete STATE.missingJobPolls[jobId];
   const lines = status.progress || [];
   setProgress(lines);
   const last = lines.length ? lines[lines.length - 1] : status.status;
@@ -2596,6 +2673,7 @@ async function pollJob(jobId, clientName, authData) {
     setProgressState("error");
     clearInterval(pollTimer);
     pollTimer = null;
+    delete STATE.missingJobPolls[jobId];
     if (provisionBtn) {
       provisionBtn.disabled = false;
     }
@@ -2605,6 +2683,7 @@ async function pollJob(jobId, clientName, authData) {
   if (status.status === "done") {
     clearInterval(pollTimer);
     pollTimer = null;
+    delete STATE.missingJobPolls[jobId];
     const result = await fetchJson(`/api/jobs/${jobId}/result`);
     setDownload(result.config, result.qr_png_base64, clientName || "client1", {
       downloadId: result.download_id,
@@ -2922,6 +3001,7 @@ async function runProvision() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    STATE.missingJobPolls[result.job_id] = 0;
     setStatus(proxyMode ? t("status_provisioning_proxy") : t("status_provisioning"));
     setProgressState("running");
     upsertServer({
