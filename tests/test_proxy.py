@@ -13,9 +13,9 @@ class DummySSH:
         if "systemctl is-active xray" in command:
             return "active"
         if "x25519 -i" in command:
-            return "Public key: PUB_FROM_PRIVATE"
+            return "PrivateKey: PRIV\nPassword: PUB_FROM_PRIVATE\nHash32: HASH"
         if "x25519" in command:
-            return "Private key: PRIV\nPublic key: PUB"
+            return "PrivateKey: PRIV\nPassword: PUB\nHash32: HASH"
         return ""
 
 
@@ -81,6 +81,23 @@ def test_reality_key_parsers_use_xray_output() -> None:
     assert private_key == "PRIV"
     assert public_key == "PUB"
     assert prov._derive_public_key("PRIV") == "PUB_FROM_PRIVATE"
+
+
+def test_reality_key_parsers_support_legacy_public_key(monkeypatch) -> None:
+    prov = ProxyProvisioner(DummySSH())
+
+    def fake_run(command: str, sudo: bool = False, check: bool = True) -> str:
+        if "x25519 -i" in command:
+            return "Public key: LEGACY_DERIVED"
+        if "x25519" in command:
+            return "Private key: LEGACY_PRIV\nPublic key: LEGACY_PUB"
+        return ""
+
+    monkeypatch.setattr(prov.ssh, "run", fake_run)
+    private_key, public_key = prov._generate_reality_keypair()
+    assert private_key == "LEGACY_PRIV"
+    assert public_key == "LEGACY_PUB"
+    assert prov._derive_public_key("LEGACY_PRIV") == "LEGACY_DERIVED"
 
 
 def test_choose_free_port_uses_fallback_candidates(monkeypatch) -> None:

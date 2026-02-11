@@ -90,12 +90,17 @@ class ProxyProvisioner:
         private = ""
         public = ""
         for line in raw.splitlines():
-            match_priv = re.search(r"Private(?:\s+key)?:\s*(\S+)", line, flags=re.IGNORECASE)
+            match_priv = re.search(r"Private(?:\s*Key)?\s*:\s*(\S+)", line, flags=re.IGNORECASE)
             if match_priv:
                 private = match_priv.group(1).strip()
-            match_pub = re.search(r"Public(?:\s+key)?:\s*(\S+)", line, flags=re.IGNORECASE)
+            match_pub = re.search(r"Public(?:\s*Key)?\s*:\s*(\S+)", line, flags=re.IGNORECASE)
             if match_pub:
                 public = match_pub.group(1).strip()
+            if not public:
+                match_password = re.search(r"Password(?:\s*Key)?\s*:\s*(\S+)", line, flags=re.IGNORECASE)
+                if match_password:
+                    # Xray 26+ prints Password as alias of the old Reality public key field.
+                    public = match_password.group(1).strip()
         if not private or not public:
             raise RuntimeError("Failed to generate Reality keys.")
         return private, public
@@ -107,9 +112,12 @@ class ProxyProvisioner:
             check=False,
         ).strip()
         for line in raw.splitlines():
-            match_pub = re.search(r"Public(?:\s+key)?:\s*(\S+)", line, flags=re.IGNORECASE)
+            match_pub = re.search(r"Public(?:\s*Key)?\s*:\s*(\S+)", line, flags=re.IGNORECASE)
             if match_pub:
                 return match_pub.group(1).strip()
+            match_password = re.search(r"Password(?:\s*Key)?\s*:\s*(\S+)", line, flags=re.IGNORECASE)
+            if match_password:
+                return match_password.group(1).strip()
         raise RuntimeError("Failed to derive Reality public key.")
 
     def _is_port_busy(self, listen_port: int) -> bool:
