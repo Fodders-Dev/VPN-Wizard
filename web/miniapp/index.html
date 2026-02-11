@@ -69,7 +69,7 @@
           <span data-i18n="ssh_password_label">SSH пароль</span>
           <input name="password" type="password" placeholder="optional if key" data-i18n-placeholder="ssh_password_placeholder" />
         </label>
-        <label class="stage-before-config">
+        <label>
           <span data-i18n="connection_mode_label">Режим подключения</span>
           <select name="connection_mode" id="connection-mode">
             <option value="amneziawg" data-i18n="mode_vpn">VPN (AmneziaWG)</option>
@@ -77,6 +77,9 @@
           </select>
           <small class="field-hint" data-i18n="connection_mode_hint">
             VPN быстрее для всего устройства. Прокси лучше при жестких блокировках.
+          </small>
+          <small class="field-hint" data-i18n="connection_mode_switch_hint">
+            Режим можно менять в любой момент: после смены нажмите "Подключиться".
           </small>
         </label>
         <div class="remember-row stage-unchecked-only">
