@@ -63,6 +63,11 @@ python -m vpn_wizard.gui
 ```
 python -m vpn_wizard.server
 ```
+Optional session tuning:
+```
+$env:VPNW_SESSION_TTL_SECONDS="86400"
+$env:VPNW_SESSION_LIMIT="512"
+```
 
 ## Single Railway service (API + bot in one)
 ```
@@ -114,5 +119,7 @@ Client config expectations:
 - В Telegram WebApp скачивание конфигов/QR идет через data: ссылки (если загрузка не стартует, нажмите еще раз или используйте десктоп).
 - В расширенных полях миниаппа есть безопасный режим (только проверка/precheck) — он не меняет сервер.
 - For cross-origin miniapp, set `VPNW_CORS_ORIGINS="https://your-miniapp-domain"` before running the API server.
+- For miniapp "remember login", backend keeps temporary SSH sessions in memory (`VPNW_SESSION_TTL_SECONDS`, `VPNW_SESSION_LIMIT`).
 - Set `window.API_BASE` in `web/miniapp/config.js` to your API server URL when hosting separately.
 - You can also pass `?api=https://your-api-domain` in the miniapp URL to override API base.
+- Miniapp now supports explicit SSH port input and `host:port` format (for non-standard SSH ports).

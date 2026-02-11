@@ -20,6 +20,7 @@ const checkServerBtn = document.getElementById("check-server-btn");
 const serversCard = document.getElementById("servers-card");
 const serverStatusEl = document.getElementById("server-status");
 const serverMetaEl = document.getElementById("server-meta");
+const nextStepEl = document.getElementById("next-step");
 const reconfigureToggle = document.getElementById("reconfigure-toggle");
 const reconfigureCheckbox = document.getElementById("reconfigure-checkbox");
 const serversListEl = document.getElementById("servers-list");
@@ -42,6 +43,13 @@ const tourPrevBtn = document.getElementById("tour-prev");
 const tourNextBtn = document.getElementById("tour-next");
 const profileOnlyFields = document.querySelectorAll(".profile-only");
 const modalCloseEls = document.querySelectorAll("[data-modal-close]");
+const rememberLoginToggle = document.getElementById("remember-login-toggle");
+const installGuard = document.getElementById("install-guard");
+const installConfirmToggle = document.getElementById("install-confirm-toggle");
+const installModal = document.getElementById("install-modal");
+const installSummary = document.getElementById("install-summary");
+const installCancelBtn = document.getElementById("install-cancel");
+const installContinueBtn = document.getElementById("install-continue");
 
 const I18N = {
   ru: {
@@ -52,8 +60,12 @@ const I18N = {
     server_host_placeholder: "1.2.3.4",
     ssh_user_label: "SSH пользователь",
     ssh_user_placeholder: "root",
+    ssh_port_label: "SSH порт",
     ssh_password_label: "SSH пароль",
     ssh_password_placeholder: "если ключ - можно пусто",
+    remember_login_label: "Запомнить вход на этом устройстве",
+    remember_login_hint: "Сессия хранится на этом устройстве и обновляется после входа.",
+    remember_login_saved: "Вход сохранен",
     client_name_label: "Имя профиля",
     client_name_placeholder: "grandma-phone",
     profile_name_hint: "Нужно, чтобы разные устройства не перезаписывали конфиги. Можно оставить пустым.",
@@ -64,12 +76,20 @@ const I18N = {
     faq_btn: "FAQ",
     safe_mode_label: "Предпросмотр изменений перед установкой",
     safe_mode_hint: "Нужен только при установке, если на сервере есть другие сервисы.",
+    install_confirm_label: "Я понимаю, что установка изменит сетевые настройки сервера.",
+    install_confirm_hint: "Рекомендуем сначала сделать предпросмотр изменений.",
     check_server_btn: "Проверить сервер",
     check_safe_hint: "Проверить сервер - безопасно: ничего не устанавливается. Установка - отдельной кнопкой.",
     server_status_idle: "Сервер не проверен",
+    next_step_initial: "Сначала заполните доступ к серверу и нажмите \"Проверить сервер\".",
+    next_step_after_check_empty: "Сервер пустой. Сначала сделайте предпросмотр, затем установку.",
+    next_step_novice_preview_first: "Режим новичка: сначала включите предпросмотр изменений, затем установку.",
+    next_step_after_check_configured: "Сервер уже настроен. Можно сразу управлять профилями.",
+    next_step_preview_ready: "Предпросмотр включен: нажатие кнопки покажет план, но ничего не установит.",
+    next_step_confirm_install: "Перед установкой подтвердите чекбокс ниже и нажмите кнопку установки.",
     reconfigure_label: "Показать настройку сервера",
-    simple_mode_label: "Простой режим",
-    simple_mode_hint: "Скрыть расширенные поля",
+    simple_mode_label: "Режим новичка (рекомендуется)",
+    simple_mode_hint: "Пошаговый безопасный сценарий. Отключайте только если уверены в действиях.",
     provision_btn: "Настроить сервер и получить первый профиль",
     add_client_btn: "Добавить профиль",
     step2_title: "Шаг 2. Прогресс",
@@ -93,6 +113,8 @@ const I18N = {
     servers_title: "Мои серверы",
     servers_empty: "Пока нет сохранённых серверов.",
     servers_use_btn: "Использовать",
+    servers_forget_login_btn: "Забыть вход",
+    servers_remove_btn: "Удалить",
     onboarding_title: "Быстрый старт",
     onboarding_step1: "1) Введите IP/хост, SSH пользователя и пароль или ключ.",
     onboarding_step2: "2) Нажмите \"Проверить сервер\" - если VPN уже есть, появятся профили.",
@@ -130,6 +152,13 @@ const I18N = {
     status_server_configured: "Сервер уже настроен",
     status_server_needs_setup: "Сервер не настроен",
     status_server_error: "Не удалось проверить сервер",
+    status_auto_connect: "Восстанавливаем вход и проверяем сервер...",
+    status_relogin_required: "Сессия истекла. Введите пароль или ключ снова.",
+    status_session_saved: "Вход сохранён на этом устройстве.",
+    status_session_cleared: "Сохраненный вход удален.",
+    status_install_requires_confirm: "Подтвердите чекбокс перед установкой, чтобы избежать случайных изменений.",
+    status_install_cancelled: "Установка отменена.",
+    status_novice_preview_required: "Режим новичка: сначала сделайте предпросмотр изменений, чтобы ничего не сломать.",
     status_precheck: "Проверяем сервер и план изменений... ничего не устанавливаем.",
     status_precheck_done: "Предпросмотр готов. Чтобы установить VPN, отключите предпросмотр.",
     server_use_hint: "Введите пароль или ключ и нажмите \"Проверить сервер\".",
@@ -142,6 +171,7 @@ const I18N = {
     job_done: "Готово",
     job_error: "Ошибка",
     meta_protocol: "Протокол",
+    meta_ssh_port: "SSH",
     meta_port: "Порт",
     meta_clients: "Профилей",
     meta_tyumen: "Доп. порт",
@@ -153,6 +183,16 @@ const I18N = {
     alert_remove_confirm: "Точно удалить профиль?",
     alert_rotate_confirm: "Перевыпустить ключи для профиля?",
     alert_export_failed: "Не удалось получить конфиг",
+    error_port_22_hint: "SSH на порту 22 недоступен. Проверьте SSH порт (например 2222).",
+    error_auth_hint: "Ошибка SSH авторизации. Проверьте логин, пароль/ключ и SSH порт.",
+    install_modal_title: "Подтвердить установку",
+    install_modal_body: "Будут изменены сетевые настройки и установлен VPN на вашем сервере.",
+    install_modal_cancel: "Отмена",
+    install_modal_continue: "Продолжить установку",
+    install_summary_host: "Сервер",
+    install_summary_ssh: "SSH",
+    install_summary_udp: "UDP порт VPN",
+    install_summary_note: "Если на сервере есть другие сервисы, сначала включите предпросмотр изменений.",
     tour_title: "Обучение",
     tour_prev: "Назад",
     tour_next: "Далее",
@@ -180,7 +220,7 @@ const I18N = {
       "1) Подключаемся по SSH и проверяем ОС, sudo и свободный порт.\n2) Ставим WireGuard/AmneziaWG и зависимости.\n3) Создаём ключи и конфиги в /etc/amnezia/amneziawg или /etc/wireguard.\n4) Включаем IP forwarding и добавляем NAT (iptables).\n5) Поднимаем сервис awg-quick@ или wg-quick@ и делаем бэкапы конфигов.\n6) Генерируем ваш профиль и QR.\n\nЕсли у вас на сервере есть свои сервисы или строгий firewall — используйте безопасный режим и внимательно прочитайте пункты выше.",
     faq_servers_title: "Как запоминаются серверы?",
     faq_servers_body:
-      "Список серверов хранится локально на устройстве (без паролей и ключей). Кнопка \"Использовать\" подставляет IP/логин — пароль вводится заново перед проверкой.",
+      "Список серверов хранится локально на устройстве. Пароли и ключи не сохраняются: вместо них можно включить \"Запомнить вход\", тогда используется временная защищенная сессия.",
     server_advice:
       "Если сервер пустой - можно смело настраивать. Если нет - прочитайте FAQ и включите расширенные настройки.",
     server_rent_link: "Как арендовать сервер: пошаговый гайд",
@@ -193,8 +233,12 @@ const I18N = {
     server_host_placeholder: "1.2.3.4",
     ssh_user_label: "SSH user",
     ssh_user_placeholder: "root",
+    ssh_port_label: "SSH port",
     ssh_password_label: "SSH password",
     ssh_password_placeholder: "optional if key",
+    remember_login_label: "Remember login on this device",
+    remember_login_hint: "A secure session is stored on this device and refreshed after login.",
+    remember_login_saved: "Login remembered",
     client_name_label: "Profile name",
     client_name_placeholder: "grandma-phone",
     profile_name_hint: "Helps avoid overwriting configs between devices. You can leave it empty.",
@@ -205,12 +249,20 @@ const I18N = {
     faq_btn: "FAQ",
     safe_mode_label: "Preview changes before setup",
     safe_mode_hint: "Only for setup when the server hosts other services.",
+    install_confirm_label: "I understand that setup will change server network settings.",
+    install_confirm_hint: "We recommend running change preview first.",
     check_server_btn: "Check server",
     check_safe_hint: "Checking the server is safe: nothing is installed. Setup uses a separate button.",
     server_status_idle: "Server not checked",
+    next_step_initial: "Fill server access fields first, then click \"Check server\".",
+    next_step_after_check_empty: "Server is empty. Run preview first, then install.",
+    next_step_novice_preview_first: "Novice mode: run change preview first, then install.",
+    next_step_after_check_configured: "Server is already configured. You can manage profiles now.",
+    next_step_preview_ready: "Preview is enabled: button click will show a plan and install nothing.",
+    next_step_confirm_install: "Before install, check the confirmation box below and click setup.",
     reconfigure_label: "Show server setup",
-    simple_mode_label: "Simple mode",
-    simple_mode_hint: "Hide advanced fields",
+    simple_mode_label: "Novice mode (recommended)",
+    simple_mode_hint: "Safe step-by-step flow. Disable only if you understand the risks.",
     provision_btn: "Configure server and get the first profile",
     add_client_btn: "Add profile",
     step2_title: "Step 2: Progress",
@@ -234,6 +286,8 @@ const I18N = {
     servers_title: "My servers",
     servers_empty: "No saved servers yet.",
     servers_use_btn: "Use",
+    servers_forget_login_btn: "Forget login",
+    servers_remove_btn: "Delete",
     onboarding_title: "Quick start",
     onboarding_step1: "1) Enter host, SSH user, and password or key.",
     onboarding_step2: "2) Click \"Check server\" - if VPN exists you will see profiles.",
@@ -271,6 +325,13 @@ const I18N = {
     status_server_configured: "Server already configured",
     status_server_needs_setup: "Server is not configured",
     status_server_error: "Failed to check server",
+    status_auto_connect: "Restoring login and checking the server...",
+    status_relogin_required: "Session expired. Enter password or key again.",
+    status_session_saved: "Login saved on this device.",
+    status_session_cleared: "Saved login cleared.",
+    status_install_requires_confirm: "Check the confirmation box before install to avoid accidental changes.",
+    status_install_cancelled: "Install canceled.",
+    status_novice_preview_required: "Novice mode: run change preview first to avoid breaking your server.",
     status_precheck: "Checking server and change plan... nothing is installed.",
     status_precheck_done: "Preview ready. Disable preview to install the VPN.",
     server_use_hint: "Enter password or key and click \"Check server\".",
@@ -283,6 +344,7 @@ const I18N = {
     job_done: "Done",
     job_error: "Error",
     meta_protocol: "Protocol",
+    meta_ssh_port: "SSH",
     meta_port: "Port",
     meta_clients: "Profiles",
     meta_tyumen: "Alt port",
@@ -294,6 +356,16 @@ const I18N = {
     alert_remove_confirm: "Delete this profile?",
     alert_rotate_confirm: "Rotate keys for this profile?",
     alert_export_failed: "Failed to export config",
+    error_port_22_hint: "Cannot reach SSH on port 22. Check the SSH port (for example 2222).",
+    error_auth_hint: "SSH auth failed. Check user, password/key, and SSH port.",
+    install_modal_title: "Confirm installation",
+    install_modal_body: "Server network settings will be changed and VPN will be installed.",
+    install_modal_cancel: "Cancel",
+    install_modal_continue: "Continue install",
+    install_summary_host: "Server",
+    install_summary_ssh: "SSH",
+    install_summary_udp: "VPN UDP port",
+    install_summary_note: "If the server hosts other services, run preview changes first.",
     tour_title: "Tour",
     tour_prev: "Back",
     tour_next: "Next",
@@ -321,7 +393,7 @@ const I18N = {
       "1) Connect over SSH and check OS, sudo, and free port.\n2) Install WireGuard/AmneziaWG and dependencies.\n3) Create keys/configs under /etc/amnezia/amneziawg or /etc/wireguard.\n4) Enable IP forwarding and add NAT (iptables).\n5) Start awg-quick@ or wg-quick@ and create config backups.\n6) Generate your profile and QR.\n\nIf your server hosts other services or strict firewall rules, use safe mode and review the steps above.",
     faq_servers_title: "How are servers saved?",
     faq_servers_body:
-      "Servers are stored locally on your device (no passwords/keys). The \"Use\" button fills IP/user; you enter the password again before checking.",
+      "Servers are stored locally on your device. Passwords and keys are not stored: with \"Remember login\" the app uses a temporary secure session token instead.",
     server_advice:
       "Empty server? You can install safely. If not, read the FAQ and enable advanced settings.",
     server_rent_link: "How to rent a VPS: step-by-step guide",
@@ -329,6 +401,9 @@ const I18N = {
 };
 
 const LANG_KEY = "vpnw_lang";
+const SERVERS_KEY = "vpnw_servers";
+const ACTIVE_SERVER_KEY = "vpnw_active_server";
+const LEGACY_KEYS = ["vpnw_creds", "vpnw_salt", "vpnw_iv"];
 const TOUR_STEPS = [
   { titleKey: "tour_step1_title", bodyKey: "tour_step1_body", target: 'input[name="host"]' },
   { titleKey: "tour_step2_title", bodyKey: "tour_step2_body", target: 'input[name="user"]' },
@@ -372,7 +447,12 @@ const STATE = {
   clients: [],
   logVisible: false,
   lastAuth: null,
+  activeServerKey: null,
+  activeSessionId: null,
   checked: false,
+  safeTouched: false,
+  installConfirmResolver: null,
+  previewDoneByServer: {},
   clientBusy: {},
   qrByClient: {},
   qrOpen: null,
@@ -542,6 +622,10 @@ langButtons.forEach((btn) => {
 modalCloseEls.forEach((el) => {
   el.addEventListener("click", () => {
     const modal = el.closest(".modal");
+    if (modal === installModal && STATE.installConfirmResolver) {
+      resolveInstallConfirmation(false);
+      return;
+    }
     closeModal(modal);
     if (modal === tourModal) {
       clearTourHighlight();
@@ -924,8 +1008,6 @@ function normalizeApiBase(value) {
 }
 
 const API_BASE = normalizeApiBase(resolveApiBase());
-const SERVERS_KEY = "vpnw_servers";
-const LEGACY_KEYS = ["vpnw_creds", "vpnw_salt", "vpnw_iv"];
 
 function cleanupLegacySecrets() {
   LEGACY_KEYS.forEach((key) => localStorage.removeItem(key));
@@ -933,18 +1015,99 @@ function cleanupLegacySecrets() {
 
 cleanupLegacySecrets();
 
+function normalizeSshPort(value, fallback = 22) {
+  const port = Number.parseInt(value, 10);
+  if (!Number.isFinite(port) || port < 1 || port > 65535) {
+    return fallback;
+  }
+  return port;
+}
+
+function normalizeListenPort(value) {
+  const port = Number.parseInt(value, 10);
+  if (!Number.isFinite(port) || port < 1 || port > 65535) {
+    return null;
+  }
+  return port;
+}
+
+function splitHostAndPort(rawHost, rawPort) {
+  let host = (rawHost || "").trim();
+  let port = normalizeSshPort(rawPort, 22);
+  if (!host) {
+    return { host: "", port };
+  }
+  if (host.startsWith("[")) {
+    const closing = host.indexOf("]");
+    if (closing > 0) {
+      const ipv6 = host.slice(1, closing).trim();
+      const tail = host.slice(closing + 1).trim();
+      if (tail.startsWith(":")) {
+        return {
+          host: ipv6,
+          port: normalizeSshPort(tail.slice(1), port),
+        };
+      }
+      return { host: ipv6, port };
+    }
+  }
+  if (host.includes(":") && host.indexOf(":") === host.lastIndexOf(":")) {
+    const [left, right] = host.split(":");
+    if (left && /^[0-9]+$/.test(right || "")) {
+      return {
+        host: left.trim(),
+        port: normalizeSshPort(right, port),
+      };
+    }
+  }
+  return { host, port };
+}
+
+function makeServerKey(host, user, sshPort) {
+  return `${(host || "").trim().toLowerCase()}|${(user || "").trim().toLowerCase()}|${normalizeSshPort(
+    sshPort,
+    22,
+  )}`;
+}
+
+function getServerRuntimeKey(data = null) {
+  if (data?.host && data?.user) {
+    return makeServerKey(data.host, data.user, data.ssh_port || 22);
+  }
+  const host = form?.elements?.host?.value || "";
+  const user = form?.elements?.user?.value || "";
+  const sshPort = form?.elements?.ssh_port?.value || 22;
+  if (!host || !user) {
+    return null;
+  }
+  return makeServerKey(host, user, sshPort);
+}
+
+function setActiveServerKey(key) {
+  STATE.activeServerKey = key || null;
+  if (key) {
+    localStorage.setItem(ACTIVE_SERVER_KEY, key);
+  } else {
+    localStorage.removeItem(ACTIVE_SERVER_KEY);
+  }
+}
+
 function getFormData() {
   const data = Object.fromEntries(new FormData(form).entries());
   const keyContent = simpleToggle.checked ? null : data.key_content;
-  const listenPort = Number.parseInt(data.listen_port, 10);
+  const parsedHost = splitHostAndPort(data.host, data.ssh_port);
+  const listenPort = normalizeListenPort(data.listen_port);
   return {
-    host: (data.host || "").trim(),
+    host: parsedHost.host,
     user: (data.user || "").trim(),
+    ssh_port: parsedHost.port,
     password: data.password || null,
     key_content: keyContent || null,
     client_name: (data.client_name || "").trim(),
-    listen_port: Number.isFinite(listenPort) ? listenPort : null,
+    listen_port: listenPort,
     safe_mode: Boolean(safeToggle?.checked) && !simpleToggle.checked,
+    remember_login: Boolean(rememberLoginToggle?.checked),
+    session_id: STATE.activeSessionId || null,
   };
 }
 
@@ -954,7 +1117,23 @@ function loadServers() {
   }
   try {
     const raw = localStorage.getItem(SERVERS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed
+      .filter((item) => item && item.host)
+      .map((item) => ({
+        host: String(item.host || "").trim(),
+        user: String(item.user || "").trim(),
+        ssh_port: normalizeSshPort(item.ssh_port, 22),
+        listen_port: normalizeListenPort(item.listen_port),
+        clients_count:
+          typeof item.clients_count === "number" && item.clients_count >= 0
+            ? item.clients_count
+            : undefined,
+        session_id: item.session_id ? String(item.session_id) : null,
+      }));
   } catch (err) {
     console.error(err);
     return [];
@@ -989,6 +1168,9 @@ function renderServers() {
     if (server.user) {
       parts.push(`SSH: ${server.user}`);
     }
+    if (server.ssh_port) {
+      parts.push(`${t("meta_ssh_port")}: ${server.ssh_port}`);
+    }
     if (server.listen_port) {
       parts.push(`${t("meta_port")}: ${server.listen_port}`);
     }
@@ -998,32 +1180,52 @@ function renderServers() {
     meta.textContent = parts.join(" · ");
     info.appendChild(title);
     info.appendChild(meta);
+    if (server.session_id) {
+      const badge = document.createElement("div");
+      badge.className = "server-badge";
+      badge.textContent = t("remember_login_saved");
+      info.appendChild(badge);
+    }
+    const actions = document.createElement("div");
+    actions.className = "server-actions";
     const useBtn = document.createElement("button");
     useBtn.type = "button";
     useBtn.className = "secondary";
     useBtn.textContent = t("servers_use_btn");
-    useBtn.addEventListener("click", () => {
-      form.elements.host.value = server.host || "";
-      form.elements.user.value = server.user || "";
-      if (form.elements.listen_port && server.listen_port) {
-        form.elements.listen_port.value = server.listen_port;
-      }
-      if (form.elements.password) {
-        form.elements.password.value = "";
-      }
-      if (form.elements.key_content) {
-        form.elements.key_content.value = "";
-      }
+    useBtn.addEventListener("click", async () => {
+      applyServerToForm(server);
       serverConfigured = false;
       STATE.checked = false;
       updateStageVisibility();
       if (serverStatusEl) {
-        serverStatusEl.textContent = t("server_use_hint");
+        serverStatusEl.textContent = server.session_id ? t("status_auto_connect") : t("server_use_hint");
+      }
+      if (server.session_id) {
+        await runServerCheck(getFormData());
       }
       scrollToCard(form.closest(".card"));
     });
+    actions.appendChild(useBtn);
+    if (server.session_id) {
+      const forgetBtn = document.createElement("button");
+      forgetBtn.type = "button";
+      forgetBtn.className = "secondary";
+      forgetBtn.textContent = t("servers_forget_login_btn");
+      forgetBtn.addEventListener("click", async () => {
+        await forgetServerSession(server, { notify: true });
+      });
+      actions.appendChild(forgetBtn);
+    }
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "secondary";
+    removeBtn.textContent = t("servers_remove_btn");
+    removeBtn.addEventListener("click", () => {
+      removeServer(server);
+    });
+    actions.appendChild(removeBtn);
     row.appendChild(info);
-    row.appendChild(useBtn);
+    row.appendChild(actions);
     serversListEl.appendChild(row);
   });
 }
@@ -1032,15 +1234,147 @@ function upsertServer(entry) {
   if (!serversListEl || !serversEmptyEl || !entry?.host) {
     return;
   }
+  const normalized = {
+    host: String(entry.host || "").trim(),
+    user: String(entry.user || "").trim(),
+    ssh_port: normalizeSshPort(entry.ssh_port, 22),
+    listen_port: normalizeListenPort(entry.listen_port),
+    clients_count:
+      typeof entry.clients_count === "number" && entry.clients_count >= 0
+        ? entry.clients_count
+        : undefined,
+    session_id: entry.session_id || undefined,
+  };
+  if (!normalized.host) {
+    return;
+  }
   const servers = loadServers();
-  const idx = servers.findIndex((item) => item.host === entry.host);
+  const key = makeServerKey(normalized.host, normalized.user, normalized.ssh_port);
+  const idx = servers.findIndex(
+    (item) => makeServerKey(item.host, item.user, item.ssh_port || 22) === key,
+  );
   if (idx >= 0) {
-    servers[idx] = { ...servers[idx], ...entry };
+    servers[idx] = { ...servers[idx], ...normalized };
+    if (entry.session_id === null) {
+      delete servers[idx].session_id;
+    }
+    servers.unshift(servers.splice(idx, 1)[0]);
   } else {
-    servers.unshift(entry);
+    servers.unshift(normalized);
   }
   saveServers(servers.slice(0, 8));
+  if (!STATE.activeServerKey) {
+    setActiveServerKey(key);
+  }
   renderServers();
+}
+
+function applyServerToForm(server) {
+  form.elements.host.value = server.host || "";
+  form.elements.user.value = server.user || "";
+  if (form.elements.ssh_port) {
+    form.elements.ssh_port.value = normalizeSshPort(server.ssh_port, 22);
+  }
+  if (form.elements.listen_port && server.listen_port) {
+    form.elements.listen_port.value = server.listen_port;
+  }
+  if (form.elements.password) {
+    form.elements.password.value = "";
+  }
+  if (form.elements.key_content) {
+    form.elements.key_content.value = "";
+  }
+  const key = makeServerKey(server.host, server.user, server.ssh_port || 22);
+  setActiveServerKey(key);
+  STATE.activeSessionId = server.session_id || null;
+  if (rememberLoginToggle) {
+    rememberLoginToggle.checked = Boolean(server.session_id);
+  }
+}
+
+function removeServer(server) {
+  const key = makeServerKey(server.host, server.user, server.ssh_port || 22);
+  const list = loadServers().filter(
+    (item) => makeServerKey(item.host, item.user, item.ssh_port || 22) !== key,
+  );
+  saveServers(list);
+  if (STATE.activeServerKey === key) {
+    STATE.activeSessionId = null;
+    setActiveServerKey(null);
+    if (rememberLoginToggle) {
+      rememberLoginToggle.checked = false;
+    }
+  }
+  renderServers();
+}
+
+async function revokeSession(sessionId) {
+  if (!sessionId) {
+    return;
+  }
+  try {
+    await fetchJson("/api/sessions/revoke", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+  } catch (err) {
+    console.warn(err);
+  }
+}
+
+async function forgetServerSession(server, options = {}) {
+  const { notify = false } = options;
+  const key = makeServerKey(server.host, server.user, server.ssh_port || 22);
+  const list = loadServers();
+  const idx = list.findIndex(
+    (item) => makeServerKey(item.host, item.user, item.ssh_port || 22) === key,
+  );
+  if (idx < 0) {
+    return;
+  }
+  const previousSession = list[idx].session_id || null;
+  delete list[idx].session_id;
+  saveServers(list);
+  if (STATE.activeServerKey === key) {
+    STATE.activeSessionId = null;
+    if (rememberLoginToggle) {
+      rememberLoginToggle.checked = false;
+    }
+  }
+  renderServers();
+  if (notify) {
+    setStatus(t("status_session_cleared"));
+  }
+  await revokeSession(previousSession);
+}
+
+function getServerByKey(key) {
+  if (!key) {
+    return null;
+  }
+  return (
+    loadServers().find(
+      (item) => makeServerKey(item.host, item.user, item.ssh_port || 22) === key,
+    ) || null
+  );
+}
+
+async function restoreActiveServer() {
+  const storedKey = localStorage.getItem(ACTIVE_SERVER_KEY);
+  let server = getServerByKey(storedKey);
+  if (!server) {
+    const servers = loadServers();
+    server = servers.length ? servers[0] : null;
+  }
+  if (!server) {
+    return;
+  }
+  applyServerToForm(server);
+  if (server.session_id) {
+    setStatus(t("status_auto_connect"));
+    await runServerCheck(getFormData());
+  }
 }
 
 async function fetchJson(url, options) {
@@ -1056,41 +1390,89 @@ function buildSshPayload(data) {
   return {
     host: data.host,
     user: data.user,
+    port: data.ssh_port || 22,
     password: data.password || null,
     key_content: data.key_content || null,
   };
+}
+
+function hasAuthSecrets(data) {
+  return Boolean(data?.password || data?.key_content);
+}
+
+function buildAuthPayload(data) {
+  const payload = {};
+  if (data?.session_id) {
+    payload.session_id = data.session_id;
+  }
+  if (hasAuthSecrets(data) || !data?.session_id) {
+    payload.ssh = buildSshPayload(data);
+  }
+  return payload;
+}
+
+async function loginSession(data) {
+  if (!data?.remember_login || !hasAuthSecrets(data)) {
+    return null;
+  }
+  const result = await fetchJson("/api/sessions/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ssh: buildSshPayload(data) }),
+  });
+  if (!result.ok) {
+    throw new Error(result.error || t("status_failed"));
+  }
+  return result.session_id || null;
+}
+
+function humanizeError(error, data = null) {
+  const message = `${error || ""}`.trim();
+  if (!message) {
+    return t("status_failed");
+  }
+  if (/session expired/i.test(message)) {
+    return t("status_relogin_required");
+  }
+  if (/unable to connect to port 22/i.test(message)) {
+    return `${message}. ${t("error_port_22_hint")}`;
+  }
+  if (/authentication failed/i.test(message)) {
+    return `${message}. ${t("error_auth_hint")}`;
+  }
+  if (data?.ssh_port === 22 && /unable to connect to port/i.test(message)) {
+    return `${message}. ${t("error_port_22_hint")}`;
+  }
+  return message;
 }
 
 async function fetchServerStatus(data) {
   return fetchJson("/api/server/status", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      ssh: buildSshPayload(data),
-    }),
+    body: JSON.stringify(buildAuthPayload(data)),
   });
 }
 
 async function fetchServerPrecheck(data) {
+  const payload = buildAuthPayload(data);
+  payload.options = {
+    listen_port: data.listen_port || undefined,
+    protocol: "amneziawg",
+  };
   return fetchJson("/api/server/precheck", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      ssh: buildSshPayload(data),
-      options: {
-        listen_port: data.listen_port || undefined,
-        protocol: "amneziawg",
-      },
-    }),
+    body: JSON.stringify(payload),
   });
 }
+
 async function fetchClients(data) {
+  const payload = buildAuthPayload(data);
   const result = await fetchJson("/api/clients/list", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      ssh: buildSshPayload(data),
-    }),
+    body: JSON.stringify(payload),
   });
   if (!result.ok) {
     throw new Error(result.error || "Request failed");
@@ -1106,7 +1488,7 @@ async function exportClient(data, clientName) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      ssh: buildSshPayload(data),
+      ...buildAuthPayload(data),
       client_name: clientName,
     }),
   });
@@ -1124,7 +1506,7 @@ async function removeClient(data, clientName) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      ssh: buildSshPayload(data),
+      ...buildAuthPayload(data),
       client_name: clientName,
     }),
   });
@@ -1142,7 +1524,7 @@ async function rotateClient(data, clientName) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      ssh: buildSshPayload(data),
+      ...buildAuthPayload(data),
       client_name: clientName,
       listen_port: data.listen_port || undefined,
     }),
@@ -1157,18 +1539,108 @@ function setSafeVisibility() {
   if (!safeRow || !safeToggle) {
     return;
   }
-  const shouldShow = !simpleToggle.checked && STATE.checked && !serverConfigured;
+  const shouldShow = STATE.checked && !serverConfigured;
   safeRow.classList.toggle("hidden", !shouldShow);
+  if (shouldShow && !STATE.safeTouched) {
+    safeToggle.checked = true;
+  }
   if (!shouldShow) {
     safeToggle.checked = false;
+    STATE.safeTouched = false;
   }
+  updateInstallGuard();
+  updateNextStepMessage();
+}
+
+function updateInstallGuard() {
+  if (!installGuard || !installConfirmToggle || !safeToggle) {
+    return;
+  }
+  const requiresConfirm = STATE.checked && !serverConfigured && !safeToggle.checked;
+  installGuard.classList.toggle("hidden", !requiresConfirm);
+  if (!requiresConfirm) {
+    installConfirmToggle.checked = false;
+  }
+}
+
+function updateNextStepMessage() {
+  if (!nextStepEl) {
+    return;
+  }
+  const serverKey = getServerRuntimeKey();
+  const previewDone = Boolean(serverKey && STATE.previewDoneByServer[serverKey]);
+  const noviceMode = Boolean(simpleToggle?.checked);
+  if (!STATE.checked) {
+    nextStepEl.textContent = t("next_step_initial");
+    return;
+  }
+  if (serverConfigured) {
+    nextStepEl.textContent = t("next_step_after_check_configured");
+    return;
+  }
+  if (noviceMode && !previewDone) {
+    nextStepEl.textContent = t("next_step_novice_preview_first");
+    return;
+  }
+  if (safeToggle?.checked) {
+    nextStepEl.textContent = t("next_step_preview_ready");
+    return;
+  }
+  if (installConfirmToggle?.checked) {
+    nextStepEl.textContent = t("next_step_after_check_empty");
+    return;
+  }
+  nextStepEl.textContent = t("next_step_confirm_install");
+}
+
+function setInstallSummary(data) {
+  if (!installSummary) {
+    return;
+  }
+  const udp = data.listen_port || form.elements.listen_port?.value || "-";
+  const lines = [
+    `${t("install_summary_host")}: ${data.host || "-"}`,
+    `${t("install_summary_ssh")}: ${data.user || "-"}@${data.host || "-"}:${data.ssh_port || 22}`,
+    `${t("install_summary_udp")}: ${udp}`,
+    "",
+    t("install_summary_note"),
+  ];
+  installSummary.textContent = lines.join("\n");
+}
+
+function requestInstallConfirmation(data) {
+  if (!installModal || !installContinueBtn || !installCancelBtn) {
+    return Promise.resolve(true);
+  }
+  setInstallSummary(data);
+  openModal(installModal);
+  return new Promise((resolve) => {
+    STATE.installConfirmResolver = resolve;
+  });
+}
+
+function resolveInstallConfirmation(confirmed) {
+  if (!STATE.installConfirmResolver) {
+    return;
+  }
+  const resolver = STATE.installConfirmResolver;
+  STATE.installConfirmResolver = null;
+  resolver(Boolean(confirmed));
+  closeModal(installModal);
 }
 
 function setSimpleMode(enabled) {
   advancedFields.forEach((field) => {
     field.classList.toggle("hidden", enabled);
   });
+  if (enabled) {
+    STATE.safeTouched = false;
+    if (safeToggle) {
+      safeToggle.checked = true;
+    }
+  }
   setSafeVisibility();
+  updateNextStepMessage();
 }
 
 setSimpleMode(simpleToggle?.checked ?? true);
@@ -1176,17 +1648,46 @@ simpleToggle.addEventListener("change", () => {
   setSimpleMode(simpleToggle.checked);
 });
 
+if (safeToggle) {
+  safeToggle.addEventListener("change", () => {
+    STATE.safeTouched = true;
+    updateInstallGuard();
+    updateNextStepMessage();
+  });
+}
+
+if (installConfirmToggle) {
+  installConfirmToggle.addEventListener("change", () => {
+    updateNextStepMessage();
+  });
+}
+
+if (installCancelBtn) {
+  installCancelBtn.addEventListener("click", () => {
+    resolveInstallConfirmation(false);
+  });
+}
+
+if (installContinueBtn) {
+  installContinueBtn.addEventListener("click", () => {
+    resolveInstallConfirmation(true);
+  });
+}
+
 if (reconfigureCheckbox) {
   reconfigureCheckbox.addEventListener("change", updateStageVisibility);
 }
 updateStageVisibility();
 
-["host", "user"].forEach((name) => {
+["host", "user", "ssh_port"].forEach((name) => {
   const field = form.elements[name];
   if (!field) {
     return;
   }
   field.addEventListener("input", () => {
+    STATE.activeSessionId = null;
+    setActiveServerKey(null);
+    STATE.safeTouched = false;
     serverConfigured = false;
     STATE.checked = false;
     updateStageVisibility();
@@ -1199,6 +1700,24 @@ updateStageVisibility();
     renderClients([]);
   });
 });
+
+if (rememberLoginToggle) {
+  rememberLoginToggle.addEventListener("change", async () => {
+    if (!rememberLoginToggle.checked && STATE.activeSessionId) {
+      const list = loadServers();
+      const active = list.find(
+        (item) =>
+          makeServerKey(item.host, item.user, item.ssh_port || 22) ===
+          makeServerKey(form.elements.host.value, form.elements.user.value, form.elements.ssh_port?.value || 22),
+      );
+      if (active?.session_id) {
+        await forgetServerSession(active, { notify: true });
+      } else {
+        STATE.activeSessionId = null;
+      }
+    }
+  });
+}
 
 function formatTransfer(rx, tx) {
   if (!rx && !tx) {
@@ -1292,7 +1811,7 @@ function renderClients(list = STATE.clients) {
         });
         setStatus(`${t("status_client_ready")}: ${result.client_name}`);
       } catch (err) {
-        setStatus(`${t("status_failed")}: ${err}`);
+        setStatus(`${t("status_failed")}: ${humanizeError(err, STATE.lastAuth)}`);
       } finally {
         clearClientBusy(client.name);
       }
@@ -1329,7 +1848,7 @@ function renderClients(list = STATE.clients) {
         }
         setStatus(`${t("status_client_ready")}: ${result.client_name}`);
       } catch (err) {
-        setStatus(`${t("status_failed")}: ${err}`);
+        setStatus(`${t("status_failed")}: ${humanizeError(err, STATE.lastAuth)}`);
       } finally {
         clearClientBusy(client.name);
       }
@@ -1354,7 +1873,7 @@ function renderClients(list = STATE.clients) {
         setStatus(`${t("status_client_rotated")}: ${result.client_name}`);
         await refreshClients(STATE.lastAuth);
       } catch (err) {
-        setStatus(`${t("status_failed")}: ${err}`);
+        setStatus(`${t("status_failed")}: ${humanizeError(err, STATE.lastAuth)}`);
       } finally {
         clearClientBusy(client.name);
       }
@@ -1380,7 +1899,7 @@ function renderClients(list = STATE.clients) {
         delete STATE.qrByClient[client.name];
         await refreshClients(STATE.lastAuth);
       } catch (err) {
-        setStatus(`${t("status_failed")}: ${err}`);
+        setStatus(`${t("status_failed")}: ${humanizeError(err, STATE.lastAuth)}`);
       } finally {
         clearClientBusy(client.name);
       }
@@ -1452,11 +1971,13 @@ async function refreshClients(data) {
     upsertServer({
       host: data.host,
       user: data.user,
+      ssh_port: data.ssh_port || 22,
       listen_port: data.listen_port || undefined,
       clients_count: clients.length,
+      session_id: data.session_id || undefined,
     });
   } catch (err) {
-    setStatus(`${t("status_failed")}: ${err}`);
+    setStatus(`${t("status_failed")}: ${humanizeError(err, data)}`);
     STATE.clientsLoading = false;
     renderClients();
   }
@@ -1520,6 +2041,7 @@ async function runServerCheck(data) {
     alert(t("alert_fill_host_user"));
     return;
   }
+  setActiveServerKey(makeServerKey(data.host, data.user, data.ssh_port || 22));
   if (checkServerBtn) {
     checkServerBtn.disabled = true;
   }
@@ -1535,10 +2057,28 @@ async function runServerCheck(data) {
   }
 
   try {
-    const result = await fetchServerStatus(data);
+    const authData = { ...data };
+    if (authData.remember_login && hasAuthSecrets(authData)) {
+      const sessionId = await loginSession(authData);
+      if (sessionId) {
+        authData.session_id = sessionId;
+        STATE.activeSessionId = sessionId;
+        setStatus(t("status_session_saved"));
+      }
+    }
+    if (!authData.remember_login && authData.session_id) {
+      const previousSession = authData.session_id;
+      authData.session_id = null;
+      STATE.activeSessionId = null;
+      await revokeSession(previousSession);
+    }
+    const result = await fetchServerStatus(authData);
     if (!result.ok) {
       if (serverStatusEl) {
-        serverStatusEl.textContent = `${t("status_server_error")}: ${result.error || "unknown error"}`;
+        serverStatusEl.textContent = `${t("status_server_error")}: ${humanizeError(
+          result.error || "unknown error",
+          authData,
+        )}`;
       }
       serverConfigured = false;
       STATE.checked = false;
@@ -1547,8 +2087,13 @@ async function runServerCheck(data) {
       renderClients([]);
       return;
     }
+    STATE.lastAuth = authData;
     STATE.checked = true;
     serverConfigured = Boolean(result.configured);
+    const checkedServerKey = getServerRuntimeKey(authData);
+    if (checkedServerKey) {
+      STATE.previewDoneByServer[checkedServerKey] = serverConfigured;
+    }
     if (!serverConfigured) {
       STATE.clientsLoading = false;
     }
@@ -1563,19 +2108,35 @@ async function runServerCheck(data) {
     setServerMeta(result);
     updateStageVisibility();
     upsertServer({
-      host: data.host,
-      user: data.user,
-      listen_port: result.listen_port || data.listen_port || undefined,
+      host: authData.host,
+      user: authData.user,
+      ssh_port: authData.ssh_port || 22,
+      listen_port: result.listen_port || authData.listen_port || undefined,
       clients_count: result.clients_count,
+      session_id: authData.remember_login ? authData.session_id || undefined : null,
     });
     if (serverConfigured) {
-      await refreshClients(data);
+      await refreshClients(authData);
     } else {
       renderClients([]);
     }
   } catch (err) {
+    const pretty = humanizeError(err, data);
+    if (/session expired/i.test(`${err || ""}`)) {
+      STATE.activeSessionId = null;
+      if (rememberLoginToggle) {
+        rememberLoginToggle.checked = false;
+      }
+      upsertServer({
+        host: data.host,
+        user: data.user,
+        ssh_port: data.ssh_port || 22,
+        listen_port: data.listen_port || undefined,
+        session_id: null,
+      });
+    }
     if (serverStatusEl) {
-      serverStatusEl.textContent = `${t("status_server_error")}: ${err}`;
+      serverStatusEl.textContent = `${t("status_server_error")}: ${pretty}`;
     }
     serverConfigured = false;
     STATE.checked = false;
@@ -1591,6 +2152,26 @@ async function runServerCheck(data) {
 
 async function runProvision() {
   const data = getFormData();
+  setActiveServerKey(makeServerKey(data.host, data.user, data.ssh_port || 22));
+  if (data.remember_login && hasAuthSecrets(data)) {
+    try {
+      const sessionId = await loginSession(data);
+      if (sessionId) {
+        data.session_id = sessionId;
+        STATE.activeSessionId = sessionId;
+      }
+    } catch (err) {
+      setStatus(`${t("status_failed")}: ${humanizeError(err, data)}`);
+      return;
+    }
+  }
+  if (!data.remember_login) {
+    if (data.session_id) {
+      await revokeSession(data.session_id);
+    }
+    data.session_id = null;
+    STATE.activeSessionId = null;
+  }
   STATE.lastAuth = data;
   if (!data.host || !data.user) {
     alert(t("alert_fill_host_user"));
@@ -1599,6 +2180,32 @@ async function runProvision() {
   if (!STATE.checked) {
     alert(t("alert_check_first"));
     return;
+  }
+  const currentServerKey = getServerRuntimeKey(data);
+  const previewDone = Boolean(currentServerKey && STATE.previewDoneByServer[currentServerKey]);
+  const noviceMode = Boolean(simpleToggle?.checked);
+  if (noviceMode && !data.safe_mode && !serverConfigured && !previewDone) {
+    if (safeToggle) {
+      safeToggle.checked = true;
+    }
+    STATE.safeTouched = true;
+    updateInstallGuard();
+    updateNextStepMessage();
+    setStatus(t("status_novice_preview_required"));
+    scrollToCard(safeRow || form.closest(".card"));
+    return;
+  }
+  if (!data.safe_mode) {
+    if (installConfirmToggle && !installConfirmToggle.checked) {
+      setStatus(t("status_install_requires_confirm"));
+      scrollToCard(installGuard || form.closest(".card"));
+      return;
+    }
+    const confirmed = await requestInstallConfirmation(data);
+    if (!confirmed) {
+      setStatus(t("status_install_cancelled"));
+      return;
+    }
   }
   if (data.safe_mode) {
     if (provisionBtn) {
@@ -1627,10 +2234,15 @@ async function runProvision() {
         return `precheck ${item.name}: ${status}${details}`;
       });
       setProgress(lines);
+      const previewKey = getServerRuntimeKey(data);
+      if (previewKey) {
+        STATE.previewDoneByServer[previewKey] = true;
+      }
       setStatus(t("status_precheck_done"));
       setProgressState("done");
+      updateNextStepMessage();
     } catch (err) {
-      setStatus(`${t("status_failed")}: ${err}`);
+      setStatus(`${t("status_failed")}: ${humanizeError(err, data)}`);
       setProgressState("error");
     } finally {
       if (provisionBtn) {
@@ -1655,7 +2267,7 @@ async function runProvision() {
   }
 
   const payload = {
-    ssh: buildSshPayload(data),
+    ...buildAuthPayload(data),
     options: {
       client_name: data.client_name || undefined,
       auto_mtu: true,
@@ -1680,14 +2292,16 @@ async function runProvision() {
     upsertServer({
       host: data.host,
       user: data.user,
+      ssh_port: data.ssh_port || 22,
       listen_port: data.listen_port || undefined,
+      session_id: data.remember_login ? data.session_id || undefined : null,
     });
     if (pollTimer) {
       clearInterval(pollTimer);
     }
     pollTimer = setInterval(() => {
       pollJob(result.job_id, currentClientName, data).catch((err) => {
-        setStatus(`${t("status_failed")}: ${err}`);
+        setStatus(`${t("status_failed")}: ${humanizeError(err, data)}`);
         setProgressState("error");
         clearInterval(pollTimer);
         pollTimer = null;
@@ -1698,7 +2312,7 @@ async function runProvision() {
     }, 2000);
     await pollJob(result.job_id, currentClientName, data);
   } catch (err) {
-    setStatus(`${t("status_failed")}: ${err}`);
+    setStatus(`${t("status_failed")}: ${humanizeError(err, data)}`);
     setProgressState("error");
     if (provisionBtn) {
       provisionBtn.disabled = false;
@@ -1725,6 +2339,26 @@ if (provisionBtn) {
 
 addClientBtn.addEventListener("click", async () => {
   const data = getFormData();
+  setActiveServerKey(makeServerKey(data.host, data.user, data.ssh_port || 22));
+  if (data.remember_login && hasAuthSecrets(data)) {
+    try {
+      const sessionId = await loginSession(data);
+      if (sessionId) {
+        data.session_id = sessionId;
+        STATE.activeSessionId = sessionId;
+      }
+    } catch (err) {
+      setStatus(`${t("status_failed")}: ${humanizeError(err, data)}`);
+      return;
+    }
+  }
+  if (!data.remember_login) {
+    if (data.session_id) {
+      await revokeSession(data.session_id);
+    }
+    data.session_id = null;
+    STATE.activeSessionId = null;
+  }
   STATE.lastAuth = data;
   if (!data.host || !data.user) {
     alert(t("alert_fill_host_user"));
@@ -1751,7 +2385,7 @@ addClientBtn.addEventListener("click", async () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        ssh: buildSshPayload(data),
+        ...buildAuthPayload(data),
         client_name: data.client_name || null,
         listen_port: data.listen_port || undefined,
       }),
@@ -1761,19 +2395,29 @@ addClientBtn.addEventListener("click", async () => {
       setProgressState("error");
       return;
     }
-        setDownload(result.config, result.qr_png_base64, result.client_name, {
-          downloadId: result.download_id,
-        });
+    setDownload(result.config, result.qr_png_base64, result.client_name, {
+      downloadId: result.download_id,
+    });
     setStatus(`${t("status_client_ready")}: ${result.client_name}`);
     setProgressState("done");
-    upsertServer({ host: data.host, user: data.user, listen_port: data.listen_port || undefined });
+    upsertServer({
+      host: data.host,
+      user: data.user,
+      ssh_port: data.ssh_port || 22,
+      listen_port: data.listen_port || undefined,
+      session_id: data.remember_login ? data.session_id || undefined : null,
+    });
     serverConfigured = true;
     updateStageVisibility();
     await refreshClients(data);
   } catch (err) {
-    setStatus(`${t("status_failed")}: ${err}`);
+    setStatus(`${t("status_failed")}: ${humanizeError(err, data)}`);
     setProgressState("error");
   } finally {
     addClientBtn.disabled = false;
   }
+});
+
+restoreActiveServer().catch((err) => {
+  console.warn(err);
 });

@@ -3,19 +3,21 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import base64
 from collections import OrderedDict
+from contextlib import contextmanager
 from io import BytesIO
 import os
 from pathlib import Path
+import time
 from urllib.parse import urlparse
 import tempfile
-from typing import Optional
+from typing import Callable, Optional
 import threading
 import uuid
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 import qrcode
 import uvicorn
 
@@ -66,6 +68,45 @@ class SSHPayload(BaseModel):
     key_path: Optional[str] = None
     key_content: Optional[str] = None
 
+    @model_validator(mode="after")
+    def normalize(self) -> "SSHPayload":
+        host, parsed_port = _split_host_port(self.host)
+        self.host = host
+        self.user = (self.user or "").strip()
+        if parsed_port is not None and self.port == 22:
+            self.port = parsed_port
+        if not self.host:
+            raise ValueError("SSH host is required.")
+        if not self.user:
+            raise ValueError("SSH user is required.")
+        if not 1 <= self.port <= 65535:
+            raise ValueError("SSH port must be between 1 and 65535.")
+        return self
+
+
+def _split_host_port(raw_host: str) -> tuple[str, Optional[int]]:
+    host = (raw_host or "").strip()
+    if not host:
+        return "", None
+    if host.startswith("["):
+        closing = host.find("]")
+        if closing != -1:
+            inner = host[1:closing].strip()
+            tail = host[closing + 1 :].strip()
+            if tail.startswith(":") and tail[1:].isdigit():
+                return inner, int(tail[1:])
+            return inner, None
+    if host.count(":") == 1:
+        left, right = host.rsplit(":", 1)
+        if left and right.isdigit():
+            return left.strip(), int(right)
+    return host, None
+
+
+class AuthRequest(BaseModel):
+    ssh: Optional[SSHPayload] = None
+    session_id: Optional[str] = None
+
 
 class ProvisionOptions(BaseModel):
     client_name: str = "client1"
@@ -81,8 +122,9 @@ class ProvisionOptions(BaseModel):
 
 
 class ProvisionRequest(BaseModel):
-    ssh: SSHPayload
-    options: ProvisionOptions = ProvisionOptions()
+    ssh: Optional[SSHPayload] = None
+    session_id: Optional[str] = None
+    options: ProvisionOptions = Field(default_factory=ProvisionOptions)
 
 
 class CheckItem(BaseModel):
@@ -96,12 +138,12 @@ class ProvisionResponse(BaseModel):
     config: Optional[str] = None
     qr_png_base64: Optional[str] = None
     download_id: Optional[str] = None
-    checks: list[CheckItem] = []
+    checks: list[CheckItem] = Field(default_factory=list)
     error: Optional[str] = None
 
 
-class RollbackRequest(BaseModel):
-    ssh: SSHPayload
+class RollbackRequest(AuthRequest):
+    pass
 
 
 class RollbackResponse(BaseModel):
@@ -110,22 +152,20 @@ class RollbackResponse(BaseModel):
     error: Optional[str] = None
 
 
-class ClientRequest(BaseModel):
-    ssh: SSHPayload
+class ClientRequest(AuthRequest):
     client_name: Optional[str] = None
     client_ip: Optional[str] = None
     listen_port: Optional[int] = None
 
 
-class ClientRemoveRequest(BaseModel):
-    ssh: SSHPayload
+class ClientRemoveRequest(AuthRequest):
     client_name: str
     listen_port: Optional[int] = None
 
 
 class ClientListResponse(BaseModel):
     ok: bool
-    clients: list[dict] = []
+    clients: list[dict] = Field(default_factory=list)
     error: Optional[str] = None
 
 
@@ -158,10 +198,27 @@ class JobCreateResponse(BaseModel):
 class JobStatus(BaseModel):
     job_id: str
     status: str
-    progress: list[str] = []
-    checks: list[CheckItem] = []
+    progress: list[str] = Field(default_factory=list)
+    checks: list[CheckItem] = Field(default_factory=list)
     error: Optional[str] = None
     config_ready: bool = False
+
+
+class SessionLoginRequest(BaseModel):
+    ssh: SSHPayload
+
+
+class SessionRevokeRequest(BaseModel):
+    session_id: str
+
+
+class SessionLoginResponse(BaseModel):
+    ok: bool
+    session_id: Optional[str] = None
+    host: Optional[str] = None
+    user: Optional[str] = None
+    port: Optional[int] = None
+    error: Optional[str] = None
 
 
 @dataclass
@@ -289,6 +346,65 @@ class DownloadStore:
 DOWNLOAD_STORE = DownloadStore()
 
 
+@dataclass
+class SessionItem:
+    ssh: SSHPayload
+    expires_at: float
+    created_at: float
+    touched_at: float
+
+
+class SessionStore:
+    def __init__(self, ttl_seconds: int = 86400, limit: int = 512) -> None:
+        self._items: "OrderedDict[str, SessionItem]" = OrderedDict()
+        self._lock = threading.Lock()
+        self._ttl_seconds = max(60, ttl_seconds)
+        self._limit = max(16, limit)
+
+    def _cleanup(self, now: float) -> None:
+        expired = [sid for sid, item in self._items.items() if item.expires_at <= now]
+        for sid in expired:
+            self._items.pop(sid, None)
+        while len(self._items) > self._limit:
+            self._items.popitem(last=False)
+
+    def create(self, ssh: SSHPayload) -> str:
+        session_id = uuid.uuid4().hex
+        now = time.time()
+        item = SessionItem(
+            ssh=ssh.model_copy(deep=True),
+            expires_at=now + self._ttl_seconds,
+            created_at=now,
+            touched_at=now,
+        )
+        with self._lock:
+            self._cleanup(now)
+            self._items[session_id] = item
+        return session_id
+
+    def get(self, session_id: str) -> Optional[SSHPayload]:
+        now = time.time()
+        with self._lock:
+            self._cleanup(now)
+            item = self._items.get(session_id)
+            if not item:
+                return None
+            item.touched_at = now
+            item.expires_at = now + self._ttl_seconds
+            self._items.move_to_end(session_id)
+            return item.ssh.model_copy(deep=True)
+
+    def revoke(self, session_id: str) -> bool:
+        with self._lock:
+            return self._items.pop(session_id, None) is not None
+
+
+SESSION_STORE = SessionStore(
+    ttl_seconds=int(os.getenv("VPNW_SESSION_TTL_SECONDS", "86400")),
+    limit=int(os.getenv("VPNW_SESSION_LIMIT", "512")),
+)
+
+
 def _safe_name(name: Optional[str]) -> str:
     if not name:
         return "client1"
@@ -301,28 +417,55 @@ def _download_filename(name: Optional[str], suffix: str) -> str:
     return f"{safe}.{suffix}"
 
 
-def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
+def _resolve_ssh_payload(
+    ssh_payload: Optional[SSHPayload],
+    session_id: Optional[str],
+) -> SSHPayload:
+    if ssh_payload is not None:
+        return ssh_payload
+    if session_id:
+        session_ssh = SESSION_STORE.get(session_id)
+        if session_ssh is not None:
+            return session_ssh
+        raise RuntimeError("Session expired. Please log in again.")
+    raise RuntimeError("SSH credentials are required.")
+
+
+@contextmanager
+def _ssh_connection(
+    ssh_payload: Optional[SSHPayload],
+    session_id: Optional[str] = None,
+    logger: Optional[Callable[[str], None]] = None,
+):
+    resolved = _resolve_ssh_payload(ssh_payload, session_id)
     temp_key = TempKey()
+    key_path = resolved.key_path
+    if resolved.key_content:
+        temp_key = _write_temp_key(resolved.key_content)
+        key_path = temp_key.path
+    cfg = SSHConfig(
+        host=resolved.host,
+        user=resolved.user,
+        port=resolved.port,
+        password=resolved.password,
+        key_path=key_path,
+    )
+    try:
+        with SSHRunner(cfg, logger=logger) as ssh:
+            yield ssh, resolved
+    finally:
+        temp_key.cleanup()
+
+
+def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
     try:
         JOB_STORE.update(job_id, status="running")
-
-        key_path = payload.ssh.key_path
-        if payload.ssh.key_content:
-            temp_key = _write_temp_key(payload.ssh.key_content)
-            key_path = temp_key.path
 
         def progress(msg: str) -> None:
             JOB_STORE.append_progress(job_id, msg)
 
         progress("Connecting over SSH")
-        cfg = SSHConfig(
-            host=payload.ssh.host,
-            user=payload.ssh.user,
-            port=payload.ssh.port,
-            password=payload.ssh.password,
-            key_path=key_path,
-        )
-        with SSHRunner(cfg, logger=progress) as ssh:
+        with _ssh_connection(payload.ssh, payload.session_id, logger=progress) as (ssh, _resolved):
             opts = payload.options
             JOB_STORE.update(job_id, client_name=opts.client_name)
             prov = WireGuardProvisioner(
@@ -365,13 +508,36 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
         )
     except Exception as exc:
         JOB_STORE.update(job_id, status="error", error=str(exc))
-    finally:
-        temp_key.cleanup()
 
 
 @app.get("/health")
 def health() -> dict:
     return {"ok": True}
+
+
+@app.post("/api/sessions/login", response_model=SessionLoginResponse)
+async def session_login(payload: SessionLoginRequest) -> SessionLoginResponse:
+    try:
+        with _ssh_connection(payload.ssh):
+            pass
+        session_id = SESSION_STORE.create(payload.ssh)
+        return SessionLoginResponse(
+            ok=True,
+            session_id=session_id,
+            host=payload.ssh.host,
+            user=payload.ssh.user,
+            port=payload.ssh.port,
+        )
+    except Exception as exc:
+        return SessionLoginResponse(ok=False, error=str(exc))
+
+
+@app.post("/api/sessions/revoke", response_model=RollbackResponse)
+async def session_revoke(payload: SessionRevokeRequest) -> RollbackResponse:
+    removed = SESSION_STORE.revoke(payload.session_id)
+    if not removed:
+        return RollbackResponse(ok=False, error="Session not found.")
+    return RollbackResponse(ok=True)
 
 
 @app.post("/api/provision", response_model=JobCreateResponse)
@@ -443,21 +609,8 @@ def download_qr(download_id: str) -> Response:
 
 @app.post("/api/rollback", response_model=RollbackResponse)
 async def rollback(payload: RollbackRequest) -> RollbackResponse:
-    temp_key = TempKey()
     try:
-        key_path = payload.ssh.key_path
-        if payload.ssh.key_content:
-            temp_key = _write_temp_key(payload.ssh.key_content)
-            key_path = temp_key.path
-
-        cfg = SSHConfig(
-            host=payload.ssh.host,
-            user=payload.ssh.user,
-            port=payload.ssh.port,
-            password=payload.ssh.password,
-            key_path=key_path,
-        )
-        with SSHRunner(cfg) as ssh:
+        with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
             prov = WireGuardProvisioner(ssh)
             backup = prov.rollback_last_backup()
         if not backup:
@@ -465,53 +618,23 @@ async def rollback(payload: RollbackRequest) -> RollbackResponse:
         return RollbackResponse(ok=True, backup=backup)
     except Exception as exc:
         return RollbackResponse(ok=False, error=str(exc))
-    finally:
-        temp_key.cleanup()
 
 
 @app.post("/api/clients/list", response_model=ClientListResponse)
 async def client_list(payload: RollbackRequest) -> ClientListResponse:
-    temp_key = TempKey()
     try:
-        key_path = payload.ssh.key_path
-        if payload.ssh.key_content:
-            temp_key = _write_temp_key(payload.ssh.key_content)
-            key_path = temp_key.path
-
-        cfg = SSHConfig(
-            host=payload.ssh.host,
-            user=payload.ssh.user,
-            port=payload.ssh.port,
-            password=payload.ssh.password,
-            key_path=key_path,
-        )
-        with SSHRunner(cfg) as ssh:
+        with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
             prov = WireGuardProvisioner(ssh)
             clients = prov.list_clients()
         return ClientListResponse(ok=True, clients=clients)
     except Exception as exc:
         return ClientListResponse(ok=False, error=str(exc))
-    finally:
-        temp_key.cleanup()
 
 
 @app.post("/api/clients/add", response_model=ClientAddResponse)
 async def client_add(payload: ClientRequest) -> ClientAddResponse:
-    temp_key = TempKey()
     try:
-        key_path = payload.ssh.key_path
-        if payload.ssh.key_content:
-            temp_key = _write_temp_key(payload.ssh.key_content)
-            key_path = temp_key.path
-
-        cfg = SSHConfig(
-            host=payload.ssh.host,
-            user=payload.ssh.user,
-            port=payload.ssh.port,
-            password=payload.ssh.password,
-            key_path=key_path,
-        )
-        with SSHRunner(cfg) as ssh:
+        with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
             prov_kwargs = {}
             if payload.listen_port:
                 prov_kwargs["listen_port"] = payload.listen_port
@@ -531,27 +654,12 @@ async def client_add(payload: ClientRequest) -> ClientAddResponse:
         )
     except Exception as exc:
         return ClientAddResponse(ok=False, error=str(exc))
-    finally:
-        temp_key.cleanup()
 
 
 @app.post("/api/clients/remove", response_model=RollbackResponse)
 async def client_remove(payload: ClientRemoveRequest) -> RollbackResponse:
-    temp_key = TempKey()
     try:
-        key_path = payload.ssh.key_path
-        if payload.ssh.key_content:
-            temp_key = _write_temp_key(payload.ssh.key_content)
-            key_path = temp_key.path
-
-        cfg = SSHConfig(
-            host=payload.ssh.host,
-            user=payload.ssh.user,
-            port=payload.ssh.port,
-            password=payload.ssh.password,
-            key_path=key_path,
-        )
-        with SSHRunner(cfg) as ssh:
+        with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
             prov = WireGuardProvisioner(ssh)
             ok = prov.remove_client(payload.client_name)
         if not ok:
@@ -559,27 +667,12 @@ async def client_remove(payload: ClientRemoveRequest) -> RollbackResponse:
         return RollbackResponse(ok=True, backup=None)
     except Exception as exc:
         return RollbackResponse(ok=False, error=str(exc))
-    finally:
-        temp_key.cleanup()
 
 
 @app.post("/api/clients/rotate", response_model=ClientAddResponse)
 async def client_rotate(payload: ClientRemoveRequest) -> ClientAddResponse:
-    temp_key = TempKey()
     try:
-        key_path = payload.ssh.key_path
-        if payload.ssh.key_content:
-            temp_key = _write_temp_key(payload.ssh.key_content)
-            key_path = temp_key.path
-
-        cfg = SSHConfig(
-            host=payload.ssh.host,
-            user=payload.ssh.user,
-            port=payload.ssh.port,
-            password=payload.ssh.password,
-            key_path=key_path,
-        )
-        with SSHRunner(cfg) as ssh:
+        with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
             prov_kwargs = {}
             if payload.listen_port:
                 prov_kwargs["listen_port"] = payload.listen_port
@@ -599,27 +692,12 @@ async def client_rotate(payload: ClientRemoveRequest) -> ClientAddResponse:
         )
     except Exception as exc:
         return ClientAddResponse(ok=False, error=str(exc))
-    finally:
-        temp_key.cleanup()
 
 
 @app.post("/api/clients/export", response_model=ClientExportResponse)
 async def client_export(payload: ClientRemoveRequest) -> ClientExportResponse:
-    temp_key = TempKey()
     try:
-        key_path = payload.ssh.key_path
-        if payload.ssh.key_content:
-            temp_key = _write_temp_key(payload.ssh.key_content)
-            key_path = temp_key.path
-
-        cfg = SSHConfig(
-            host=payload.ssh.host,
-            user=payload.ssh.user,
-            port=payload.ssh.port,
-            password=payload.ssh.password,
-            key_path=key_path,
-        )
-        with SSHRunner(cfg) as ssh:
+        with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
             prov = WireGuardProvisioner(ssh)
             result = prov.export_client(payload.client_name)
         qr_png = _build_qr_png(result["config"])
@@ -636,8 +714,6 @@ async def client_export(payload: ClientRemoveRequest) -> ClientExportResponse:
         )
     except Exception as exc:
         return ClientExportResponse(ok=False, error=str(exc))
-    finally:
-        temp_key.cleanup()
 
 
 class LogsResponse(BaseModel):
@@ -659,7 +735,7 @@ class ServerStatusResponse(BaseModel):
 
 class PrecheckResponse(BaseModel):
     ok: bool
-    checks: list[CheckItem] = []
+    checks: list[CheckItem] = Field(default_factory=list)
     error: Optional[str] = None
 
 
@@ -721,48 +797,19 @@ def _detect_server_status(ssh: SSHRunner) -> dict:
 
 @app.post("/api/logs", response_model=LogsResponse)
 async def get_logs(payload: RollbackRequest) -> LogsResponse:
-    temp_key = TempKey()
     try:
-        key_path = payload.ssh.key_path
-        if payload.ssh.key_content:
-            temp_key = _write_temp_key(payload.ssh.key_content)
-            key_path = temp_key.path
-
-        cfg = SSHConfig(
-            host=payload.ssh.host,
-            user=payload.ssh.user,
-            port=payload.ssh.port,
-            password=payload.ssh.password,
-            key_path=key_path,
-        )
-        with SSHRunner(cfg) as ssh:
+        with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
             prov = WireGuardProvisioner(ssh)
             report = prov.get_system_report()
-            
         return LogsResponse(ok=True, logs=report)
     except Exception as exc:
         return LogsResponse(ok=False, error=str(exc))
-    finally:
-        temp_key.cleanup()
 
 
 @app.post("/api/server/status", response_model=ServerStatusResponse)
 async def server_status(payload: RollbackRequest) -> ServerStatusResponse:
-    temp_key = TempKey()
     try:
-        key_path = payload.ssh.key_path
-        if payload.ssh.key_content:
-            temp_key = _write_temp_key(payload.ssh.key_content)
-            key_path = temp_key.path
-
-        cfg = SSHConfig(
-            host=payload.ssh.host,
-            user=payload.ssh.user,
-            port=payload.ssh.port,
-            password=payload.ssh.password,
-            key_path=key_path,
-        )
-        with SSHRunner(cfg) as ssh:
+        with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
             status = _detect_server_status(ssh)
 
         if not status.get("configured"):
@@ -779,27 +826,12 @@ async def server_status(payload: RollbackRequest) -> ServerStatusResponse:
         )
     except Exception as exc:
         return ServerStatusResponse(ok=False, configured=False, error=str(exc))
-    finally:
-        temp_key.cleanup()
 
 
 @app.post("/api/server/precheck", response_model=PrecheckResponse)
 async def server_precheck(payload: ProvisionRequest) -> PrecheckResponse:
-    temp_key = TempKey()
     try:
-        key_path = payload.ssh.key_path
-        if payload.ssh.key_content:
-            temp_key = _write_temp_key(payload.ssh.key_content)
-            key_path = temp_key.path
-
-        cfg = SSHConfig(
-            host=payload.ssh.host,
-            user=payload.ssh.user,
-            port=payload.ssh.port,
-            password=payload.ssh.password,
-            key_path=key_path,
-        )
-        with SSHRunner(cfg) as ssh:
+        with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
             opts = payload.options
             prov = WireGuardProvisioner(
                 ssh,
@@ -817,43 +849,26 @@ async def server_precheck(payload: ProvisionRequest) -> PrecheckResponse:
         return PrecheckResponse(ok=True, checks=checks)
     except Exception as exc:
         return PrecheckResponse(ok=False, error=str(exc))
-    finally:
-        temp_key.cleanup()
 
 
 @app.post("/api/repair", response_model=JobCreateResponse)
 async def run_repair(payload: RollbackRequest, background_tasks: BackgroundTasks) -> JobCreateResponse:
     job = JOB_STORE.create()
-    
+
     def _do_repair(job_id: str, payload: RollbackRequest):
-        temp_key = TempKey()
         try:
             JOB_STORE.update(job_id, status="running")
-            key_path = payload.ssh.key_path
-            if payload.ssh.key_content:
-                temp_key = _write_temp_key(payload.ssh.key_content)
-                key_path = temp_key.path
 
-            cfg = SSHConfig(
-                host=payload.ssh.host,
-                user=payload.ssh.user,
-                port=payload.ssh.port,
-                password=payload.ssh.password,
-                key_path=key_path,
-            )
-            
             def progress(msg: str) -> None:
                 JOB_STORE.append_progress(job_id, msg)
 
-            with SSHRunner(cfg, logger=progress) as ssh:
+            with _ssh_connection(payload.ssh, payload.session_id, logger=progress) as (ssh, _resolved):
                 prov = WireGuardProvisioner(ssh, progress=progress)
                 logs = prov.repair_network()
-            
+
             JOB_STORE.update(job_id, status="done", progress=logs, error=None)
         except Exception as exc:
             JOB_STORE.update(job_id, status="error", error=str(exc))
-        finally:
-            temp_key.cleanup()
 
     background_tasks.add_task(_do_repair, job.job_id, payload)
     return JobCreateResponse(job_id=job.job_id)

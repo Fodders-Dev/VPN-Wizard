@@ -38,9 +38,37 @@
           <input name="user" placeholder="root" data-i18n-placeholder="ssh_user_placeholder" required />
         </label>
         <label>
+          <span data-i18n="ssh_port_label">SSH порт</span>
+          <input name="ssh_port" type="number" min="1" max="65535" value="22" />
+        </label>
+        <label>
           <span data-i18n="ssh_password_label">SSH пароль</span>
           <input name="password" type="password" placeholder="optional if key" data-i18n-placeholder="ssh_password_placeholder" />
         </label>
+        <div class="remember-row">
+          <label class="toggle">
+            <input type="checkbox" id="remember-login-toggle" checked />
+            <span data-i18n="remember_login_label">Запомнить вход на этом устройстве</span>
+          </label>
+          <small class="field-hint" data-i18n="remember_login_hint">
+            Сохраняем защищенную сессию для авто-проверки после обновления страницы.
+          </small>
+        </div>
+        <div class="onboarding-panel">
+          <div class="onboarding-title" data-i18n="onboarding_title">Быстрый старт</div>
+          <div class="onboarding-item" data-i18n="onboarding_step1">
+            1) Введите IP/хост, SSH пользователя и пароль или ключ.
+          </div>
+          <div class="onboarding-item" data-i18n="onboarding_step2">
+            2) Нажмите "Проверить сервер" — это безопасно, без установки.
+          </div>
+          <div class="onboarding-item" data-i18n="onboarding_step3">
+            3) Если сервер пустой — запустите установку и скачайте конфиг.
+          </div>
+          <div class="onboarding-item" data-i18n="onboarding_step4">
+            4) При блокировках попробуйте другой UDP порт.
+          </div>
+        </div>
         <label class="profile-only hidden">
           <span data-i18n="client_name_label">Имя профиля (необязательно)</span>
           <input name="client_name" placeholder="grandma-phone" data-i18n-placeholder="client_name_placeholder" />
@@ -68,6 +96,9 @@
         <div class="server-tools">
           <button type="submit" id="check-server-btn" data-i18n="check_server_btn">Проверить сервер</button>
           <div id="server-status" class="server-status" data-i18n="server_status_idle">Сервер не проверен</div>
+          <div id="next-step" class="next-step" data-i18n="next_step_initial">
+            Сначала заполните доступ к серверу и нажмите "Проверить сервер".
+          </div>
           <div id="check-hint" class="check-hint" data-i18n="check_safe_hint">
             Проверить сервер — безопасно: ничего не устанавливается. Установка — отдельной кнопкой.
           </div>
@@ -96,6 +127,17 @@
             <span data-i18n="simple_mode_label">Простой режим</span>
           </label>
           <span class="toggle-hint" data-i18n="simple_mode_hint">Скрыть расширенные поля</span>
+        </div>
+        <div class="install-guard hidden" id="install-guard">
+          <label class="toggle">
+            <input type="checkbox" id="install-confirm-toggle" />
+            <span data-i18n="install_confirm_label">
+              Я понимаю, что установка изменит сетевые настройки сервера.
+            </span>
+          </label>
+          <small class="field-hint" data-i18n="install_confirm_hint">
+            Рекомендуем сначала сделать предпросмотр изменений.
+          </small>
         </div>
         <button type="button" id="provision-btn" class="hidden" data-i18n="provision_btn">Настроить сервер и получить первый профиль</button>
         <button type="button" id="add-client-btn" class="secondary hidden" data-i18n="add_client_btn">Добавить профиль</button>
@@ -186,6 +228,26 @@
       <div class="modal-actions">
         <button type="button" class="secondary" id="tour-prev" data-i18n="tour_prev">Назад</button>
         <button type="button" id="tour-next" data-i18n="tour_next">Далее</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="install-modal" aria-hidden="true">
+    <div class="modal-backdrop" data-modal-close></div>
+    <div class="modal-card" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h3 data-i18n="install_modal_title">Подтвердить установку</h3>
+        <button type="button" class="ghost" data-modal-close>✕</button>
+      </div>
+      <div class="modal-body">
+        <div data-i18n="install_modal_body">
+          Будут изменены сетевые настройки и установлен VPN на вашем сервере.
+        </div>
+        <div id="install-summary" class="install-summary"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="secondary" id="install-cancel" data-i18n="install_modal_cancel">Отмена</button>
+        <button type="button" id="install-continue" data-i18n="install_modal_continue">Продолжить установку</button>
       </div>
     </div>
   </div>
