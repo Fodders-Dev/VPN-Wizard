@@ -50,6 +50,8 @@ const installModal = document.getElementById("install-modal");
 const installSummary = document.getElementById("install-summary");
 const installCancelBtn = document.getElementById("install-cancel");
 const installContinueBtn = document.getElementById("install-continue");
+const stageUncheckedOnlyEls = document.querySelectorAll(".stage-unchecked-only");
+const stageBeforeConfigEls = document.querySelectorAll(".stage-before-config");
 
 const I18N = {
   ru: {
@@ -60,7 +62,9 @@ const I18N = {
     server_host_placeholder: "1.2.3.4",
     ssh_user_label: "SSH пользователь",
     ssh_user_placeholder: "root",
-    ssh_port_label: "SSH порт",
+    ssh_port_label: "SSH порт (вручную)",
+    ssh_port_placeholder: "авто",
+    ssh_port_hint: "По умолчанию порт SSH ищется автоматически.",
     ssh_password_label: "SSH пароль",
     ssh_password_placeholder: "если ключ - можно пусто",
     remember_login_label: "Запомнить вход на этом устройстве",
@@ -116,7 +120,7 @@ const I18N = {
     servers_forget_login_btn: "Забыть вход",
     servers_remove_btn: "Удалить",
     onboarding_title: "Быстрый старт",
-    onboarding_step1: "1) Введите IP/хост, SSH пользователя и пароль или ключ.",
+    onboarding_step1: "1) Введите IP/хост, SSH пользователя и пароль или ключ (SSH порт найдется автоматически).",
     onboarding_step2: "2) Нажмите \"Проверить сервер\" - если VPN уже есть, появятся профили.",
     onboarding_step3: "3) Если нет - нажмите \"Настроить сервер\" и скачайте конфиг и QR.",
     onboarding_step4: "4) При блокировках попробуйте другой UDP порт (например 3478 или 33434).",
@@ -148,6 +152,8 @@ const I18N = {
     status_client_rotated: "Профиль перевыпущен",
     status_failed: "Ошибка",
     status_checking: "Проверяем сервер...",
+    status_detecting_ssh_port: "Ищем SSH порт автоматически...",
+    status_ssh_port_detected: "Найден SSH порт",
     status_loading_clients: "Загружаем профили...",
     status_server_configured: "Сервер уже настроен",
     status_server_needs_setup: "Сервер не настроен",
@@ -183,6 +189,7 @@ const I18N = {
     alert_remove_confirm: "Точно удалить профиль?",
     alert_rotate_confirm: "Перевыпустить ключи для профиля?",
     alert_export_failed: "Не удалось получить конфиг",
+    error_ssh_port_autodetect: "Не удалось автоопределить SSH порт. Укажите его вручную в расширенных настройках.",
     error_port_22_hint: "SSH на порту 22 недоступен. Проверьте SSH порт (например 2222).",
     error_auth_hint: "Ошибка SSH авторизации. Проверьте логин, пароль/ключ и SSH порт.",
     install_modal_title: "Подтвердить установку",
@@ -233,7 +240,9 @@ const I18N = {
     server_host_placeholder: "1.2.3.4",
     ssh_user_label: "SSH user",
     ssh_user_placeholder: "root",
-    ssh_port_label: "SSH port",
+    ssh_port_label: "SSH port (manual)",
+    ssh_port_placeholder: "auto",
+    ssh_port_hint: "By default the SSH port is discovered automatically.",
     ssh_password_label: "SSH password",
     ssh_password_placeholder: "optional if key",
     remember_login_label: "Remember login on this device",
@@ -289,7 +298,7 @@ const I18N = {
     servers_forget_login_btn: "Forget login",
     servers_remove_btn: "Delete",
     onboarding_title: "Quick start",
-    onboarding_step1: "1) Enter host, SSH user, and password or key.",
+    onboarding_step1: "1) Enter host, SSH user, and password or key (SSH port is auto-detected).",
     onboarding_step2: "2) Click \"Check server\" - if VPN exists you will see profiles.",
     onboarding_step3: "3) Otherwise click \"Configure server\" and download config + QR.",
     onboarding_step4: "4) If blocked, try another UDP port (for example 3478 or 33434).",
@@ -321,6 +330,8 @@ const I18N = {
     status_client_rotated: "Profile rotated",
     status_failed: "Failed",
     status_checking: "Checking server...",
+    status_detecting_ssh_port: "Detecting SSH port automatically...",
+    status_ssh_port_detected: "SSH port detected",
     status_loading_clients: "Loading profiles...",
     status_server_configured: "Server already configured",
     status_server_needs_setup: "Server is not configured",
@@ -356,6 +367,7 @@ const I18N = {
     alert_remove_confirm: "Delete this profile?",
     alert_rotate_confirm: "Rotate keys for this profile?",
     alert_export_failed: "Failed to export config",
+    error_ssh_port_autodetect: "Could not auto-detect SSH port. Set it manually in advanced settings.",
     error_port_22_hint: "Cannot reach SSH on port 22. Check the SSH port (for example 2222).",
     error_auth_hint: "SSH auth failed. Check user, password/key, and SSH port.",
     install_modal_title: "Confirm installation",
@@ -833,6 +845,13 @@ function updateStageVisibility() {
   const checked = STATE.checked;
   const configured = serverConfigured;
 
+  stageUncheckedOnlyEls.forEach((el) => {
+    el.classList.toggle("hidden", checked);
+  });
+  stageBeforeConfigEls.forEach((el) => {
+    el.classList.toggle("hidden", configured);
+  });
+
   if (serversCard) {
     const hasServers = loadServers().length > 0;
     serversCard.classList.toggle("hidden", !checked && !hasServers);
@@ -1023,6 +1042,14 @@ function normalizeSshPort(value, fallback = 22) {
   return port;
 }
 
+function parseOptionalSshPort(value) {
+  const port = Number.parseInt(value, 10);
+  if (!Number.isFinite(port) || port < 1 || port > 65535) {
+    return null;
+  }
+  return port;
+}
+
 function normalizeListenPort(value) {
   const port = Number.parseInt(value, 10);
   if (!Number.isFinite(port) || port < 1 || port > 65535) {
@@ -1033,7 +1060,7 @@ function normalizeListenPort(value) {
 
 function splitHostAndPort(rawHost, rawPort) {
   let host = (rawHost || "").trim();
-  let port = normalizeSshPort(rawPort, 22);
+  let port = parseOptionalSshPort(rawPort);
   if (!host) {
     return { host: "", port };
   }
@@ -1045,7 +1072,7 @@ function splitHostAndPort(rawHost, rawPort) {
       if (tail.startsWith(":")) {
         return {
           host: ipv6,
-          port: normalizeSshPort(tail.slice(1), port),
+          port: parseOptionalSshPort(tail.slice(1)) ?? port,
         };
       }
       return { host: ipv6, port };
@@ -1056,7 +1083,7 @@ function splitHostAndPort(rawHost, rawPort) {
     if (left && /^[0-9]+$/.test(right || "")) {
       return {
         host: left.trim(),
-        port: normalizeSshPort(right, port),
+        port: parseOptionalSshPort(right) ?? port,
       };
     }
   }
@@ -1126,7 +1153,7 @@ function loadServers() {
       .map((item) => ({
         host: String(item.host || "").trim(),
         user: String(item.user || "").trim(),
-        ssh_port: normalizeSshPort(item.ssh_port, 22),
+        ssh_port: parseOptionalSshPort(item.ssh_port),
         listen_port: normalizeListenPort(item.listen_port),
         clients_count:
           typeof item.clients_count === "number" && item.clients_count >= 0
@@ -1237,7 +1264,7 @@ function upsertServer(entry) {
   const normalized = {
     host: String(entry.host || "").trim(),
     user: String(entry.user || "").trim(),
-    ssh_port: normalizeSshPort(entry.ssh_port, 22),
+    ssh_port: parseOptionalSshPort(entry.ssh_port),
     listen_port: normalizeListenPort(entry.listen_port),
     clients_count:
       typeof entry.clients_count === "number" && entry.clients_count >= 0
@@ -1273,7 +1300,8 @@ function applyServerToForm(server) {
   form.elements.host.value = server.host || "";
   form.elements.user.value = server.user || "";
   if (form.elements.ssh_port) {
-    form.elements.ssh_port.value = normalizeSshPort(server.ssh_port, 22);
+    const port = parseOptionalSshPort(server.ssh_port);
+    form.elements.ssh_port.value = port ? String(port) : "";
   }
   if (form.elements.listen_port && server.listen_port) {
     form.elements.listen_port.value = server.listen_port;
@@ -1424,6 +1452,52 @@ async function loginSession(data) {
     throw new Error(result.error || t("status_failed"));
   }
   return result.session_id || null;
+}
+
+async function discoverSshPort(data) {
+  if (!data?.host) {
+    throw new Error(t("error_ssh_port_autodetect"));
+  }
+  const result = await fetchJson("/api/ssh/discover-port", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      host: data.host,
+      port: data.ssh_port || undefined,
+    }),
+  });
+  if (!result.ok || !result.port) {
+    throw new Error(result.error || t("error_ssh_port_autodetect"));
+  }
+  return {
+    host: (result.host || data.host || "").trim(),
+    port: normalizeSshPort(result.port, 22),
+  };
+}
+
+async function ensureSshPort(data) {
+  if (!data?.host) {
+    throw new Error(t("error_ssh_port_autodetect"));
+  }
+  if (data.ssh_port) {
+    return data.ssh_port;
+  }
+  if (serverStatusEl) {
+    serverStatusEl.textContent = t("status_detecting_ssh_port");
+  }
+  const found = await discoverSshPort(data);
+  data.host = found.host;
+  data.ssh_port = found.port;
+  if (form?.elements?.host) {
+    form.elements.host.value = found.host;
+  }
+  if (form?.elements?.ssh_port) {
+    form.elements.ssh_port.value = found.port;
+  }
+  if (serverStatusEl) {
+    serverStatusEl.textContent = `${t("status_ssh_port_detected")}: ${found.port}`;
+  }
+  return found.port;
 }
 
 function humanizeError(error, data = null) {
@@ -1971,7 +2045,7 @@ async function refreshClients(data) {
     upsertServer({
       host: data.host,
       user: data.user,
-      ssh_port: data.ssh_port || 22,
+      ssh_port: data.ssh_port || undefined,
       listen_port: data.listen_port || undefined,
       clients_count: clients.length,
       session_id: data.session_id || undefined,
@@ -2041,12 +2115,12 @@ async function runServerCheck(data) {
     alert(t("alert_fill_host_user"));
     return;
   }
-  setActiveServerKey(makeServerKey(data.host, data.user, data.ssh_port || 22));
+  const authData = { ...data };
   if (checkServerBtn) {
     checkServerBtn.disabled = true;
   }
   if (serverStatusEl) {
-    serverStatusEl.textContent = t("status_checking");
+    serverStatusEl.textContent = authData.ssh_port ? t("status_checking") : t("status_detecting_ssh_port");
   }
   if (serverMetaEl) {
     serverMetaEl.textContent = "";
@@ -2057,7 +2131,12 @@ async function runServerCheck(data) {
   }
 
   try {
-    const authData = { ...data };
+    await ensureSshPort(authData);
+    setActiveServerKey(makeServerKey(authData.host, authData.user, authData.ssh_port || 22));
+    if (serverStatusEl) {
+      serverStatusEl.textContent = t("status_checking");
+    }
+
     if (authData.remember_login && hasAuthSecrets(authData)) {
       const sessionId = await loginSession(authData);
       if (sessionId) {
@@ -2110,7 +2189,7 @@ async function runServerCheck(data) {
     upsertServer({
       host: authData.host,
       user: authData.user,
-      ssh_port: authData.ssh_port || 22,
+      ssh_port: authData.ssh_port || undefined,
       listen_port: result.listen_port || authData.listen_port || undefined,
       clients_count: result.clients_count,
       session_id: authData.remember_login ? authData.session_id || undefined : null,
@@ -2121,17 +2200,17 @@ async function runServerCheck(data) {
       renderClients([]);
     }
   } catch (err) {
-    const pretty = humanizeError(err, data);
+    const pretty = humanizeError(err, authData);
     if (/session expired/i.test(`${err || ""}`)) {
       STATE.activeSessionId = null;
       if (rememberLoginToggle) {
         rememberLoginToggle.checked = false;
       }
       upsertServer({
-        host: data.host,
-        user: data.user,
-        ssh_port: data.ssh_port || 22,
-        listen_port: data.listen_port || undefined,
+        host: authData.host,
+        user: authData.user,
+        ssh_port: authData.ssh_port || undefined,
+        listen_port: authData.listen_port || undefined,
         session_id: null,
       });
     }
@@ -2292,7 +2371,7 @@ async function runProvision() {
     upsertServer({
       host: data.host,
       user: data.user,
-      ssh_port: data.ssh_port || 22,
+      ssh_port: data.ssh_port || undefined,
       listen_port: data.listen_port || undefined,
       session_id: data.remember_login ? data.session_id || undefined : null,
     });
@@ -2403,7 +2482,7 @@ addClientBtn.addEventListener("click", async () => {
     upsertServer({
       host: data.host,
       user: data.user,
-      ssh_port: data.ssh_port || 22,
+      ssh_port: data.ssh_port || undefined,
       listen_port: data.listen_port || undefined,
       session_id: data.remember_login ? data.session_id || undefined : null,
     });

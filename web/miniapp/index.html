@@ -38,14 +38,10 @@
           <input name="user" placeholder="root" data-i18n-placeholder="ssh_user_placeholder" required />
         </label>
         <label>
-          <span data-i18n="ssh_port_label">SSH порт</span>
-          <input name="ssh_port" type="number" min="1" max="65535" value="22" />
-        </label>
-        <label>
           <span data-i18n="ssh_password_label">SSH пароль</span>
           <input name="password" type="password" placeholder="optional if key" data-i18n-placeholder="ssh_password_placeholder" />
         </label>
-        <div class="remember-row">
+        <div class="remember-row stage-unchecked-only">
           <label class="toggle">
             <input type="checkbox" id="remember-login-toggle" checked />
             <span data-i18n="remember_login_label">Запомнить вход на этом устройстве</span>
@@ -54,7 +50,7 @@
             Сохраняем защищенную сессию для авто-проверки после обновления страницы.
           </small>
         </div>
-        <div class="onboarding-panel">
+        <div class="onboarding-panel stage-unchecked-only">
           <div class="onboarding-title" data-i18n="onboarding_title">Быстрый старт</div>
           <div class="onboarding-item" data-i18n="onboarding_step1">
             1) Введите IP/хост, SSH пользователя и пароль или ключ.
@@ -81,6 +77,13 @@
           <textarea name="key_content" placeholder="paste private key" data-i18n-placeholder="ssh_key_placeholder"></textarea>
         </label>
         <label class="advanced">
+          <span data-i18n="ssh_port_label">SSH порт (вручную)</span>
+          <input name="ssh_port" type="number" min="1" max="65535" placeholder="auto" data-i18n-placeholder="ssh_port_placeholder" />
+          <small class="field-hint" data-i18n="ssh_port_hint">
+            По умолчанию порт SSH ищется автоматически.
+          </small>
+        </label>
+        <label class="advanced">
           <span data-i18n="udp_port_label">UDP порт сервера</span>
           <input name="listen_port" type="number" min="1" max="65535" value="3478" />
         </label>
@@ -96,18 +99,18 @@
         <div class="server-tools">
           <button type="submit" id="check-server-btn" data-i18n="check_server_btn">Проверить сервер</button>
           <div id="server-status" class="server-status" data-i18n="server_status_idle">Сервер не проверен</div>
-          <div id="next-step" class="next-step" data-i18n="next_step_initial">
+          <div id="next-step" class="next-step stage-before-config" data-i18n="next_step_initial">
             Сначала заполните доступ к серверу и нажмите "Проверить сервер".
           </div>
-          <div id="check-hint" class="check-hint" data-i18n="check_safe_hint">
+          <div id="check-hint" class="check-hint stage-unchecked-only" data-i18n="check_safe_hint">
             Проверить сервер — безопасно: ничего не устанавливается. Установка — отдельной кнопкой.
           </div>
           <div id="server-meta" class="server-meta"></div>
-          <div id="server-advice" class="server-advice" data-i18n="server_advice">
+          <div id="server-advice" class="server-advice stage-before-config" data-i18n="server_advice">
             Если сервер пустой - можно смело настраивать. Если нет - прочитайте FAQ и включите расширенные настройки.
           </div>
           <a
-            class="server-link external-link"
+            class="server-link external-link stage-unchecked-only"
             data-url="https://telegra.ph/Kak-arendovat-minimalnyj-server-VPS-na-HostKey-dlya-VPN-12-28"
             href="https://telegra.ph/Kak-arendovat-minimalnyj-server-VPS-na-HostKey-dlya-VPN-12-28"
             target="_blank"
@@ -121,7 +124,7 @@
             <span data-i18n="reconfigure_label">Показать настройку сервера</span>
           </label>
         </div>
-        <div class="toggle-row">
+        <div class="toggle-row stage-before-config">
           <label class="toggle">
             <input type="checkbox" id="simple-toggle" checked />
             <span data-i18n="simple_mode_label">Простой режим</span>

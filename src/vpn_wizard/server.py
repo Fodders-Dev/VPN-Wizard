@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from io import BytesIO
 import os
 from pathlib import Path
+import socket
 import time
 from urllib.parse import urlparse
 import tempfile
@@ -103,9 +104,89 @@ def _split_host_port(raw_host: str) -> tuple[str, Optional[int]]:
     return host, None
 
 
+def _parse_discovery_ports(raw: str) -> tuple[int, ...]:
+    values: list[int] = []
+    for chunk in (raw or "").split(","):
+        item = chunk.strip()
+        if not item:
+            continue
+        if not item.isdigit():
+            continue
+        port = int(item)
+        if 1 <= port <= 65535:
+            values.append(port)
+    deduped = list(dict.fromkeys(values))
+    if not deduped:
+        deduped = [22, 2222, 22022, 2200, 2022, 10022]
+    return tuple(deduped)
+
+
+SSH_DISCOVERY_PORTS = _parse_discovery_ports(
+    os.getenv("VPNW_SSH_DISCOVERY_PORTS", "22,2222,22022,2200,2022,10022")
+)
+SSH_DISCOVERY_TIMEOUT = float(os.getenv("VPNW_SSH_DISCOVERY_TIMEOUT", "1.8"))
+
+
+def _ordered_discovery_ports(preferred_port: Optional[int] = None) -> list[int]:
+    ports = list(SSH_DISCOVERY_PORTS)
+    if preferred_port is not None and 1 <= preferred_port <= 65535:
+        ports = [preferred_port] + [port for port in ports if port != preferred_port]
+    return ports
+
+
+def _probe_ssh_port(host: str, port: int, timeout: float = SSH_DISCOVERY_TIMEOUT) -> bool:
+    sock: Optional[socket.socket] = None
+    try:
+        sock = socket.create_connection((host, port), timeout=timeout)
+        sock.settimeout(timeout)
+        banner = sock.recv(128).decode("ascii", "ignore").strip()
+        return banner.startswith("SSH-")
+    except Exception:
+        return False
+    finally:
+        if sock is not None:
+            try:
+                sock.close()
+            except OSError:
+                pass
+
+
+def _discover_ssh_port(host: str, preferred_port: Optional[int] = None) -> tuple[Optional[int], list[int]]:
+    checked: list[int] = []
+    clean_host, parsed = _split_host_port(host)
+    if not clean_host:
+        raise ValueError("SSH host is required.")
+    first_port = preferred_port if preferred_port is not None else parsed
+    for port in _ordered_discovery_ports(first_port):
+        checked.append(port)
+        if _probe_ssh_port(clean_host, port):
+            return port, checked
+    return None, checked
+
+
 class AuthRequest(BaseModel):
     ssh: Optional[SSHPayload] = None
     session_id: Optional[str] = None
+
+
+class SSHDiscoverRequest(BaseModel):
+    host: str = Field(..., examples=["1.2.3.4"])
+    port: Optional[int] = Field(default=None, ge=1, le=65535)
+
+    @model_validator(mode="after")
+    def normalize(self) -> "SSHDiscoverRequest":
+        self.host = (self.host or "").strip()
+        if not self.host:
+            raise ValueError("SSH host is required.")
+        return self
+
+
+class SSHDiscoverResponse(BaseModel):
+    ok: bool
+    host: Optional[str] = None
+    port: Optional[int] = None
+    checked_ports: list[int] = Field(default_factory=list)
+    error: Optional[str] = None
 
 
 class ProvisionOptions(BaseModel):
@@ -513,6 +594,29 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
 @app.get("/health")
 def health() -> dict:
     return {"ok": True}
+
+
+@app.post("/api/ssh/discover-port", response_model=SSHDiscoverResponse)
+async def ssh_discover_port(payload: SSHDiscoverRequest) -> SSHDiscoverResponse:
+    try:
+        clean_host, parsed_port = _split_host_port(payload.host)
+        preferred = payload.port if payload.port is not None else parsed_port
+        found_port, checked = _discover_ssh_port(clean_host, preferred_port=preferred)
+        if found_port is None:
+            return SSHDiscoverResponse(
+                ok=False,
+                host=clean_host,
+                checked_ports=checked,
+                error="Could not find a reachable SSH port. Set SSH port manually in advanced settings.",
+            )
+        return SSHDiscoverResponse(
+            ok=True,
+            host=clean_host,
+            port=found_port,
+            checked_ports=checked,
+        )
+    except Exception as exc:
+        return SSHDiscoverResponse(ok=False, error=str(exc))
 
 
 @app.post("/api/sessions/login", response_model=SessionLoginResponse)

@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+
 from vpn_wizard.server import (
     DOWNLOAD_STORE,
     JobStore,
     SSHPayload,
+    SSHDiscoverRequest,
+    ssh_discover_port,
+    _discover_ssh_port,
     SessionStore,
     _split_host_port,
     download_config,
@@ -64,3 +69,42 @@ def test_session_store_create_get_and_revoke() -> None:
     assert restored.password == "secret"
     assert store.revoke(session_id) is True
     assert store.get(session_id) is None
+
+
+def test_discover_ssh_port_prefers_preferred_port(monkeypatch) -> None:
+    checked: list[int] = []
+
+    def fake_probe(host: str, port: int, timeout: float = 1.8) -> bool:
+        checked.append(port)
+        return port == 2200
+
+    monkeypatch.setattr("vpn_wizard.server._probe_ssh_port", fake_probe)
+    found, order = _discover_ssh_port("example.com", preferred_port=2200)
+    assert found == 2200
+    assert checked[0] == 2200
+    assert order[0] == 2200
+
+
+def test_discover_ssh_port_parses_host_embedded_port(monkeypatch) -> None:
+    checked: list[int] = []
+
+    def fake_probe(host: str, port: int, timeout: float = 1.8) -> bool:
+        checked.append(port)
+        return port == 2022
+
+    monkeypatch.setattr("vpn_wizard.server._probe_ssh_port", fake_probe)
+    found, order = _discover_ssh_port("example.com:2022")
+    assert found == 2022
+    assert checked[0] == 2022
+    assert order[0] == 2022
+
+
+def test_ssh_discover_endpoint_returns_error_when_not_found(monkeypatch) -> None:
+    def fake_discover(host: str, preferred_port: int | None = None) -> tuple[int | None, list[int]]:
+        return None, [22, 2222]
+
+    monkeypatch.setattr("vpn_wizard.server._discover_ssh_port", fake_discover)
+    response = asyncio.run(ssh_discover_port(SSHDiscoverRequest(host="example.com")))
+    assert response.ok is False
+    assert response.checked_ports == [22, 2222]
+    assert response.error is not None
