@@ -26,7 +26,35 @@
       <div class="subtitle" data-i18n="app_subtitle">Простая настройка AmneziaWG VPN на вашем сервере</div>
     </header>
 
-    <section class="card">
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button type="button" class="tab-btn active" data-tab="connect" data-i18n="tab_connect">Подключение</button>
+      <button type="button" class="tab-btn" data-tab="profiles" data-i18n="tab_profiles">Профили</button>
+      <button type="button" class="tab-btn" data-tab="cabinet" data-i18n="tab_cabinet">Личный кабинет</button>
+      <button type="button" class="tab-btn" data-tab="help" data-i18n="tab_help">Помощь</button>
+    </nav>
+
+    <section class="wizard-shell" id="wizard-shell" aria-label="Novice wizard">
+      <div class="wizard-steps" role="group" aria-label="Wizard steps">
+        <button type="button" class="wizard-step-btn active" data-wizard-step="1" data-i18n="wizard_step_connect">
+          1. Подключение
+        </button>
+        <button type="button" class="wizard-step-btn" data-wizard-step="2" data-i18n="wizard_step_setup">
+          2. Настройка
+        </button>
+        <button type="button" class="wizard-step-btn" data-wizard-step="3" data-i18n="wizard_step_result">
+          3. Профиль
+        </button>
+      </div>
+      <div class="wizard-hint" id="wizard-hint" data-i18n="wizard_hint_step1">
+        Введите доступ к серверу и нажмите "Подключиться".
+      </div>
+      <div class="wizard-controls">
+        <button type="button" class="secondary" id="wizard-prev-btn" data-i18n="wizard_prev_btn">Назад</button>
+        <button type="button" id="wizard-next-btn" data-i18n="wizard_action_connect">Подключиться</button>
+      </div>
+    </section>
+
+    <section class="card" id="connection-card" data-tab-panel="connect">
       <h2 data-i18n="step1_title">Шаг 1. Доступ к серверу</h2>
       <form id="provision-form">
         <label>
@@ -40,6 +68,16 @@
         <label>
           <span data-i18n="ssh_password_label">SSH пароль</span>
           <input name="password" type="password" placeholder="optional if key" data-i18n-placeholder="ssh_password_placeholder" />
+        </label>
+        <label class="stage-before-config">
+          <span data-i18n="connection_mode_label">Режим подключения</span>
+          <select name="connection_mode" id="connection-mode">
+            <option value="amneziawg" data-i18n="mode_vpn">VPN (AmneziaWG)</option>
+            <option value="vless_reality" data-i18n="mode_proxy">Антиблок прокси (VLESS Reality)</option>
+          </select>
+          <small class="field-hint" data-i18n="connection_mode_hint">
+            VPN быстрее для всего устройства. Прокси лучше при жестких блокировках.
+          </small>
         </label>
         <div class="remember-row stage-unchecked-only">
           <label class="toggle">
@@ -154,13 +192,20 @@
       </form>
     </section>
 
-    <section class="card hidden" id="servers-card">
-      <h2 data-i18n="servers_title">Мои серверы</h2>
+    <section class="card hidden" id="profiles-intro-card" data-tab-panel="profiles">
+      <h2 data-i18n="profiles_intro_title">Управление профилями</h2>
+      <div data-i18n="profiles_intro_body">
+        Сначала подключитесь к серверу. После этого здесь появятся профили, QR и ссылки/конфиги.
+      </div>
+    </section>
+
+    <section class="card hidden" id="servers-card" data-tab-panel="cabinet">
+      <h2 data-i18n="servers_title">Личный кабинет: серверы</h2>
       <div id="servers-empty" data-i18n="servers_empty">Пока нет сохранённых серверов.</div>
       <div id="servers-list" class="servers-list"></div>
     </section>
 
-    <section class="card hidden" id="progress-card">
+    <section class="card hidden" id="progress-card" data-tab-panel="profiles">
       <h2 data-i18n="step2_title">Шаг 2. Прогресс</h2>
       <div class="progress-bar" aria-hidden="true">
         <div id="progress-fill" class="progress-fill"></div>
@@ -171,13 +216,13 @@
       <div id="progress-log" class="log hidden"></div>
     </section>
 
-    <section class="card hidden" id="clients-card">
+    <section class="card hidden" id="clients-card" data-tab-panel="profiles">
       <h2 data-i18n="clients_title">Профили</h2>
       <div id="clients-empty" data-i18n="clients_empty">Профили не найдены.</div>
       <div id="clients-list" class="clients-list"></div>
     </section>
 
-    <section class="card hidden" id="result-card">
+    <section class="card hidden" id="result-card" data-tab-panel="profiles">
       <h2 data-i18n="step3_title">Шаг 3. Скачать</h2>
       <div class="download-row">
         <a id="download-link" class="download" href="#" download="client1.conf" data-i18n="download_btn">Скачать конфиг</a>
@@ -208,6 +253,35 @@
           Linux
         </a>
         <div class="app-note" data-i18n="apps_macos_missing">macOS: пока нет приложения</div>
+      </div>
+    </section>
+
+    <section class="card hidden" id="help-card" data-tab-panel="help">
+      <h2 data-i18n="help_title">Как пользоваться</h2>
+      <div class="help-grid">
+        <div class="help-block">
+          <div class="help-block-title" data-i18n="help_vpn_title">Режим VPN (AmneziaWG)</div>
+          <div class="help-block-body" data-i18n="help_vpn_body">
+            1) Подключитесь к серверу.
+            2) Нажмите "Настроить сервер".
+            3) Скачайте конфиг и импортируйте в AmneziaWG.
+          </div>
+        </div>
+        <div class="help-block">
+          <div class="help-block-title" data-i18n="help_proxy_title">Режим антиблок-прокси (VLESS Reality)</div>
+          <div class="help-block-body" data-i18n="help_proxy_body">
+            1) Подключитесь к серверу и настройте прокси.
+            2) Получите ссылку и QR.
+            3) Импортируйте в Hiddify/sing-box и подключитесь.
+          </div>
+        </div>
+        <div class="help-block">
+          <div class="help-block-title" data-i18n="help_install_title">Что установить на устройство</div>
+          <div class="help-block-body" data-i18n="help_install_body">
+            VPN: AmneziaWG.
+            Прокси: Hiddify (рекомендуется) или v2rayNG/sing-box.
+          </div>
+        </div>
       </div>
     </section>
 

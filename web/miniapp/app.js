@@ -17,6 +17,7 @@ const simpleToggle = document.getElementById("simple-toggle");
 const advancedFields = document.querySelectorAll(".advanced");
 const addClientBtn = document.getElementById("add-client-btn");
 const checkServerBtn = document.getElementById("check-server-btn");
+const profilesIntroCard = document.getElementById("profiles-intro-card");
 const serversCard = document.getElementById("servers-card");
 const serverStatusEl = document.getElementById("server-status");
 const serverMetaEl = document.getElementById("server-meta");
@@ -32,6 +33,11 @@ const langButtons = document.querySelectorAll(".lang-btn");
 const safeToggle = document.getElementById("safe-toggle");
 const safeRow = document.querySelector(".safe-row");
 const externalLinks = document.querySelectorAll(".external-link");
+const appsTitleEl = document.querySelector(".app-links-title");
+const appAndroidEl = document.querySelector('[data-i18n="apps_android"]');
+const appIosEl = document.querySelector('[data-i18n="apps_ios"]');
+const appWindowsEl = document.querySelector('[data-i18n="apps_windows"]');
+const appLinuxEl = document.querySelector('[data-i18n="apps_linux"]');
 const tourBtn = document.getElementById("tour-btn");
 const faqBtn = document.getElementById("faq-btn");
 const faqModal = document.getElementById("faq-modal");
@@ -52,11 +58,57 @@ const installCancelBtn = document.getElementById("install-cancel");
 const installContinueBtn = document.getElementById("install-continue");
 const stageUncheckedOnlyEls = document.querySelectorAll(".stage-unchecked-only");
 const stageBeforeConfigEls = document.querySelectorAll(".stage-before-config");
+const connectionModeSelect = document.getElementById("connection-mode");
+const tabButtons = document.querySelectorAll(".tab-btn");
+const tabPanels = document.querySelectorAll("[data-tab-panel]");
+const connectionCard = document.getElementById("connection-card");
+const wizardShell = document.getElementById("wizard-shell");
+const wizardHintEl = document.getElementById("wizard-hint");
+const wizardStepButtons = document.querySelectorAll(".wizard-step-btn");
+const wizardPrevBtn = document.getElementById("wizard-prev-btn");
+const wizardNextBtn = document.getElementById("wizard-next-btn");
+
+const PROXY_APP_URLS = {
+  android: "https://github.com/hiddify/hiddify-app/releases",
+  ios: "https://hiddify.com/app/",
+  windows: "https://github.com/hiddify/hiddify-app/releases",
+  linux: "https://github.com/hiddify/hiddify-app/releases",
+};
+
+const VPN_APP_URLS = {
+  android: appAndroidEl?.getAttribute("href") || "https://play.google.com/store/apps/details?id=org.amnezia.awg",
+  ios: appIosEl?.getAttribute("href") || "https://apps.apple.com/us/app/amneziawg/id6478942365",
+  windows:
+    appWindowsEl?.getAttribute("href") ||
+    "https://github.com/amnezia-vpn/amneziawg-windows-client/releases",
+  linux:
+    appLinuxEl?.getAttribute("href") ||
+    "https://github.com/amnezia-vpn/amneziawg-linux-kernel-module",
+};
 
 const I18N = {
   ru: {
     app_title: "VPN Wizard",
-    app_subtitle: "Простая настройка AmneziaWG VPN на вашем сервере",
+    app_subtitle: "Простая настройка VPN и антиблок-прокси на вашем сервере",
+    tab_connect: "Подключение",
+    tab_profiles: "Профили",
+    tab_cabinet: "Личный кабинет",
+    tab_help: "Помощь",
+    wizard_step_connect: "1. Подключение",
+    wizard_step_setup: "2. Настройка",
+    wizard_step_result: "3. Профиль",
+    wizard_prev_btn: "Назад",
+    wizard_action_next: "Далее",
+    wizard_action_connect: "Подключиться",
+    wizard_action_setup: "Настроить сервер",
+    wizard_action_to_profile: "К профилю",
+    wizard_action_to_cabinet: "В кабинет",
+    wizard_hint_step1: "Введите доступ к серверу и нажмите \"Подключиться\".",
+    wizard_hint_need_connect: "Сначала подключитесь к серверу на шаге 1.",
+    wizard_hint_step2_setup: "Сервер проверен. Если он пустой, нажмите \"Настроить сервер\".",
+    wizard_hint_step2_ready: "Сервер уже настроен. Перейдите к шагу 3 и добавьте профиль.",
+    wizard_hint_step3_empty: "Задайте имя профиля и нажмите \"Добавить профиль\".",
+    wizard_hint_step3_ready: "Профиль готов: скачайте файл/ссылку и QR.",
     step1_title: "Шаг 1. Доступ к серверу",
     server_host_label: "IP или хост сервера",
     server_host_placeholder: "1.2.3.4",
@@ -67,6 +119,10 @@ const I18N = {
     ssh_port_hint: "По умолчанию порт SSH ищется автоматически.",
     ssh_password_label: "SSH пароль",
     ssh_password_placeholder: "если ключ - можно пусто",
+    connection_mode_label: "Режим подключения",
+    connection_mode_hint: "VPN быстрее для всего устройства. Прокси лучше при жестких блокировках.",
+    mode_vpn: "VPN (AmneziaWG)",
+    mode_proxy: "Антиблок прокси (VLESS Reality)",
     remember_login_label: "Запомнить вход на этом устройстве",
     remember_login_hint: "Сессия хранится на этом устройстве и обновляется после входа.",
     remember_login_saved: "Вход сохранен",
@@ -75,7 +131,7 @@ const I18N = {
     profile_name_hint: "Нужно, чтобы разные устройства не перезаписывали конфиги. Можно оставить пустым.",
     ssh_key_label: "SSH ключ (необязательно)",
     ssh_key_placeholder: "вставьте приватный ключ",
-    udp_port_label: "UDP порт сервера",
+    udp_port_label: "Порт сервера",
     tour_btn: "Обучение",
     faq_btn: "FAQ",
     safe_mode_label: "Предпросмотр изменений перед установкой",
@@ -95,26 +151,37 @@ const I18N = {
     simple_mode_label: "Режим новичка (рекомендуется)",
     simple_mode_hint: "Пошаговый безопасный сценарий. Отключайте только если уверены в действиях.",
     provision_btn: "Настроить сервер и получить первый профиль",
+    provision_btn_proxy: "Настроить прокси и получить первую ссылку",
     add_client_btn: "Добавить профиль",
+    add_client_btn_proxy: "Добавить прокси-профиль",
     step2_title: "Шаг 2. Прогресс",
     status_waiting: "Ожидание...",
     step3_title: "Шаг 3. Скачать",
+    step3_title_proxy: "Шаг 3. Ссылка и QR",
     download_btn: "Скачать конфиг",
+    download_btn_proxy: "Скачать ссылку",
     download_qr_btn: "Скачать QR",
     copy_btn: "Скопировать конфиг",
     copy_done: "Конфиг скопирован.",
     copy_failed: "Не удалось скопировать конфиг.",
     copy_empty: "Сначала получите конфиг.",
     copy_title: "Конфиг для ручного копирования",
+    copy_title_proxy: "Ссылка для ручного копирования",
     copy_hint: "Можно выделить и скопировать вручную.",
     step3_hint: "Откройте AmneziaWG и нажмите \"+\", чтобы добавить файл конфигурации.",
+    step3_hint_proxy: "Откройте клиент прокси (Hiddify/sing-box), импортируйте ссылку или QR и подключитесь.",
     apps_title: "Скачать приложение AmneziaWG",
+    apps_title_proxy: "Рекомендуемые клиенты прокси",
     apps_android: "Android (Google Play)",
     apps_ios: "iOS (App Store)",
     apps_windows: "Windows",
     apps_linux: "Linux",
+    apps_proxy_android: "Android (Hiddify / v2rayNG)",
+    apps_proxy_ios: "iOS (Hiddify / Shadowrocket)",
+    apps_proxy_windows: "Windows (Hiddify / Nekoray)",
+    apps_proxy_linux: "Linux (Nekoray / sing-box)",
     apps_macos_missing: "macOS: приложения пока нет",
-    servers_title: "Мои серверы",
+    servers_title: "Личный кабинет: серверы",
     servers_empty: "Пока нет сохранённых серверов.",
     servers_use_btn: "Использовать",
     servers_forget_login_btn: "Забыть вход",
@@ -122,8 +189,10 @@ const I18N = {
     onboarding_title: "Быстрый старт",
     onboarding_step1: "1) Введите IP/хост, SSH пользователя и пароль или ключ (SSH порт найдется автоматически).",
     onboarding_step2: "2) Нажмите \"Подключиться\" - если VPN уже есть, появятся профили.",
-    onboarding_step3: "3) Если нет - нажмите \"Настроить сервер\" и скачайте конфиг и QR.",
-    onboarding_step4: "4) При блокировках попробуйте другой UDP порт (например 3478 или 33434).",
+    onboarding_step3: "3) Если нет - нажмите \"Настроить сервер\" и скачайте конфиг/ссылку и QR.",
+    onboarding_step4: "4) При блокировках в режиме VPN попробуйте другой порт (например 3478 или 33434).",
+    profiles_intro_title: "Управление профилями",
+    profiles_intro_body: "Сначала подключитесь к серверу. После этого здесь появятся профили, QR и ссылки/конфиги.",
     clients_title: "Профили",
     clients_empty: "Профили не найдены.",
     clients_loading: "Загружаем профили...",
@@ -132,6 +201,7 @@ const I18N = {
     client_transfer: "Трафик",
     client_interface: "Интерфейс",
     client_download: "Конфиг",
+    client_download_proxy: "Ссылка",
     client_qr: "QR",
     client_qr_hide: "Скрыть QR",
     client_qr_download: "Скачать QR",
@@ -145,7 +215,9 @@ const I18N = {
     toggle_log_hide: "Скрыть лог",
     status_creating_job: "Создаём задачу...",
     status_provisioning: "Настраиваем сервер... это может занять пару минут.",
+    status_provisioning_proxy: "Настраиваем антиблок-прокси... это может занять пару минут.",
     status_adding_client: "Добавляем профиль...",
+    status_adding_client_proxy: "Добавляем прокси-профиль...",
     status_ready: "Готово.",
     status_client_ready: "Профиль готов",
     status_client_removed: "Профиль удален",
@@ -156,7 +228,9 @@ const I18N = {
     status_ssh_port_detected: "Найден SSH порт",
     status_loading_clients: "Загружаем профили...",
     status_server_configured: "Сервер уже настроен",
+    status_server_configured_proxy: "Прокси уже настроен",
     status_server_needs_setup: "Сервер не настроен",
+    status_server_needs_setup_proxy: "Прокси не настроен",
     status_server_error: "Не удалось подключиться к серверу",
     status_auto_connect: "Восстанавливаем вход и подключаемся к серверу...",
     status_relogin_required: "Сессия истекла. Введите пароль или ключ снова.",
@@ -169,6 +243,7 @@ const I18N = {
     status_precheck_done: "Предпросмотр готов. Чтобы установить VPN, отключите предпросмотр.",
     server_use_hint: "Введите пароль или ключ и нажмите \"Подключиться\".",
     download_ready: "Скачайте конфиг и отсканируйте QR.",
+    download_ready_proxy: "Скопируйте ссылку или отсканируйте QR в клиенте прокси.",
     check_ok: "ok",
     check_fail: "fail",
     progress_idle: "Ожидание",
@@ -179,10 +254,12 @@ const I18N = {
     meta_protocol: "Протокол",
     meta_ssh_port: "SSH",
     meta_port: "Порт",
+    meta_sni: "SNI",
     meta_clients: "Профилей",
     meta_tyumen: "Доп. порт",
     protocol_amneziawg: "AmneziaWG",
     protocol_wireguard: "WireGuard",
+    protocol_vless_reality: "VLESS Reality",
     alert_fill_host_user: "Заполните поля Host и User.",
     alert_check_first: "Сначала нажмите \"Подключиться\".",
     alert_remove_client: "Удалить профиль",
@@ -198,7 +275,8 @@ const I18N = {
     install_modal_continue: "Продолжить установку",
     install_summary_host: "Сервер",
     install_summary_ssh: "SSH",
-    install_summary_udp: "UDP порт VPN",
+    install_summary_udp: "Порт",
+    install_summary_proxy_port: "TCP порт прокси",
     install_summary_note: "Если на сервере есть другие сервисы, сначала включите предпросмотр изменений.",
     tour_title: "Обучение",
     tour_prev: "Назад",
@@ -232,10 +310,39 @@ const I18N = {
     server_advice:
       "Если сервер пустой - можно смело настраивать. Если нет - прочитайте FAQ и включите расширенные настройки.",
     server_rent_link: "Как арендовать сервер: пошаговый гайд",
+    help_title: "Как пользоваться",
+    help_vpn_title: "Режим VPN (AmneziaWG)",
+    help_vpn_body:
+      "1) Подключитесь к серверу.\n2) Нажмите \"Настроить сервер\".\n3) Скачайте конфиг и импортируйте в AmneziaWG.",
+    help_proxy_title: "Режим антиблок-прокси (VLESS Reality)",
+    help_proxy_body:
+      "1) Подключитесь к серверу и настройте прокси.\n2) Получите ссылку и QR.\n3) Импортируйте в Hiddify/sing-box и подключитесь.",
+    help_install_title: "Что установить на устройство",
+    help_install_body:
+      "VPN: AmneziaWG.\nПрокси: Hiddify (рекомендуется) или v2rayNG/sing-box.",
   },
   en: {
     app_title: "VPN Wizard",
-    app_subtitle: "Simple setup for your own AmneziaWG VPN",
+    app_subtitle: "Simple setup for VPN and anti-censorship proxy on your server",
+    tab_connect: "Connect",
+    tab_profiles: "Profiles",
+    tab_cabinet: "Cabinet",
+    tab_help: "Help",
+    wizard_step_connect: "1. Connect",
+    wizard_step_setup: "2. Setup",
+    wizard_step_result: "3. Profile",
+    wizard_prev_btn: "Back",
+    wizard_action_next: "Next",
+    wizard_action_connect: "Connect",
+    wizard_action_setup: "Configure server",
+    wizard_action_to_profile: "To profile",
+    wizard_action_to_cabinet: "Cabinet",
+    wizard_hint_step1: "Enter server access and click \"Connect\".",
+    wizard_hint_need_connect: "Connect to the server first on step 1.",
+    wizard_hint_step2_setup: "Server is checked. If it is empty, click \"Configure server\".",
+    wizard_hint_step2_ready: "Server is already configured. Go to step 3 and add a profile.",
+    wizard_hint_step3_empty: "Set a profile name and click \"Add profile\".",
+    wizard_hint_step3_ready: "Profile is ready: download file/link and QR.",
     step1_title: "Step 1: Server access",
     server_host_label: "Server IP or host",
     server_host_placeholder: "1.2.3.4",
@@ -246,6 +353,10 @@ const I18N = {
     ssh_port_hint: "By default the SSH port is discovered automatically.",
     ssh_password_label: "SSH password",
     ssh_password_placeholder: "optional if key",
+    connection_mode_label: "Connection mode",
+    connection_mode_hint: "VPN is faster for full-device traffic. Proxy works better under strict blocking.",
+    mode_vpn: "VPN (AmneziaWG)",
+    mode_proxy: "Anti-block proxy (VLESS Reality)",
     remember_login_label: "Remember login on this device",
     remember_login_hint: "A secure session is stored on this device and refreshed after login.",
     remember_login_saved: "Login remembered",
@@ -254,7 +365,7 @@ const I18N = {
     profile_name_hint: "Helps avoid overwriting configs between devices. You can leave it empty.",
     ssh_key_label: "SSH key (optional)",
     ssh_key_placeholder: "paste private key",
-    udp_port_label: "Server UDP port",
+    udp_port_label: "Server port",
     tour_btn: "Tour",
     faq_btn: "FAQ",
     safe_mode_label: "Preview changes before setup",
@@ -274,26 +385,37 @@ const I18N = {
     simple_mode_label: "Novice mode (recommended)",
     simple_mode_hint: "Safe step-by-step flow. Disable only if you understand the risks.",
     provision_btn: "Configure server and get the first profile",
+    provision_btn_proxy: "Configure proxy and get the first link",
     add_client_btn: "Add profile",
+    add_client_btn_proxy: "Add proxy profile",
     step2_title: "Step 2: Progress",
     status_waiting: "Waiting...",
     step3_title: "Step 3: Download",
+    step3_title_proxy: "Step 3: Link and QR",
     download_btn: "Download config",
+    download_btn_proxy: "Download link",
     download_qr_btn: "Download QR",
     copy_btn: "Copy config",
     copy_done: "Config copied.",
     copy_failed: "Failed to copy config.",
     copy_empty: "Generate a config first.",
     copy_title: "Config for manual copy",
+    copy_title_proxy: "Link for manual copy",
     copy_hint: "Select and copy manually if needed.",
     step3_hint: "Open AmneziaWG and press \"+\" to add the configuration file.",
+    step3_hint_proxy: "Open your proxy client (Hiddify/sing-box), import the link or scan QR, then connect.",
     apps_title: "Get AmneziaWG",
+    apps_title_proxy: "Recommended proxy clients",
     apps_android: "Android (Google Play)",
     apps_ios: "iOS (App Store)",
     apps_windows: "Windows",
     apps_linux: "Linux",
+    apps_proxy_android: "Android (Hiddify / v2rayNG)",
+    apps_proxy_ios: "iOS (Hiddify / Shadowrocket)",
+    apps_proxy_windows: "Windows (Hiddify / Nekoray)",
+    apps_proxy_linux: "Linux (Nekoray / sing-box)",
     apps_macos_missing: "macOS: no official app yet",
-    servers_title: "My servers",
+    servers_title: "Cabinet: servers",
     servers_empty: "No saved servers yet.",
     servers_use_btn: "Use",
     servers_forget_login_btn: "Forget login",
@@ -301,8 +423,10 @@ const I18N = {
     onboarding_title: "Quick start",
     onboarding_step1: "1) Enter host, SSH user, and password or key (SSH port is auto-detected).",
     onboarding_step2: "2) Click \"Connect\" - if VPN exists you will see profiles.",
-    onboarding_step3: "3) Otherwise click \"Configure server\" and download config + QR.",
-    onboarding_step4: "4) If blocked, try another UDP port (for example 3478 or 33434).",
+    onboarding_step3: "3) Otherwise click \"Configure server\" and download config/link + QR.",
+    onboarding_step4: "4) In VPN mode under blocking, try another port (for example 3478 or 33434).",
+    profiles_intro_title: "Profile management",
+    profiles_intro_body: "Connect to a server first. Profiles, QR and links/configs will appear here.",
     clients_title: "Profiles",
     clients_empty: "No profiles yet.",
     clients_loading: "Loading profiles...",
@@ -311,6 +435,7 @@ const I18N = {
     client_transfer: "Traffic",
     client_interface: "Interface",
     client_download: "Config",
+    client_download_proxy: "Link",
     client_qr: "QR",
     client_qr_hide: "Hide QR",
     client_qr_download: "Download QR",
@@ -324,7 +449,9 @@ const I18N = {
     toggle_log_hide: "Hide log",
     status_creating_job: "Creating job...",
     status_provisioning: "Provisioning... this can take a few minutes.",
+    status_provisioning_proxy: "Setting up anti-block proxy... this can take a few minutes.",
     status_adding_client: "Adding profile...",
+    status_adding_client_proxy: "Adding proxy profile...",
     status_ready: "Ready.",
     status_client_ready: "Profile ready",
     status_client_removed: "Profile removed",
@@ -335,7 +462,9 @@ const I18N = {
     status_ssh_port_detected: "SSH port detected",
     status_loading_clients: "Loading profiles...",
     status_server_configured: "Server already configured",
+    status_server_configured_proxy: "Proxy is already configured",
     status_server_needs_setup: "Server is not configured",
+    status_server_needs_setup_proxy: "Proxy is not configured",
     status_server_error: "Failed to connect to server",
     status_auto_connect: "Restoring login and connecting to server...",
     status_relogin_required: "Session expired. Enter password or key again.",
@@ -348,6 +477,7 @@ const I18N = {
     status_precheck_done: "Preview ready. Disable preview to install the VPN.",
     server_use_hint: "Enter password or key and click \"Connect\".",
     download_ready: "Ready. Download your config and scan the QR.",
+    download_ready_proxy: "Ready. Copy the link or scan the QR in your proxy client.",
     check_ok: "ok",
     check_fail: "fail",
     progress_idle: "Waiting",
@@ -358,10 +488,12 @@ const I18N = {
     meta_protocol: "Protocol",
     meta_ssh_port: "SSH",
     meta_port: "Port",
+    meta_sni: "SNI",
     meta_clients: "Profiles",
     meta_tyumen: "Alt port",
     protocol_amneziawg: "AmneziaWG",
     protocol_wireguard: "WireGuard",
+    protocol_vless_reality: "VLESS Reality",
     alert_fill_host_user: "Please fill in Host and User fields first.",
     alert_check_first: "Please click \"Connect\" first.",
     alert_remove_client: "Remove profile",
@@ -377,7 +509,8 @@ const I18N = {
     install_modal_continue: "Continue install",
     install_summary_host: "Server",
     install_summary_ssh: "SSH",
-    install_summary_udp: "VPN UDP port",
+    install_summary_udp: "Port",
+    install_summary_proxy_port: "Proxy TCP port",
     install_summary_note: "If the server hosts other services, run preview changes first.",
     tour_title: "Tour",
     tour_prev: "Back",
@@ -411,13 +544,26 @@ const I18N = {
     server_advice:
       "Empty server? You can install safely. If not, read the FAQ and enable advanced settings.",
     server_rent_link: "How to rent a VPS: step-by-step guide",
+    help_title: "How to use",
+    help_vpn_title: "VPN mode (AmneziaWG)",
+    help_vpn_body:
+      "1) Connect to your server.\n2) Click \"Configure server\".\n3) Download config and import it into AmneziaWG.",
+    help_proxy_title: "Anti-block proxy mode (VLESS Reality)",
+    help_proxy_body:
+      "1) Connect to your server and configure proxy.\n2) Get link and QR.\n3) Import into Hiddify/sing-box and connect.",
+    help_install_title: "What to install on device",
+    help_install_body:
+      "VPN: AmneziaWG.\nProxy: Hiddify (recommended) or v2rayNG/sing-box.",
   },
 };
 
 const LANG_KEY = "vpnw_lang";
 const SERVERS_KEY = "vpnw_servers";
 const ACTIVE_SERVER_KEY = "vpnw_active_server";
+const ACTIVE_TAB_KEY = "vpnw_active_tab";
 const LEGACY_KEYS = ["vpnw_creds", "vpnw_salt", "vpnw_iv"];
+const WIZARD_MIN_STEP = 1;
+const WIZARD_MAX_STEP = 3;
 const TOUR_STEPS = [
   { titleKey: "tour_step1_title", bodyKey: "tour_step1_body", target: 'input[name="host"]' },
   { titleKey: "tour_step2_title", bodyKey: "tour_step2_body", target: 'input[name="user"]' },
@@ -477,10 +623,230 @@ const STATE = {
     configText: null,
   },
   tourIndex: 0,
+  activeTab: localStorage.getItem(ACTIVE_TAB_KEY) || "connect",
+  wizardStep: WIZARD_MIN_STEP,
 };
 
 function t(key) {
   return I18N[currentLang]?.[key] || I18N.ru[key] || key;
+}
+
+function getMaxWizardStep() {
+  if (!STATE.checked) {
+    return WIZARD_MIN_STEP;
+  }
+  if (!serverConfigured) {
+    return 2;
+  }
+  return WIZARD_MAX_STEP;
+}
+
+function hasReadyProfileDownload() {
+  return Boolean(
+    STATE.downloads.configText ||
+      (downloadLink && !downloadLink.classList.contains("hidden")) ||
+      (resultCard && !resultCard.classList.contains("hidden")),
+  );
+}
+
+function clampWizardStep() {
+  const maxStep = getMaxWizardStep();
+  if (STATE.wizardStep < WIZARD_MIN_STEP) {
+    STATE.wizardStep = WIZARD_MIN_STEP;
+  }
+  if (STATE.wizardStep > maxStep) {
+    STATE.wizardStep = maxStep;
+  }
+}
+
+function updateWizardVisibility() {
+  if (!wizardShell) {
+    return;
+  }
+  const visibleTab = STATE.activeTab === "connect" || STATE.activeTab === "profiles";
+  const noviceMode = Boolean(simpleToggle?.checked);
+  wizardShell.classList.toggle("hidden", !visibleTab || !noviceMode);
+}
+
+function updateWizardUi() {
+  if (!wizardShell) {
+    return;
+  }
+  clampWizardStep();
+  const maxStep = getMaxWizardStep();
+  wizardStepButtons.forEach((btn) => {
+    const step = Number.parseInt(btn.dataset.wizardStep || "", 10);
+    const isActive = step === STATE.wizardStep;
+    const isDone = step < STATE.wizardStep && step <= maxStep;
+    const isLocked = step > maxStep;
+    btn.classList.toggle("active", isActive);
+    btn.classList.toggle("done", isDone);
+    btn.classList.toggle("locked", isLocked);
+    btn.disabled = isLocked;
+  });
+  if (wizardPrevBtn) {
+    wizardPrevBtn.disabled = STATE.wizardStep <= WIZARD_MIN_STEP;
+  }
+  if (wizardNextBtn) {
+    if (STATE.wizardStep <= 1) {
+      wizardNextBtn.textContent = STATE.checked ? t("wizard_action_next") : t("wizard_action_connect");
+    } else if (STATE.wizardStep === 2) {
+      wizardNextBtn.textContent = serverConfigured ? t("wizard_action_to_profile") : t("wizard_action_setup");
+    } else {
+      wizardNextBtn.textContent = t("wizard_action_to_cabinet");
+    }
+  }
+  if (wizardHintEl) {
+    if (STATE.wizardStep === 1) {
+      wizardHintEl.textContent = t("wizard_hint_step1");
+    } else if (STATE.wizardStep === 2) {
+      wizardHintEl.textContent = STATE.checked
+        ? serverConfigured
+          ? t("wizard_hint_step2_ready")
+          : t("wizard_hint_step2_setup")
+        : t("wizard_hint_need_connect");
+    } else {
+      wizardHintEl.textContent = hasReadyProfileDownload()
+        ? t("wizard_hint_step3_ready")
+        : t("wizard_hint_step3_empty");
+    }
+  }
+  updateWizardVisibility();
+}
+
+function getStepAnchor(step) {
+  if (step <= 1) {
+    return connectionCard || form?.closest(".card") || null;
+  }
+  if (step === 2) {
+    if (progressCard && !progressCard.classList.contains("hidden")) {
+      return progressCard;
+    }
+    if (provisionBtn && !provisionBtn.classList.contains("hidden")) {
+      return provisionBtn;
+    }
+    return profilesIntroCard || connectionCard || null;
+  }
+  if (resultCard && !resultCard.classList.contains("hidden")) {
+    return resultCard;
+  }
+  if (clientsCard && !clientsCard.classList.contains("hidden")) {
+    return clientsCard;
+  }
+  if (addClientBtn && !addClientBtn.classList.contains("hidden")) {
+    return addClientBtn;
+  }
+  return profilesIntroCard || connectionCard || null;
+}
+
+function setWizardStep(step, options = {}) {
+  const { syncTab = true, scroll = false } = options;
+  const numericStep = Number.parseInt(`${step}`, 10);
+  const targetStep = Number.isFinite(numericStep) ? numericStep : WIZARD_MIN_STEP;
+  const boundedStep = Math.max(WIZARD_MIN_STEP, Math.min(WIZARD_MAX_STEP, targetStep));
+  const maxStep = getMaxWizardStep();
+  STATE.wizardStep = Math.min(boundedStep, maxStep);
+
+  if (syncTab) {
+    if (STATE.wizardStep <= 1) {
+      setActiveTab("connect");
+    } else {
+      setActiveTab("profiles");
+    }
+  }
+  updateWizardUi();
+  if (scroll) {
+    scrollToCard(getStepAnchor(STATE.wizardStep));
+  }
+}
+
+function setActiveTab(tab, options = {}) {
+  const target = ["connect", "profiles", "cabinet", "help"].includes(tab) ? tab : "connect";
+  STATE.activeTab = target;
+  if (!options.silent) {
+    localStorage.setItem(ACTIVE_TAB_KEY, target);
+  }
+  tabButtons.forEach((btn) => {
+    const active = btn.dataset.tab === target;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  tabPanels.forEach((panel) => {
+    panel.classList.toggle("tab-panel-hidden", panel.dataset.tabPanel !== target);
+  });
+  updateWizardVisibility();
+  updateWizardUi();
+}
+
+function revealProfilesTab() {
+  if (STATE.activeTab !== "profiles") {
+    setActiveTab("profiles");
+  }
+  if (STATE.wizardStep < 2) {
+    STATE.wizardStep = 2;
+    updateWizardUi();
+  }
+}
+
+function getConnectionMode(data = null) {
+  const mode = (data?.connection_mode || connectionModeSelect?.value || "amneziawg").toString();
+  return mode === "vless_reality" ? "vless_reality" : "amneziawg";
+}
+
+function isProxyMode(data = null) {
+  return getConnectionMode(data) === "vless_reality";
+}
+
+function updateModeUi(data = null) {
+  const proxyMode = isProxyMode(data);
+  if (provisionBtn) {
+    provisionBtn.textContent = proxyMode ? t("provision_btn_proxy") : t("provision_btn");
+  }
+  if (addClientBtn) {
+    addClientBtn.textContent = proxyMode ? t("add_client_btn_proxy") : t("add_client_btn");
+  }
+  if (downloadLink) {
+    downloadLink.textContent = proxyMode ? t("download_btn_proxy") : t("download_btn");
+  }
+  const step3Title = document.querySelector("#result-card h2");
+  if (step3Title) {
+    step3Title.textContent = proxyMode ? t("step3_title_proxy") : t("step3_title");
+  }
+  const copyTitle = document.querySelector(".config-title");
+  if (copyTitle) {
+    copyTitle.textContent = proxyMode ? t("copy_title_proxy") : t("copy_title");
+  }
+  const step3Hint = document.querySelector(".step3-hint");
+  if (step3Hint) {
+    step3Hint.textContent = proxyMode ? t("step3_hint_proxy") : t("step3_hint");
+  }
+  if (appsTitleEl) {
+    appsTitleEl.textContent = proxyMode ? t("apps_title_proxy") : t("apps_title");
+  }
+  if (appAndroidEl) {
+    appAndroidEl.textContent = proxyMode ? t("apps_proxy_android") : t("apps_android");
+    const href = proxyMode ? PROXY_APP_URLS.android : VPN_APP_URLS.android;
+    appAndroidEl.href = href;
+    appAndroidEl.dataset.url = href;
+  }
+  if (appIosEl) {
+    appIosEl.textContent = proxyMode ? t("apps_proxy_ios") : t("apps_ios");
+    const href = proxyMode ? PROXY_APP_URLS.ios : VPN_APP_URLS.ios;
+    appIosEl.href = href;
+    appIosEl.dataset.url = href;
+  }
+  if (appWindowsEl) {
+    appWindowsEl.textContent = proxyMode ? t("apps_proxy_windows") : t("apps_windows");
+    const href = proxyMode ? PROXY_APP_URLS.windows : VPN_APP_URLS.windows;
+    appWindowsEl.href = href;
+    appWindowsEl.dataset.url = href;
+  }
+  if (appLinuxEl) {
+    appLinuxEl.textContent = proxyMode ? t("apps_proxy_linux") : t("apps_linux");
+    const href = proxyMode ? PROXY_APP_URLS.linux : VPN_APP_URLS.linux;
+    appLinuxEl.href = href;
+    appLinuxEl.dataset.url = href;
+  }
 }
 
 function setLogVisible(visible) {
@@ -507,12 +873,14 @@ function applyI18n() {
     btn.classList.toggle("active", btn.dataset.lang === currentLang);
   });
   document.title = t("app_title");
+  updateModeUi();
   renderServers();
   renderClients();
   renderFaq();
   updateTourStep();
   setLogVisible(STATE.logVisible);
   updateStageVisibility();
+  setActiveTab(STATE.activeTab, { silent: true });
 }
 const tg = window.Telegram && window.Telegram.WebApp;
 if (tg) {
@@ -632,6 +1000,64 @@ langButtons.forEach((btn) => {
     applyI18n();
   });
 });
+
+tabButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    setActiveTab(btn.dataset.tab || "connect");
+    if (btn.dataset.tab === "connect") {
+      setWizardStep(1, { syncTab: false });
+    } else if (btn.dataset.tab === "profiles") {
+      const nextStep = getMaxWizardStep() >= 2 ? (serverConfigured ? 3 : 2) : 1;
+      setWizardStep(nextStep, { syncTab: false });
+    }
+  });
+});
+
+wizardStepButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const targetStep = Number.parseInt(btn.dataset.wizardStep || "", 10);
+    if (!Number.isFinite(targetStep)) {
+      return;
+    }
+    setWizardStep(targetStep, { syncTab: true, scroll: true });
+  });
+});
+
+if (wizardPrevBtn) {
+  wizardPrevBtn.addEventListener("click", () => {
+    setWizardStep(STATE.wizardStep - 1, { syncTab: true, scroll: true });
+  });
+}
+
+if (wizardNextBtn) {
+  wizardNextBtn.addEventListener("click", async () => {
+    if (STATE.wizardStep <= 1) {
+      if (!STATE.checked) {
+        if (form.requestSubmit) {
+          form.requestSubmit();
+        } else {
+          checkServerBtn?.click();
+        }
+        return;
+      }
+      setWizardStep(2, { syncTab: true, scroll: true });
+      return;
+    }
+    if (STATE.wizardStep === 2) {
+      if (!STATE.checked) {
+        setWizardStep(1, { syncTab: true, scroll: true });
+        return;
+      }
+      if (!serverConfigured) {
+        await runProvision();
+        return;
+      }
+      setWizardStep(3, { syncTab: true, scroll: true });
+      return;
+    }
+    setActiveTab("cabinet");
+  });
+}
 
 modalCloseEls.forEach((el) => {
   el.addEventListener("click", () => {
@@ -785,6 +1211,7 @@ async function copyToClipboard(text) {
 function setDownload(config, qrBase64, name, options = {}) {
   const safeName = name || "client1";
   const { showResult = true, scroll = true, downloadId = null } = options;
+  const ext = isProxyMode(STATE.lastAuth) ? "txt" : "conf";
 
   if (STATE.downloads.configUrl?.startsWith("blob:")) {
     URL.revokeObjectURL(STATE.downloads.configUrl);
@@ -794,7 +1221,7 @@ function setDownload(config, qrBase64, name, options = {}) {
   STATE.downloads.configUrl = configUrl;
   STATE.downloads.configText = config || null;
   if (configUrl && downloadLink) {
-    downloadLink.download = `${safeName}.conf`;
+    downloadLink.download = `${safeName}.${ext}`;
     downloadLink.href = configUrl;
     downloadLink.dataset.url = configUrl;
     downloadLink.classList.remove("hidden");
@@ -830,6 +1257,10 @@ function setDownload(config, qrBase64, name, options = {}) {
 
   if (showResult && resultCard) {
     resultCard.classList.remove("hidden");
+    updateModeUi(STATE.lastAuth);
+    revealProfilesTab();
+    STATE.wizardStep = 3;
+    updateWizardUi();
     if (scroll) {
       scrollToCard(resultCard);
     }
@@ -847,6 +1278,10 @@ function updateStageVisibility() {
   const checked = STATE.checked;
   const configured = serverConfigured;
 
+  if (profilesIntroCard) {
+    profilesIntroCard.classList.remove("hidden");
+  }
+
   stageUncheckedOnlyEls.forEach((el) => {
     el.classList.toggle("hidden", checked);
   });
@@ -855,8 +1290,7 @@ function updateStageVisibility() {
   });
 
   if (serversCard) {
-    const hasServers = loadServers().length > 0;
-    serversCard.classList.toggle("hidden", !checked && !hasServers);
+    serversCard.classList.remove("hidden");
   }
   if (clientsCard) {
     clientsCard.classList.toggle("hidden", !checked || !configured);
@@ -874,6 +1308,7 @@ function updateStageVisibility() {
     reconfigureToggle.classList.add("hidden");
   }
   if (!checked) {
+    STATE.wizardStep = 1;
     if (resultCard) {
       resultCard.classList.add("hidden");
     }
@@ -886,7 +1321,18 @@ function updateStageVisibility() {
     }
     setProgressVisible(false);
   }
+  if (checked && !configured && STATE.wizardStep < 2) {
+    STATE.wizardStep = 2;
+  }
+  if (checked && !configured && STATE.wizardStep > 2) {
+    STATE.wizardStep = 2;
+  }
+  if (configured && STATE.wizardStep < 2) {
+    STATE.wizardStep = 2;
+  }
+  updateModeUi(STATE.lastAuth || getFormData());
   setSafeVisibility();
+  updateWizardUi();
 }
 
 function setServerMeta(status) {
@@ -900,6 +1346,9 @@ function setServerMeta(status) {
   }
   if (status.listen_port) {
     parts.push(`${t("meta_port")}: ${status.listen_port}`);
+  }
+  if (status.proxy_sni) {
+    parts.push(`${t("meta_sni")}: ${status.proxy_sni}`);
   }
   if (status.clients_count !== undefined) {
     parts.push(`${t("meta_clients")}: ${status.clients_count}`);
@@ -1092,24 +1541,26 @@ function splitHostAndPort(rawHost, rawPort) {
   return { host, port };
 }
 
-function makeServerKey(host, user, sshPort) {
+function makeServerKey(host, user, sshPort, mode = "amneziawg") {
+  const normalizedMode = mode === "vless_reality" ? "vless_reality" : "amneziawg";
   return `${(host || "").trim().toLowerCase()}|${(user || "").trim().toLowerCase()}|${normalizeSshPort(
     sshPort,
     22,
-  )}`;
+  )}|${normalizedMode}`;
 }
 
 function getServerRuntimeKey(data = null) {
   if (data?.host && data?.user) {
-    return makeServerKey(data.host, data.user, data.ssh_port || 22);
+    return makeServerKey(data.host, data.user, data.ssh_port || 22, getConnectionMode(data));
   }
   const host = form?.elements?.host?.value || "";
   const user = form?.elements?.user?.value || "";
   const sshPort = form?.elements?.ssh_port?.value || 22;
+  const mode = getConnectionMode();
   if (!host || !user) {
     return null;
   }
-  return makeServerKey(host, user, sshPort);
+  return makeServerKey(host, user, sshPort, mode);
 }
 
 function setActiveServerKey(key) {
@@ -1126,6 +1577,7 @@ function getFormData() {
   const keyContent = simpleToggle.checked ? null : data.key_content;
   const parsedHost = splitHostAndPort(data.host, data.ssh_port);
   const listenPort = normalizeListenPort(data.listen_port);
+  const connectionMode = getConnectionMode({ connection_mode: data.connection_mode });
   return {
     host: parsedHost.host,
     user: (data.user || "").trim(),
@@ -1134,7 +1586,8 @@ function getFormData() {
     key_content: keyContent || null,
     client_name: (data.client_name || "").trim(),
     listen_port: listenPort,
-    safe_mode: Boolean(safeToggle?.checked) && !simpleToggle.checked,
+    safe_mode: connectionMode !== "vless_reality" && Boolean(safeToggle?.checked) && !simpleToggle.checked,
+    connection_mode: connectionMode,
     remember_login: Boolean(rememberLoginToggle?.checked),
     session_id: STATE.activeSessionId || null,
   };
@@ -1156,6 +1609,7 @@ function loadServers() {
         host: String(item.host || "").trim(),
         user: String(item.user || "").trim(),
         ssh_port: parseOptionalSshPort(item.ssh_port),
+        mode: item.mode === "vless_reality" ? "vless_reality" : "amneziawg",
         listen_port: normalizeListenPort(item.listen_port),
         clients_count:
           typeof item.clients_count === "number" && item.clients_count >= 0
@@ -1194,6 +1648,10 @@ function renderServers() {
     const meta = document.createElement("div");
     meta.className = "server-meta";
     const parts = [];
+    const protocolLabel = t(`protocol_${server.mode || "amneziawg"}`);
+    if (protocolLabel) {
+      parts.push(`${t("meta_protocol")}: ${protocolLabel}`);
+    }
     if (server.user) {
       parts.push(`SSH: ${server.user}`);
     }
@@ -1222,6 +1680,7 @@ function renderServers() {
     useBtn.className = "secondary";
     useBtn.textContent = t("servers_use_btn");
     useBtn.addEventListener("click", async () => {
+      setActiveTab("connect");
       applyServerToForm(server);
       serverConfigured = false;
       STATE.checked = false;
@@ -1267,6 +1726,7 @@ function upsertServer(entry) {
     host: String(entry.host || "").trim(),
     user: String(entry.user || "").trim(),
     ssh_port: parseOptionalSshPort(entry.ssh_port),
+    mode: getConnectionMode({ connection_mode: entry.mode }),
     listen_port: normalizeListenPort(entry.listen_port),
     clients_count:
       typeof entry.clients_count === "number" && entry.clients_count >= 0
@@ -1278,9 +1738,9 @@ function upsertServer(entry) {
     return;
   }
   const servers = loadServers();
-  const key = makeServerKey(normalized.host, normalized.user, normalized.ssh_port);
+  const key = makeServerKey(normalized.host, normalized.user, normalized.ssh_port, normalized.mode);
   const idx = servers.findIndex(
-    (item) => makeServerKey(item.host, item.user, item.ssh_port || 22) === key,
+    (item) => makeServerKey(item.host, item.user, item.ssh_port || 22, item.mode) === key,
   );
   if (idx >= 0) {
     servers[idx] = { ...servers[idx], ...normalized };
@@ -1301,6 +1761,9 @@ function upsertServer(entry) {
 function applyServerToForm(server) {
   form.elements.host.value = server.host || "";
   form.elements.user.value = server.user || "";
+  if (connectionModeSelect) {
+    connectionModeSelect.value = getConnectionMode({ connection_mode: server.mode });
+  }
   if (form.elements.ssh_port) {
     const port = parseOptionalSshPort(server.ssh_port);
     form.elements.ssh_port.value = port ? String(port) : "";
@@ -1314,18 +1777,19 @@ function applyServerToForm(server) {
   if (form.elements.key_content) {
     form.elements.key_content.value = "";
   }
-  const key = makeServerKey(server.host, server.user, server.ssh_port || 22);
+  const key = makeServerKey(server.host, server.user, server.ssh_port || 22, server.mode);
   setActiveServerKey(key);
   STATE.activeSessionId = server.session_id || null;
   if (rememberLoginToggle) {
     rememberLoginToggle.checked = Boolean(server.session_id);
   }
+  updateModeUi({ connection_mode: server.mode });
 }
 
 function removeServer(server) {
-  const key = makeServerKey(server.host, server.user, server.ssh_port || 22);
+  const key = makeServerKey(server.host, server.user, server.ssh_port || 22, server.mode);
   const list = loadServers().filter(
-    (item) => makeServerKey(item.host, item.user, item.ssh_port || 22) !== key,
+    (item) => makeServerKey(item.host, item.user, item.ssh_port || 22, item.mode) !== key,
   );
   saveServers(list);
   if (STATE.activeServerKey === key) {
@@ -1355,10 +1819,10 @@ async function revokeSession(sessionId) {
 
 async function forgetServerSession(server, options = {}) {
   const { notify = false } = options;
-  const key = makeServerKey(server.host, server.user, server.ssh_port || 22);
+  const key = makeServerKey(server.host, server.user, server.ssh_port || 22, server.mode);
   const list = loadServers();
   const idx = list.findIndex(
-    (item) => makeServerKey(item.host, item.user, item.ssh_port || 22) === key,
+    (item) => makeServerKey(item.host, item.user, item.ssh_port || 22, item.mode) === key,
   );
   if (idx < 0) {
     return;
@@ -1385,7 +1849,7 @@ function getServerByKey(key) {
   }
   return (
     loadServers().find(
-      (item) => makeServerKey(item.host, item.user, item.ssh_port || 22) === key,
+      (item) => makeServerKey(item.host, item.user, item.ssh_port || 22, item.mode) === key,
     ) || null
   );
 }
@@ -1431,7 +1895,9 @@ function hasAuthSecrets(data) {
 }
 
 function buildAuthPayload(data) {
-  const payload = {};
+  const payload = {
+    protocol: getConnectionMode(data),
+  };
   if (data?.session_id) {
     payload.session_id = data.session_id;
   }
@@ -1534,7 +2000,7 @@ async function fetchServerPrecheck(data) {
   const payload = buildAuthPayload(data);
   payload.options = {
     listen_port: data.listen_port || undefined,
-    protocol: "amneziawg",
+    protocol: getConnectionMode(data),
   };
   return fetchJson("/api/server/precheck", {
     method: "POST",
@@ -1615,7 +2081,8 @@ function setSafeVisibility() {
   if (!safeRow || !safeToggle) {
     return;
   }
-  const shouldShow = STATE.checked && !serverConfigured;
+  const proxyMode = isProxyMode();
+  const shouldShow = !proxyMode && STATE.checked && !serverConfigured;
   safeRow.classList.toggle("hidden", !shouldShow);
   if (shouldShow && !STATE.safeTouched) {
     safeToggle.checked = true;
@@ -1632,7 +2099,7 @@ function updateInstallGuard() {
   if (!installGuard || !installConfirmToggle || !safeToggle) {
     return;
   }
-  const requiresConfirm = STATE.checked && !serverConfigured && !safeToggle.checked;
+  const requiresConfirm = !isProxyMode() && STATE.checked && !serverConfigured && !safeToggle.checked;
   installGuard.classList.toggle("hidden", !requiresConfirm);
   if (!requiresConfirm) {
     installConfirmToggle.checked = false;
@@ -1646,12 +2113,17 @@ function updateNextStepMessage() {
   const serverKey = getServerRuntimeKey();
   const previewDone = Boolean(serverKey && STATE.previewDoneByServer[serverKey]);
   const noviceMode = Boolean(simpleToggle?.checked);
+  const proxyMode = isProxyMode();
   if (!STATE.checked) {
     nextStepEl.textContent = t("next_step_initial");
     return;
   }
   if (serverConfigured) {
     nextStepEl.textContent = t("next_step_after_check_configured");
+    return;
+  }
+  if (proxyMode) {
+    nextStepEl.textContent = t("next_step_after_check_empty");
     return;
   }
   if (noviceMode && !previewDone) {
@@ -1673,11 +2145,12 @@ function setInstallSummary(data) {
   if (!installSummary) {
     return;
   }
-  const udp = data.listen_port || form.elements.listen_port?.value || "-";
+  const port = data.listen_port || form.elements.listen_port?.value || "-";
+  const proxyMode = isProxyMode(data);
   const lines = [
     `${t("install_summary_host")}: ${data.host || "-"}`,
     `${t("install_summary_ssh")}: ${data.user || "-"}@${data.host || "-"}:${data.ssh_port || 22}`,
-    `${t("install_summary_udp")}: ${udp}`,
+    `${proxyMode ? t("install_summary_proxy_port") : t("install_summary_udp")}: ${port}`,
     "",
     t("install_summary_note"),
   ];
@@ -1711,18 +2184,51 @@ function setSimpleMode(enabled) {
   });
   if (enabled) {
     STATE.safeTouched = false;
-    if (safeToggle) {
+    if (safeToggle && !isProxyMode()) {
       safeToggle.checked = true;
     }
   }
   setSafeVisibility();
   updateNextStepMessage();
+  updateModeUi();
+  updateWizardUi();
 }
 
 setSimpleMode(simpleToggle?.checked ?? true);
 simpleToggle.addEventListener("change", () => {
   setSimpleMode(simpleToggle.checked);
 });
+
+if (connectionModeSelect) {
+  connectionModeSelect.addEventListener("change", () => {
+    const mode = getConnectionMode();
+    if (form?.elements?.listen_port) {
+      const currentPort = Number.parseInt(form.elements.listen_port.value || "", 10);
+      if (mode === "vless_reality" && (!Number.isFinite(currentPort) || currentPort === 3478)) {
+        form.elements.listen_port.value = "443";
+      }
+      if (mode !== "vless_reality" && currentPort === 443) {
+        form.elements.listen_port.value = "3478";
+      }
+    }
+    STATE.safeTouched = false;
+    serverConfigured = false;
+    STATE.checked = false;
+    STATE.wizardStep = 1;
+    STATE.clients = [];
+    STATE.qrByClient = {};
+    STATE.qrOpen = null;
+    if (serverStatusEl) {
+      serverStatusEl.textContent = t("server_status_idle");
+    }
+    if (serverMetaEl) {
+      serverMetaEl.textContent = "";
+    }
+    updateModeUi();
+    updateStageVisibility();
+    renderClients([]);
+  });
+}
 
 if (safeToggle) {
   safeToggle.addEventListener("change", () => {
@@ -1766,6 +2272,7 @@ updateStageVisibility();
     STATE.safeTouched = false;
     serverConfigured = false;
     STATE.checked = false;
+    STATE.wizardStep = 1;
     updateStageVisibility();
     if (serverStatusEl) {
       serverStatusEl.textContent = t("server_status_idle");
@@ -1783,8 +2290,13 @@ if (rememberLoginToggle) {
       const list = loadServers();
       const active = list.find(
         (item) =>
-          makeServerKey(item.host, item.user, item.ssh_port || 22) ===
-          makeServerKey(form.elements.host.value, form.elements.user.value, form.elements.ssh_port?.value || 22),
+          makeServerKey(item.host, item.user, item.ssh_port || 22, item.mode) ===
+          makeServerKey(
+            form.elements.host.value,
+            form.elements.user.value,
+            form.elements.ssh_port?.value || 22,
+            getConnectionMode(),
+          ),
       );
       if (active?.session_id) {
         await forgetServerSession(active, { notify: true });
@@ -1839,6 +2351,7 @@ function renderClients(list = STATE.clients) {
     return;
   }
   clientsEmptyEl.classList.add("hidden");
+  const proxyMode = isProxyMode(STATE.lastAuth);
   list.forEach((client) => {
     const row = document.createElement("div");
     row.className = "client-row";
@@ -1862,11 +2375,13 @@ function renderClients(list = STATE.clients) {
     meta.className = "client-meta";
     const handshake = client.latest_handshake || "-";
     const transfer = formatTransfer(client.transfer_rx, client.transfer_tx);
-    const parts = [
-      `${t("client_ip")}: ${client.ip || "-"}`,
-      `${t("client_handshake")}: ${handshake}`,
-      `${t("client_transfer")}: ${transfer}`,
-    ];
+    const parts = proxyMode
+      ? [`${t("meta_protocol")}: ${t("protocol_vless_reality")}`]
+      : [
+          `${t("client_ip")}: ${client.ip || "-"}`,
+          `${t("client_handshake")}: ${handshake}`,
+          `${t("client_transfer")}: ${transfer}`,
+        ];
     meta.textContent = parts.join(" · ");
 
     const actions = document.createElement("div");
@@ -1875,7 +2390,7 @@ function renderClients(list = STATE.clients) {
     const configBtn = document.createElement("button");
     configBtn.type = "button";
     configBtn.className = "secondary";
-    configBtn.textContent = t("client_download");
+    configBtn.textContent = proxyMode ? t("client_download_proxy") : t("client_download");
     configBtn.disabled = isBusy;
     configBtn.addEventListener("click", async () => {
       try {
@@ -1983,7 +2498,9 @@ function renderClients(list = STATE.clients) {
 
     actions.appendChild(configBtn);
     actions.appendChild(qrBtn);
-    actions.appendChild(rotateBtn);
+    if (!proxyMode) {
+      actions.appendChild(rotateBtn);
+    }
     actions.appendChild(removeBtn);
 
     row.appendChild(header);
@@ -2028,7 +2545,10 @@ async function refreshClients(data) {
   setStatus(t("status_loading_clients"));
   renderClients();
   if (serverStatusEl && serverConfigured) {
-    serverStatusEl.textContent = `${t("status_server_configured")} · ${t("status_loading_clients")}`;
+    const configuredLabel = isProxyMode(data)
+      ? t("status_server_configured_proxy")
+      : t("status_server_configured");
+    serverStatusEl.textContent = `${configuredLabel} · ${t("status_loading_clients")}`;
   }
   try {
     const clients = await fetchClients(data);
@@ -2048,6 +2568,7 @@ async function refreshClients(data) {
       host: data.host,
       user: data.user,
       ssh_port: data.ssh_port || undefined,
+      mode: getConnectionMode(data),
       listen_port: data.listen_port || undefined,
       clients_count: clients.length,
       session_id: data.session_id || undefined,
@@ -2093,7 +2614,7 @@ async function pollJob(jobId, clientName, authData) {
         .join(" | ");
       setStatus(`${t("status_ready")} ${checkText}`);
     } else {
-      setStatus(t("download_ready"));
+      setStatus(isProxyMode(authData) ? t("download_ready_proxy") : t("download_ready"));
     }
     if (provisionBtn) {
       provisionBtn.disabled = false;
@@ -2117,6 +2638,7 @@ async function runServerCheck(data) {
     alert(t("alert_fill_host_user"));
     return;
   }
+  setWizardStep(1, { syncTab: true });
   const authData = { ...data };
   if (checkServerBtn) {
     checkServerBtn.disabled = true;
@@ -2134,7 +2656,14 @@ async function runServerCheck(data) {
 
   try {
     await ensureSshPort(authData);
-    setActiveServerKey(makeServerKey(authData.host, authData.user, authData.ssh_port || 22));
+    setActiveServerKey(
+      makeServerKey(
+        authData.host,
+        authData.user,
+        authData.ssh_port || 22,
+        getConnectionMode(authData),
+      ),
+    );
     if (serverStatusEl) {
       serverStatusEl.textContent = t("status_checking");
     }
@@ -2179,9 +2708,15 @@ async function runServerCheck(data) {
       STATE.clientsLoading = false;
     }
     if (serverStatusEl) {
-      serverStatusEl.textContent = serverConfigured
-        ? t("status_server_configured")
-        : t("status_server_needs_setup");
+      if (isProxyMode(authData)) {
+        serverStatusEl.textContent = serverConfigured
+          ? t("status_server_configured_proxy")
+          : t("status_server_needs_setup_proxy");
+      } else {
+        serverStatusEl.textContent = serverConfigured
+          ? t("status_server_configured")
+          : t("status_server_needs_setup");
+      }
     }
     if (result.listen_port && form.elements.listen_port) {
       form.elements.listen_port.value = result.listen_port;
@@ -2192,15 +2727,20 @@ async function runServerCheck(data) {
       host: authData.host,
       user: authData.user,
       ssh_port: authData.ssh_port || undefined,
+      mode: getConnectionMode(authData),
       listen_port: result.listen_port || authData.listen_port || undefined,
       clients_count: result.clients_count,
       session_id: authData.remember_login ? authData.session_id || undefined : null,
     });
     if (serverConfigured) {
+      STATE.wizardStep = 3;
+      revealProfilesTab();
       await refreshClients(authData);
     } else {
+      STATE.wizardStep = 2;
       renderClients([]);
     }
+    updateWizardUi();
   } catch (err) {
     const pretty = humanizeError(err, authData);
     if (/session expired/i.test(`${err || ""}`)) {
@@ -2212,6 +2752,7 @@ async function runServerCheck(data) {
         host: authData.host,
         user: authData.user,
         ssh_port: authData.ssh_port || undefined,
+        mode: getConnectionMode(authData),
         listen_port: authData.listen_port || undefined,
         session_id: null,
       });
@@ -2224,6 +2765,7 @@ async function runServerCheck(data) {
     STATE.clientsLoading = false;
     updateStageVisibility();
     renderClients([]);
+    setWizardStep(1, { syncTab: true });
   } finally {
     if (checkServerBtn) {
       checkServerBtn.disabled = false;
@@ -2233,7 +2775,10 @@ async function runServerCheck(data) {
 
 async function runProvision() {
   const data = getFormData();
-  setActiveServerKey(makeServerKey(data.host, data.user, data.ssh_port || 22));
+  setWizardStep(2, { syncTab: true });
+  setActiveServerKey(
+    makeServerKey(data.host, data.user, data.ssh_port || 22, getConnectionMode(data)),
+  );
   if (data.remember_login && hasAuthSecrets(data)) {
     try {
       const sessionId = await loginSession(data);
@@ -2265,7 +2810,8 @@ async function runProvision() {
   const currentServerKey = getServerRuntimeKey(data);
   const previewDone = Boolean(currentServerKey && STATE.previewDoneByServer[currentServerKey]);
   const noviceMode = Boolean(simpleToggle?.checked);
-  if (noviceMode && !data.safe_mode && !serverConfigured && !previewDone) {
+  const proxyMode = isProxyMode(data);
+  if (!proxyMode && noviceMode && !data.safe_mode && !serverConfigured && !previewDone) {
     if (safeToggle) {
       safeToggle.checked = true;
     }
@@ -2276,7 +2822,7 @@ async function runProvision() {
     scrollToCard(safeRow || form.closest(".card"));
     return;
   }
-  if (!data.safe_mode) {
+  if (!proxyMode && !data.safe_mode) {
     if (installConfirmToggle && !installConfirmToggle.checked) {
       setStatus(t("status_install_requires_confirm"));
       scrollToCard(installGuard || form.closest(".card"));
@@ -2288,11 +2834,14 @@ async function runProvision() {
       return;
     }
   }
-  if (data.safe_mode) {
+  if (!proxyMode && data.safe_mode) {
     if (provisionBtn) {
       provisionBtn.disabled = true;
     }
     setProgressVisible(true);
+    revealProfilesTab();
+    STATE.wizardStep = 2;
+    updateWizardUi();
     scrollToCard(progressCard);
     setStatus(t("status_precheck"));
     setProgressState("running");
@@ -2338,6 +2887,8 @@ async function runProvision() {
     provisionBtn.disabled = true;
   }
   setProgressVisible(true);
+  STATE.wizardStep = 2;
+  updateWizardUi();
   scrollToCard(progressCard);
   setStatus(t("status_creating_job"));
   setProgress([]);
@@ -2354,6 +2905,7 @@ async function runProvision() {
       auto_mtu: true,
       tune: true,
       check: true,
+      protocol: getConnectionMode(data),
     },
   };
   if (data.listen_port) {
@@ -2368,12 +2920,13 @@ async function runProvision() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    setStatus(t("status_provisioning"));
+    setStatus(proxyMode ? t("status_provisioning_proxy") : t("status_provisioning"));
     setProgressState("running");
     upsertServer({
       host: data.host,
       user: data.user,
       ssh_port: data.ssh_port || undefined,
+      mode: getConnectionMode(data),
       listen_port: data.listen_port || undefined,
       session_id: data.remember_login ? data.session_id || undefined : null,
     });
@@ -2420,7 +2973,9 @@ if (provisionBtn) {
 
 addClientBtn.addEventListener("click", async () => {
   const data = getFormData();
-  setActiveServerKey(makeServerKey(data.host, data.user, data.ssh_port || 22));
+  setActiveServerKey(
+    makeServerKey(data.host, data.user, data.ssh_port || 22, getConnectionMode(data)),
+  );
   if (data.remember_login && hasAuthSecrets(data)) {
     try {
       const sessionId = await loginSession(data);
@@ -2453,8 +3008,9 @@ addClientBtn.addEventListener("click", async () => {
   updateStageVisibility();
   addClientBtn.disabled = true;
   setProgressVisible(true);
+  revealProfilesTab();
   scrollToCard(progressCard);
-  setStatus(t("status_adding_client"));
+  setStatus(isProxyMode(data) ? t("status_adding_client_proxy") : t("status_adding_client"));
   setProgress([]);
   setProgressState("running");
   setLogVisible(false);
@@ -2485,6 +3041,7 @@ addClientBtn.addEventListener("click", async () => {
       host: data.host,
       user: data.user,
       ssh_port: data.ssh_port || undefined,
+      mode: getConnectionMode(data),
       listen_port: data.listen_port || undefined,
       session_id: data.remember_login ? data.session_id || undefined : null,
     });

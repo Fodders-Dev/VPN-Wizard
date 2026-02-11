@@ -9,5 +9,6 @@
 - [x] Add remember-login flow via API sessions (`/api/sessions/login`, `/api/sessions/revoke`)
 - [x] Add miniapp server switching controls (use / forget login / delete)
 - [x] Cover server-side session and host:port parsing with tests
+- [x] Add anti-block proxy mode (VLESS Reality): setup/status/client links in API + miniapp mode switch
 
-Next: Добавить e2e-тесты miniapp сценариев (remember login, session expiration, смена SSH порта).
+Next: Добавить e2e-тесты miniapp сценариев для двух режимов (VPN/Proxy), включая сохранение сервера и переключение mode.

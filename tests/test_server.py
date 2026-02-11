@@ -35,6 +35,14 @@ def test_download_config_returns_attachment() -> None:
     assert response.headers["content-disposition"].endswith('filename="demo-profile.conf"')
 
 
+def test_download_config_respects_custom_suffix() -> None:
+    download_id = DOWNLOAD_STORE.create("vless://demo", b"png", "demo-profile", suffix="txt")
+    response = download_config(download_id)
+    assert response.media_type == "text/plain"
+    assert response.body == b"vless://demo"
+    assert response.headers["content-disposition"].endswith('filename="demo-profile.txt"')
+
+
 def test_download_qr_returns_png() -> None:
     download_id = DOWNLOAD_STORE.create("config data", b"png", "client 01")
     response = download_qr(download_id)

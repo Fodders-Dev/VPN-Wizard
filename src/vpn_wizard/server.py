@@ -23,6 +23,7 @@ import qrcode
 import uvicorn
 
 from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
+from vpn_wizard.proxy import ProxyProvisioner
 
 
 app = FastAPI(title="VPN Wizard API")
@@ -167,6 +168,7 @@ def _discover_ssh_port(host: str, preferred_port: Optional[int] = None) -> tuple
 class AuthRequest(BaseModel):
     ssh: Optional[SSHPayload] = None
     session_id: Optional[str] = None
+    protocol: Optional[str] = None
 
 
 class SSHDiscoverRequest(BaseModel):
@@ -200,6 +202,7 @@ class ProvisionOptions(BaseModel):
     tune: bool = True
     check: bool = True
     protocol: str = "amneziawg"  # "wireguard" or "amneziawg"
+    proxy_sni: Optional[str] = None
 
 
 class ProvisionRequest(BaseModel):
@@ -402,6 +405,7 @@ class DownloadItem:
     config: str
     qr_png: bytes
     name: str
+    suffix: str = "conf"
 
 
 class DownloadStore:
@@ -410,11 +414,17 @@ class DownloadStore:
         self._lock = threading.Lock()
         self._limit = limit
 
-    def create(self, config: str, qr_png: bytes, name: Optional[str]) -> str:
+    def create(self, config: str, qr_png: bytes, name: Optional[str], suffix: str = "conf") -> str:
         download_id = uuid.uuid4().hex
         safe_name = _safe_name(name)
+        safe_suffix = (suffix or "conf").strip().lstrip(".") or "conf"
         with self._lock:
-            self._items[download_id] = DownloadItem(config=config, qr_png=qr_png, name=safe_name)
+            self._items[download_id] = DownloadItem(
+                config=config,
+                qr_png=qr_png,
+                name=safe_name,
+                suffix=safe_suffix,
+            )
             if len(self._items) > self._limit:
                 self._items.popitem(last=False)
         return download_id
@@ -549,35 +559,58 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
         with _ssh_connection(payload.ssh, payload.session_id, logger=progress) as (ssh, _resolved):
             opts = payload.options
             JOB_STORE.update(job_id, client_name=opts.client_name)
-            prov = WireGuardProvisioner(
-                ssh,
-                client_name=opts.client_name,
-                client_ip=opts.client_ip,
-                server_cidr=opts.server_cidr,
-                listen_port=opts.listen_port,
-                dns=opts.dns,
-                mtu=opts.mtu,
-                auto_mtu=opts.auto_mtu,
-                tune=opts.tune,
-                progress=progress,
-                protocol=opts.protocol,
-            )
-            pre_checks = prov.pre_check()
-            for item in pre_checks:
-                progress(
-                    f"precheck {item.get('name')}: {'ok' if item.get('ok') else 'fail'} ({item.get('details')})"
+            suffix = "conf"
+            if opts.protocol == "vless_reality":
+                proxy = ProxyProvisioner(ssh, progress=progress)
+                proxy_port = opts.listen_port or 443
+                pre_checks = proxy.pre_check(proxy_port)
+                for item in pre_checks:
+                    progress(
+                        f"precheck {item.get('name')}: {'ok' if item.get('ok') else 'fail'} ({item.get('details')})"
+                    )
+                critical = {"os_supported", "sudo", "port_available"}
+                if any(item.get("name") in critical and not item.get("ok") for item in pre_checks):
+                    JOB_STORE.update(job_id, status="error", error="Precheck failed.", checks=pre_checks)
+                    return
+                result = proxy.setup(
+                    client_name=opts.client_name or "client1",
+                    listen_port=proxy_port,
+                    sni=opts.proxy_sni,
                 )
-            critical = {"os_supported", "sudo", "port_available"}
-            if any(item.get("name") in critical and not item.get("ok") for item in pre_checks):
-                JOB_STORE.update(job_id, status="error", error="Precheck failed.", checks=pre_checks)
-                return
-            prov.provision()
-            config = prov.export_client_config()
-            checks = prov.post_check() if opts.check else []
+                config = result["link"]
+                checks = pre_checks if opts.check else []
+                suffix = "txt"
+                JOB_STORE.update(job_id, client_name=result.get("name") or opts.client_name)
+            else:
+                prov = WireGuardProvisioner(
+                    ssh,
+                    client_name=opts.client_name,
+                    client_ip=opts.client_ip,
+                    server_cidr=opts.server_cidr,
+                    listen_port=opts.listen_port,
+                    dns=opts.dns,
+                    mtu=opts.mtu,
+                    auto_mtu=opts.auto_mtu,
+                    tune=opts.tune,
+                    progress=progress,
+                    protocol=opts.protocol,
+                )
+                pre_checks = prov.pre_check()
+                for item in pre_checks:
+                    progress(
+                        f"precheck {item.get('name')}: {'ok' if item.get('ok') else 'fail'} ({item.get('details')})"
+                    )
+                critical = {"os_supported", "sudo", "port_available"}
+                if any(item.get("name") in critical and not item.get("ok") for item in pre_checks):
+                    JOB_STORE.update(job_id, status="error", error="Precheck failed.", checks=pre_checks)
+                    return
+                prov.provision()
+                config = prov.export_client_config()
+                checks = prov.post_check() if opts.check else []
 
         qr_png = _build_qr_png(config)
         qr_b64 = base64.b64encode(qr_png).decode("ascii")
-        download_id = DOWNLOAD_STORE.create(config, qr_png, opts.client_name)
+        download_id = DOWNLOAD_STORE.create(config, qr_png, opts.client_name, suffix=suffix)
         JOB_STORE.update(
             job_id,
             status="done",
@@ -690,7 +723,7 @@ def download_config(download_id: str) -> Response:
     item = DOWNLOAD_STORE.get(download_id)
     if not item:
         raise HTTPException(status_code=404, detail="Download not found")
-    filename = _download_filename(item.name, "conf")
+    filename = _download_filename(item.name, item.suffix or "conf")
     return Response(
         content=item.config,
         media_type="text/plain",
@@ -728,8 +761,12 @@ async def rollback(payload: RollbackRequest) -> RollbackResponse:
 async def client_list(payload: RollbackRequest) -> ClientListResponse:
     try:
         with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
-            prov = WireGuardProvisioner(ssh)
-            clients = prov.list_clients()
+            if payload.protocol == "vless_reality":
+                proxy = ProxyProvisioner(ssh)
+                clients = proxy.list_clients()
+            else:
+                prov = WireGuardProvisioner(ssh)
+                clients = prov.list_clients()
         return ClientListResponse(ok=True, clients=clients)
     except Exception as exc:
         return ClientListResponse(ok=False, error=str(exc))
@@ -739,22 +776,36 @@ async def client_list(payload: RollbackRequest) -> ClientListResponse:
 async def client_add(payload: ClientRequest) -> ClientAddResponse:
     try:
         with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
-            prov_kwargs = {}
-            if payload.listen_port:
-                prov_kwargs["listen_port"] = payload.listen_port
-            prov = WireGuardProvisioner(ssh, **prov_kwargs)
-            result = prov.add_client(client_name=payload.client_name, client_ip=payload.client_ip)
-        qr_png = _build_qr_png(result["config"])
+            if payload.protocol == "vless_reality":
+                proxy = ProxyProvisioner(ssh)
+                result = proxy.add_client(payload.client_name or "client1")
+                client_name = result["name"]
+                config_value = result["link"]
+                client_ip = None
+                iface = result.get("interface")
+                suffix = "txt"
+            else:
+                prov_kwargs = {}
+                if payload.listen_port:
+                    prov_kwargs["listen_port"] = payload.listen_port
+                prov = WireGuardProvisioner(ssh, **prov_kwargs)
+                result = prov.add_client(client_name=payload.client_name, client_ip=payload.client_ip)
+                client_name = result["name"]
+                config_value = result["config"]
+                client_ip = result["ip"]
+                iface = result.get("interface")
+                suffix = "conf"
+        qr_png = _build_qr_png(config_value)
         qr_b64 = base64.b64encode(qr_png).decode("ascii")
-        download_id = DOWNLOAD_STORE.create(result["config"], qr_png, result.get("name"))
+        download_id = DOWNLOAD_STORE.create(config_value, qr_png, client_name, suffix=suffix)
         return ClientAddResponse(
             ok=True,
-            client_name=result["name"],
-            client_ip=result["ip"],
-            config=result["config"],
+            client_name=client_name,
+            client_ip=client_ip,
+            config=config_value,
             qr_png_base64=qr_b64,
             download_id=download_id,
-            interface=result.get("interface"),
+            interface=iface,
         )
     except Exception as exc:
         return ClientAddResponse(ok=False, error=str(exc))
@@ -764,8 +815,12 @@ async def client_add(payload: ClientRequest) -> ClientAddResponse:
 async def client_remove(payload: ClientRemoveRequest) -> RollbackResponse:
     try:
         with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
-            prov = WireGuardProvisioner(ssh)
-            ok = prov.remove_client(payload.client_name)
+            if payload.protocol == "vless_reality":
+                proxy = ProxyProvisioner(ssh)
+                ok = proxy.remove_client(payload.client_name)
+            else:
+                prov = WireGuardProvisioner(ssh)
+                ok = prov.remove_client(payload.client_name)
         if not ok:
             return RollbackResponse(ok=False, error="Client not found.")
         return RollbackResponse(ok=True, backup=None)
@@ -776,6 +831,8 @@ async def client_remove(payload: ClientRemoveRequest) -> RollbackResponse:
 @app.post("/api/clients/rotate", response_model=ClientAddResponse)
 async def client_rotate(payload: ClientRemoveRequest) -> ClientAddResponse:
     try:
+        if payload.protocol == "vless_reality":
+            return ClientAddResponse(ok=False, error="Rotate is not supported for proxy profiles.")
         with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
             prov_kwargs = {}
             if payload.listen_port:
@@ -802,19 +859,33 @@ async def client_rotate(payload: ClientRemoveRequest) -> ClientAddResponse:
 async def client_export(payload: ClientRemoveRequest) -> ClientExportResponse:
     try:
         with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
-            prov = WireGuardProvisioner(ssh)
-            result = prov.export_client(payload.client_name)
-        qr_png = _build_qr_png(result["config"])
+            if payload.protocol == "vless_reality":
+                proxy = ProxyProvisioner(ssh)
+                result = proxy.export_client(payload.client_name)
+                client_name = result["name"]
+                config_value = result["link"]
+                client_ip = None
+                iface = result.get("interface")
+                suffix = "txt"
+            else:
+                prov = WireGuardProvisioner(ssh)
+                result = prov.export_client(payload.client_name)
+                client_name = result["name"]
+                config_value = result["config"]
+                client_ip = result["ip"]
+                iface = result.get("interface")
+                suffix = "conf"
+        qr_png = _build_qr_png(config_value)
         qr_b64 = base64.b64encode(qr_png).decode("ascii")
-        download_id = DOWNLOAD_STORE.create(result["config"], qr_png, result.get("name"))
+        download_id = DOWNLOAD_STORE.create(config_value, qr_png, client_name, suffix=suffix)
         return ClientExportResponse(
             ok=True,
-            client_name=result["name"],
-            client_ip=result["ip"],
-            config=result["config"],
+            client_name=client_name,
+            client_ip=client_ip,
+            config=config_value,
             qr_png_base64=qr_b64,
             download_id=download_id,
-            interface=result.get("interface"),
+            interface=iface,
         )
     except Exception as exc:
         return ClientExportResponse(ok=False, error=str(exc))
@@ -834,6 +905,7 @@ class ServerStatusResponse(BaseModel):
     server_cidr: Optional[str] = None
     clients_count: int = 0
     tyumen_port: Optional[int] = None
+    proxy_sni: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -914,7 +986,14 @@ async def get_logs(payload: RollbackRequest) -> LogsResponse:
 async def server_status(payload: RollbackRequest) -> ServerStatusResponse:
     try:
         with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
-            status = _detect_server_status(ssh)
+            if payload.protocol == "vless_reality":
+                status = ProxyProvisioner(ssh).detect_status()
+            elif payload.protocol:
+                status = _detect_server_status(ssh)
+            else:
+                status = _detect_server_status(ssh)
+                if not status.get("configured"):
+                    status = ProxyProvisioner(ssh).detect_status()
 
         if not status.get("configured"):
             return ServerStatusResponse(ok=True, configured=False)
@@ -927,6 +1006,7 @@ async def server_status(payload: RollbackRequest) -> ServerStatusResponse:
             server_cidr=status.get("server_cidr"),
             clients_count=status.get("clients_count", 0),
             tyumen_port=status.get("tyumen_port"),
+            proxy_sni=status.get("sni"),
         )
     except Exception as exc:
         return ServerStatusResponse(ok=False, configured=False, error=str(exc))
@@ -937,19 +1017,23 @@ async def server_precheck(payload: ProvisionRequest) -> PrecheckResponse:
     try:
         with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
             opts = payload.options
-            prov = WireGuardProvisioner(
-                ssh,
-                client_name=opts.client_name,
-                client_ip=opts.client_ip,
-                server_cidr=opts.server_cidr,
-                listen_port=opts.listen_port,
-                dns=opts.dns,
-                mtu=opts.mtu,
-                auto_mtu=opts.auto_mtu,
-                tune=opts.tune,
-                protocol=opts.protocol,
-            )
-            checks = prov.pre_check()
+            if opts.protocol == "vless_reality":
+                proxy = ProxyProvisioner(ssh)
+                checks = proxy.pre_check(opts.listen_port or 443)
+            else:
+                prov = WireGuardProvisioner(
+                    ssh,
+                    client_name=opts.client_name,
+                    client_ip=opts.client_ip,
+                    server_cidr=opts.server_cidr,
+                    listen_port=opts.listen_port,
+                    dns=opts.dns,
+                    mtu=opts.mtu,
+                    auto_mtu=opts.auto_mtu,
+                    tune=opts.tune,
+                    protocol=opts.protocol,
+                )
+                checks = prov.pre_check()
         return PrecheckResponse(ok=True, checks=checks)
     except Exception as exc:
         return PrecheckResponse(ok=False, error=str(exc))

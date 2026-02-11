@@ -69,6 +69,13 @@ $env:VPNW_SESSION_TTL_SECONDS="86400"
 $env:VPNW_SESSION_LIMIT="512"
 ```
 
+Proxy mode defaults:
+```
+# optional, when miniapp runs in Proxy mode (VLESS Reality)
+$env:VPNW_SSH_DISCOVERY_PORTS="22,2222,22022,2200,2022,10022"
+$env:VPNW_SSH_DISCOVERY_TIMEOUT="1.8"
+```
+
 ## Single Railway service (API + bot in one)
 ```
 $env:VPNW_BOT_TOKEN="YOUR_TOKEN"
@@ -123,3 +130,5 @@ Client config expectations:
 - Set `window.API_BASE` in `web/miniapp/config.js` to your API server URL when hosting separately.
 - You can also pass `?api=https://your-api-domain` in the miniapp URL to override API base.
 - Miniapp now supports explicit SSH port input and `host:port` format (for non-standard SSH ports).
+- Miniapp supports two setup modes: `VPN (AmneziaWG)` and `Proxy (VLESS Reality)`.
+- Proxy mode exports `vless://` link + QR (downloaded as `.txt` + `.png`).
