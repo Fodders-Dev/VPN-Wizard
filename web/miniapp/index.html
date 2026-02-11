@@ -56,7 +56,7 @@
             1) Введите IP/хост, SSH пользователя и пароль или ключ.
           </div>
           <div class="onboarding-item" data-i18n="onboarding_step2">
-            2) Нажмите "Проверить сервер" — это безопасно, без установки.
+            2) Нажмите "Подключиться" — это безопасно, без установки.
           </div>
           <div class="onboarding-item" data-i18n="onboarding_step3">
             3) Если сервер пустой — запустите установку и скачайте конфиг.
@@ -65,13 +65,21 @@
             4) При блокировках попробуйте другой UDP порт.
           </div>
         </div>
-        <label class="profile-only hidden">
-          <span data-i18n="client_name_label">Имя профиля (необязательно)</span>
-          <input name="client_name" placeholder="grandma-phone" data-i18n-placeholder="client_name_placeholder" />
-          <small class="field-hint" data-i18n="profile_name_hint">
-            Нужно, чтобы разные устройства получали разные названия конфигов.
-          </small>
-        </label>
+        <div class="profile-only profile-block hidden">
+          <label>
+            <span data-i18n="client_name_label">Имя профиля (необязательно)</span>
+            <input name="client_name" placeholder="grandma-phone" data-i18n-placeholder="client_name_placeholder" />
+            <small class="field-hint" data-i18n="profile_name_hint">
+              Нужно, чтобы разные устройства получали разные названия конфигов.
+            </small>
+          </label>
+          <div class="profile-callout" data-i18n="profile_name_callout">
+            Перед добавлением профиля укажите имя (например: grandma-phone).
+          </div>
+          <div class="profile-actions">
+            <button type="button" id="add-client-btn" class="hidden" data-i18n="add_client_btn">Добавить профиль</button>
+          </div>
+        </div>
         <label class="advanced">
           <span data-i18n="ssh_key_label">SSH ключ (необязательно)</span>
           <textarea name="key_content" placeholder="paste private key" data-i18n-placeholder="ssh_key_placeholder"></textarea>
@@ -97,13 +105,13 @@
           </small>
         </div>
         <div class="server-tools">
-          <button type="submit" id="check-server-btn" data-i18n="check_server_btn">Проверить сервер</button>
-          <div id="server-status" class="server-status" data-i18n="server_status_idle">Сервер не проверен</div>
+          <button type="submit" id="check-server-btn" data-i18n="check_server_btn">Подключиться</button>
+          <div id="server-status" class="server-status" data-i18n="server_status_idle">Сервер не подключен</div>
           <div id="next-step" class="next-step stage-before-config" data-i18n="next_step_initial">
-            Сначала заполните доступ к серверу и нажмите "Проверить сервер".
+            Сначала заполните доступ к серверу и нажмите "Подключиться".
           </div>
           <div id="check-hint" class="check-hint stage-unchecked-only" data-i18n="check_safe_hint">
-            Проверить сервер — безопасно: ничего не устанавливается. Установка — отдельной кнопкой.
+            Подключение безопасно: ничего не устанавливается. Установка — отдельной кнопкой.
           </div>
           <div id="server-meta" class="server-meta"></div>
           <div id="server-advice" class="server-advice stage-before-config" data-i18n="server_advice">
@@ -143,7 +151,6 @@
           </small>
         </div>
         <button type="button" id="provision-btn" class="hidden" data-i18n="provision_btn">Настроить сервер и получить первый профиль</button>
-        <button type="button" id="add-client-btn" class="secondary hidden" data-i18n="add_client_btn">Добавить профиль</button>
       </form>
     </section>
 
