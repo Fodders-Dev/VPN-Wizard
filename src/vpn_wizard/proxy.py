@@ -14,6 +14,7 @@ class ProxyProvisioner:
     XRAY_BIN = "/usr/local/bin/xray"
     XRAY_ETC = "/usr/local/etc/xray"
     XRAY_CONF = f"{XRAY_ETC}/config.json"
+    FALLBACK_PORTS = (443, 2053, 2083, 2087, 2096, 8443)
 
     def __init__(
         self,
@@ -85,14 +86,14 @@ class ProxyProvisioner:
         self.ssh.run(cmd, sudo=True)
 
     def _generate_reality_keypair(self) -> tuple[str, str]:
-        raw = self.ssh.run(f"{self.XRAY_BIN} x25519", sudo=True).strip()
+        raw = self.ssh.run(f"{self.XRAY_BIN} x25519", sudo=True, check=False).strip()
         private = ""
         public = ""
         for line in raw.splitlines():
-            match_priv = re.search(r"Private(?:\\s+key)?:\\s*(\\S+)", line, flags=re.IGNORECASE)
+            match_priv = re.search(r"Private(?:\s+key)?:\s*(\S+)", line, flags=re.IGNORECASE)
             if match_priv:
                 private = match_priv.group(1).strip()
-            match_pub = re.search(r"Public(?:\\s+key)?:\\s*(\\S+)", line, flags=re.IGNORECASE)
+            match_pub = re.search(r"Public(?:\s+key)?:\s*(\S+)", line, flags=re.IGNORECASE)
             if match_pub:
                 public = match_pub.group(1).strip()
         if not private or not public:
@@ -106,10 +107,29 @@ class ProxyProvisioner:
             check=False,
         ).strip()
         for line in raw.splitlines():
-            match_pub = re.search(r"Public(?:\\s+key)?:\\s*(\\S+)", line, flags=re.IGNORECASE)
+            match_pub = re.search(r"Public(?:\s+key)?:\s*(\S+)", line, flags=re.IGNORECASE)
             if match_pub:
                 return match_pub.group(1).strip()
         raise RuntimeError("Failed to derive Reality public key.")
+
+    def _is_port_busy(self, listen_port: int) -> bool:
+        state = self.ssh.run(
+            f"ss -ltn | awk '{{print $4}}' | grep -q ':{listen_port}$' && echo busy || echo free",
+            check=False,
+        ).strip()
+        return state == "busy"
+
+    def choose_free_port(self, preferred_port: Optional[int] = None) -> Optional[int]:
+        candidates: list[int] = []
+        if isinstance(preferred_port, int) and 1 <= preferred_port <= 65535:
+            candidates.append(preferred_port)
+        for port in self.FALLBACK_PORTS:
+            if port not in candidates:
+                candidates.append(port)
+        for port in candidates:
+            if not self._is_port_busy(port):
+                return port
+        return None
 
     def _public_ip(self) -> str:
         ip = self.ssh.run(
@@ -254,10 +274,7 @@ class ProxyProvisioner:
             sudo_details = "passwordless" if sudo_ok else "sudo requires password"
         checks.append({"name": "sudo", "ok": sudo_ok, "details": sudo_details})
 
-        port_state = self.ssh.run(
-            f"ss -ltn | awk '{{print $4}}' | grep -q ':{listen_port}$' && echo busy || echo free",
-            check=False,
-        ).strip()
+        port_state = "busy" if self._is_port_busy(listen_port) else "free"
         checks.append({"name": "port_available", "ok": port_state != "busy", "details": port_state})
         return checks
 

@@ -564,6 +564,13 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
                 proxy = ProxyProvisioner(ssh, progress=progress)
                 proxy_port = opts.listen_port or 443
                 pre_checks = proxy.pre_check(proxy_port)
+                port_check = next((item for item in pre_checks if item.get("name") == "port_available"), None)
+                if port_check and not port_check.get("ok"):
+                    fallback_port = proxy.choose_free_port(proxy_port)
+                    if fallback_port and fallback_port != proxy_port:
+                        progress(f"Proxy port {proxy_port} is busy. Switching to free port {fallback_port}.")
+                        proxy_port = fallback_port
+                        pre_checks = proxy.pre_check(proxy_port)
                 for item in pre_checks:
                     progress(
                         f"precheck {item.get('name')}: {'ok' if item.get('ok') else 'fail'} ({item.get('details')})"

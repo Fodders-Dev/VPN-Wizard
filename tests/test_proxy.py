@@ -12,6 +12,10 @@ class DummySSH:
     def run(self, command: str, sudo: bool = False, check: bool = True) -> str:
         if "systemctl is-active xray" in command:
             return "active"
+        if "x25519 -i" in command:
+            return "Public key: PUB_FROM_PRIVATE"
+        if "x25519" in command:
+            return "Private key: PRIV\nPublic key: PUB"
         return ""
 
 
@@ -69,3 +73,17 @@ def test_validate_name_rejects_invalid_chars() -> None:
         assert "Proxy client name" in str(exc)
         return
     raise AssertionError("Expected RuntimeError for invalid client name")
+
+
+def test_reality_key_parsers_use_xray_output() -> None:
+    prov = ProxyProvisioner(DummySSH())
+    private_key, public_key = prov._generate_reality_keypair()
+    assert private_key == "PRIV"
+    assert public_key == "PUB"
+    assert prov._derive_public_key("PRIV") == "PUB_FROM_PRIVATE"
+
+
+def test_choose_free_port_uses_fallback_candidates(monkeypatch) -> None:
+    prov = ProxyProvisioner(DummySSH())
+    monkeypatch.setattr(prov, "_is_port_busy", lambda port: port in {443, 2053})
+    assert prov.choose_free_port(443) == 2083
