@@ -5,6 +5,7 @@ import ipaddress
 import os
 import re
 import shlex
+import time
 from typing import Callable, Optional
 
 import paramiko
@@ -22,6 +23,10 @@ class SSHConfig:
     password: Optional[str] = None
     key_path: Optional[str] = None
     timeout: int = 20
+    banner_timeout: int = 45
+    auth_timeout: int = 30
+    connect_retries: int = 2
+    connect_retry_delay: float = 1.0
 
 
 class SSHRunner:
@@ -39,19 +44,40 @@ class SSHRunner:
 
     def connect(self) -> None:
         self.log("Connecting over SSH...")
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        client.connect(
-            hostname=self.config.host,
-            port=self.config.port,
-            username=self.config.user,
-            password=self.config.password,
-            key_filename=self.config.key_path,
-            timeout=self.config.timeout,
-            look_for_keys=False,
-            allow_agent=False,
-        )
-        self.client = client
+        last_error: Optional[Exception] = None
+        attempts = max(1, self.config.connect_retries)
+        for attempt in range(1, attempts + 1):
+            client = paramiko.SSHClient()
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            try:
+                client.connect(
+                    hostname=self.config.host,
+                    port=self.config.port,
+                    username=self.config.user,
+                    password=self.config.password,
+                    key_filename=self.config.key_path,
+                    timeout=self.config.timeout,
+                    banner_timeout=self.config.banner_timeout,
+                    auth_timeout=self.config.auth_timeout,
+                    look_for_keys=False,
+                    allow_agent=False,
+                )
+                self.client = client
+                return
+            except Exception as exc:
+                last_error = exc
+                try:
+                    client.close()
+                except Exception:
+                    pass
+                message = str(exc).lower()
+                banner_issue = "ssh protocol banner" in message or "banner timeout" in message
+                if attempt >= attempts or not banner_issue:
+                    raise
+                self.log(f"SSH banner read failed, retrying ({attempt}/{attempts})...")
+                time.sleep(max(0.0, self.config.connect_retry_delay))
+        if last_error is not None:
+            raise last_error
 
     def close(self) -> None:
         if self.client:

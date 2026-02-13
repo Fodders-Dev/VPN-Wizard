@@ -13,13 +13,13 @@ set -euo pipefail
 # Usage:
 #   sudo bash xray-reality-setup.sh                 # fresh install + first client "client1"
 #   sudo bash xray-reality-setup.sh --add-client alice
-#   sudo bash xray-reality-setup.sh --port 443 --sni www.cloudflare.com
+#   sudo bash xray-reality-setup.sh --port 443 --sni www.microsoft.com
 
 XRAY_BIN="/usr/local/bin/xray"
 XRAY_ETC="/usr/local/etc/xray"
 XRAY_CONF="${XRAY_ETC}/config.json"
 PORT="443"
-SERVER_NAME="www.cloudflare.com"   # SNI to impersonate
+SERVER_NAME="www.microsoft.com"   # SNI to impersonate (Cloudflare is not default for RU)
 FINGERPRINT="chrome"
 ADD_CLIENT_NAME=""
 SHOW_QR="true"
@@ -153,7 +153,7 @@ write_config(){
           "show": false,
           "dest": "${SERVER_NAME}:443",
           "xver": 0,
-          "serverNames": ["${SERVER_NAME}", "www.apple.com", "www.cloudflare.com"],
+          "serverNames": ["${SERVER_NAME}", "www.apple.com", "www.github.com", "www.cloudflare.com"],
           "privateKey": "${REALITY_PRIVATE_KEY}",
           "shortIds": ["${short_id}"]
         }

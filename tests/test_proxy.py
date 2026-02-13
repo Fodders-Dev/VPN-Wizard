@@ -107,6 +107,20 @@ def test_choose_free_port_uses_fallback_candidates(monkeypatch) -> None:
     assert prov.choose_free_port(443) == 2083
 
 
+def test_choose_best_sni_prefers_non_avoided_candidate_when_reachable(monkeypatch) -> None:
+    prov = ProxyProvisioner(DummySSH())
+    monkeypatch.setattr(prov, "_probe_sni", lambda host: host == "www.microsoft.com")
+    selected = prov._choose_best_sni(None, "www.cloudflare.com")
+    assert selected == "www.microsoft.com"
+
+
+def test_choose_best_sni_keeps_existing_when_probes_fail(monkeypatch) -> None:
+    prov = ProxyProvisioner(DummySSH())
+    monkeypatch.setattr(prov, "_probe_sni", lambda host: False)
+    selected = prov._choose_best_sni(None, "www.cloudflare.com")
+    assert selected == "www.cloudflare.com"
+
+
 def _base_reality_config() -> dict:
     return {
         "inbounds": [

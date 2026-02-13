@@ -14,6 +14,7 @@ const progressFill = document.getElementById("progress-fill");
 const spinner = document.querySelector(".spinner");
 const toggleLogBtn = document.getElementById("toggle-log-btn");
 const simpleToggle = document.getElementById("simple-toggle");
+const advancedToggleBtn = document.getElementById("advanced-toggle-btn");
 const advancedFields = document.querySelectorAll(".advanced");
 const addClientBtn = document.getElementById("add-client-btn");
 const checkServerBtn = document.getElementById("check-server-btn");
@@ -127,12 +128,21 @@ const I18N = {
     remember_login_label: "Запомнить вход на этом устройстве",
     remember_login_hint: "Сессия хранится на этом устройстве и обновляется после входа.",
     remember_login_saved: "Вход сохранен",
+    advanced_toggle_btn_show: "Показать расширенные настройки",
+    advanced_toggle_btn_hide: "Скрыть расширенные настройки",
+    advanced_toggle_hint:
+      "Если нужно изменить SSH порт, ключ или порт сервера - откройте расширенные настройки.",
     client_name_label: "Имя профиля",
     client_name_placeholder: "grandma-phone",
     profile_name_hint: "Нужно, чтобы разные устройства не перезаписывали конфиги. Можно оставить пустым.",
     ssh_key_label: "SSH ключ (необязательно)",
     ssh_key_placeholder: "вставьте приватный ключ",
     udp_port_label: "Порт сервера",
+    listen_port_placeholder: "авто",
+    listen_port_hint: "Для прокси оставьте пустым: порт подберется автоматически.",
+    proxy_sni_label: "SNI домен для прокси (опционально)",
+    proxy_sni_placeholder: "авто",
+    proxy_sni_hint: "Пусто = авто-подбор оптимального SNI. Заполняйте только если знаете нужный домен.",
     tour_btn: "Обучение",
     faq_btn: "FAQ",
     safe_mode_label: "Предпросмотр изменений перед установкой",
@@ -148,7 +158,7 @@ const I18N = {
     next_step_after_check_configured: "Сервер уже настроен. Можно сразу управлять профилями.",
     next_step_preview_ready: "Предпросмотр включен: нажатие кнопки покажет план, но ничего не установит.",
     next_step_confirm_install: "Перед установкой подтвердите чекбокс ниже и нажмите кнопку установки.",
-    reconfigure_label: "Показать настройку сервера",
+    reconfigure_label: "Изменить порт / перенастроить сервер",
     simple_mode_label: "Режим новичка (рекомендуется)",
     simple_mode_hint: "Пошаговый безопасный сценарий. Отключайте только если уверены в действиях.",
     provision_btn: "Настроить сервер и получить первый профиль",
@@ -190,8 +200,9 @@ const I18N = {
     onboarding_title: "Быстрый старт",
     onboarding_step1: "1) Введите IP/хост, SSH пользователя и пароль или ключ (SSH порт найдется автоматически).",
     onboarding_step2: "2) Нажмите \"Подключиться\" - если VPN уже есть, появятся профили.",
-    onboarding_step3: "3) Если нет - нажмите \"Настроить сервер\" и скачайте конфиг/ссылку и QR.",
-    onboarding_step4: "4) При блокировках в режиме VPN попробуйте другой порт (например 3478 или 33434).",
+    onboarding_step3:
+      "3) В режиме прокси порт и SNI подберутся автоматически (ручной ввод есть в расширенных настройках).",
+    onboarding_step4: "4) Если нет - нажмите \"Настроить сервер\" и скачайте конфиг/ссылку и QR.",
     profiles_intro_title: "Управление профилями",
     profiles_intro_body: "Сначала подключитесь к серверу. После этого здесь появятся профили, QR и ссылки/конфиги.",
     clients_title: "Профили",
@@ -252,6 +263,7 @@ const I18N = {
     download_ready_proxy: "Скопируйте ссылку или отсканируйте QR в клиенте прокси.",
     check_ok: "ok",
     check_fail: "fail",
+    auto_value: "авто",
     progress_idle: "Ожидание",
     job_queued: "В очереди",
     job_running: "В работе",
@@ -274,6 +286,8 @@ const I18N = {
     alert_export_failed: "Не удалось получить конфиг",
     error_ssh_port_autodetect: "Не удалось автоопределить SSH порт. Укажите его вручную в расширенных настройках.",
     error_port_22_hint: "SSH на порту 22 недоступен. Проверьте SSH порт (например 2222).",
+    error_banner_hint:
+      "На указанном порту отвечает не SSH. Проверьте SSH порт или очистите поле SSH порт для автоопределения.",
     error_auth_hint: "Ошибка SSH авторизации. Проверьте логин, пароль/ключ и SSH порт.",
     install_modal_title: "Подтвердить установку",
     install_modal_body: "Будут изменены сетевые настройки и установлен VPN на вашем сервере.",
@@ -367,12 +381,21 @@ const I18N = {
     remember_login_label: "Remember login on this device",
     remember_login_hint: "A secure session is stored on this device and refreshed after login.",
     remember_login_saved: "Login remembered",
+    advanced_toggle_btn_show: "Show advanced settings",
+    advanced_toggle_btn_hide: "Hide advanced settings",
+    advanced_toggle_hint:
+      "Need to change SSH port, key, or server port? Open advanced settings.",
     client_name_label: "Profile name",
     client_name_placeholder: "grandma-phone",
     profile_name_hint: "Helps avoid overwriting configs between devices. You can leave it empty.",
     ssh_key_label: "SSH key (optional)",
     ssh_key_placeholder: "paste private key",
     udp_port_label: "Server port",
+    listen_port_placeholder: "auto",
+    listen_port_hint: "For proxy, leave empty to auto-select a suitable port.",
+    proxy_sni_label: "Proxy SNI domain (optional)",
+    proxy_sni_placeholder: "auto",
+    proxy_sni_hint: "Leave empty for automatic SNI selection. Fill only if you know a specific domain.",
     tour_btn: "Tour",
     faq_btn: "FAQ",
     safe_mode_label: "Preview changes before setup",
@@ -388,7 +411,7 @@ const I18N = {
     next_step_after_check_configured: "Server is already configured. You can manage profiles now.",
     next_step_preview_ready: "Preview is enabled: button click will show a plan and install nothing.",
     next_step_confirm_install: "Before install, check the confirmation box below and click setup.",
-    reconfigure_label: "Show server setup",
+    reconfigure_label: "Change port / reconfigure server",
     simple_mode_label: "Novice mode (recommended)",
     simple_mode_hint: "Safe step-by-step flow. Disable only if you understand the risks.",
     provision_btn: "Configure server and get the first profile",
@@ -430,8 +453,9 @@ const I18N = {
     onboarding_title: "Quick start",
     onboarding_step1: "1) Enter host, SSH user, and password or key (SSH port is auto-detected).",
     onboarding_step2: "2) Click \"Connect\" - if VPN exists you will see profiles.",
-    onboarding_step3: "3) Otherwise click \"Configure server\" and download config/link + QR.",
-    onboarding_step4: "4) In VPN mode under blocking, try another port (for example 3478 or 33434).",
+    onboarding_step3:
+      "3) In proxy mode, port and SNI are auto-selected (manual override is in advanced settings).",
+    onboarding_step4: "4) Otherwise click \"Configure server\" and download config/link + QR.",
     profiles_intro_title: "Profile management",
     profiles_intro_body: "Connect to a server first. Profiles, QR and links/configs will appear here.",
     clients_title: "Profiles",
@@ -492,6 +516,7 @@ const I18N = {
     download_ready_proxy: "Ready. Copy the link or scan the QR in your proxy client.",
     check_ok: "ok",
     check_fail: "fail",
+    auto_value: "auto",
     progress_idle: "Waiting",
     job_queued: "Queued",
     job_running: "Running",
@@ -514,6 +539,8 @@ const I18N = {
     alert_export_failed: "Failed to export config",
     error_ssh_port_autodetect: "Could not auto-detect SSH port. Set it manually in advanced settings.",
     error_port_22_hint: "Cannot reach SSH on port 22. Check the SSH port (for example 2222).",
+    error_banner_hint:
+      "The selected port is not speaking SSH. Check SSH port or clear SSH port field to use auto-discovery.",
     error_auth_hint: "SSH auth failed. Check user, password/key, and SSH port.",
     install_modal_title: "Confirm installation",
     install_modal_body: "Server network settings will be changed and VPN will be installed.",
@@ -573,6 +600,7 @@ const LANG_KEY = "vpnw_lang";
 const SERVERS_KEY = "vpnw_servers";
 const ACTIVE_SERVER_KEY = "vpnw_active_server";
 const ACTIVE_TAB_KEY = "vpnw_active_tab";
+const SIMPLE_MODE_KEY = "vpnw_simple_mode";
 const LEGACY_KEYS = ["vpnw_creds", "vpnw_salt", "vpnw_iv"];
 const WIZARD_MIN_STEP = 1;
 const WIZARD_MAX_STEP = 3;
@@ -644,11 +672,19 @@ function t(key) {
   return I18N[currentLang]?.[key] || I18N.ru[key] || key;
 }
 
+function isReconfigureMode() {
+  return Boolean(reconfigureCheckbox?.checked && STATE.checked && serverConfigured);
+}
+
+function isUiConfigured() {
+  return serverConfigured && !isReconfigureMode();
+}
+
 function getMaxWizardStep() {
   if (!STATE.checked) {
     return WIZARD_MIN_STEP;
   }
-  if (!serverConfigured) {
+  if (!isUiConfigured()) {
     return 2;
   }
   return WIZARD_MAX_STEP;
@@ -704,7 +740,7 @@ function updateWizardUi() {
     if (STATE.wizardStep <= 1) {
       wizardNextBtn.textContent = STATE.checked ? t("wizard_action_next") : t("wizard_action_connect");
     } else if (STATE.wizardStep === 2) {
-      wizardNextBtn.textContent = serverConfigured ? t("wizard_action_to_profile") : t("wizard_action_setup");
+      wizardNextBtn.textContent = isUiConfigured() ? t("wizard_action_to_profile") : t("wizard_action_setup");
     } else {
       wizardNextBtn.textContent = t("wizard_action_to_cabinet");
     }
@@ -714,7 +750,7 @@ function updateWizardUi() {
       wizardHintEl.textContent = t("wizard_hint_step1");
     } else if (STATE.wizardStep === 2) {
       wizardHintEl.textContent = STATE.checked
-        ? serverConfigured
+        ? isUiConfigured()
           ? t("wizard_hint_step2_ready")
           : t("wizard_hint_step2_setup")
         : t("wizard_hint_need_connect");
@@ -892,6 +928,7 @@ function applyI18n() {
   renderFaq();
   updateTourStep();
   setLogVisible(STATE.logVisible);
+  updateAdvancedToggleUi();
   updateStageVisibility();
   setActiveTab(STATE.activeTab, { silent: true });
 }
@@ -1020,7 +1057,7 @@ tabButtons.forEach((btn) => {
     if (btn.dataset.tab === "connect") {
       setWizardStep(1, { syncTab: false });
     } else if (btn.dataset.tab === "profiles") {
-      const nextStep = getMaxWizardStep() >= 2 ? (serverConfigured ? 3 : 2) : 1;
+      const nextStep = getMaxWizardStep() >= 2 ? (isUiConfigured() ? 3 : 2) : 1;
       setWizardStep(nextStep, { syncTab: false });
     }
   });
@@ -1061,7 +1098,7 @@ if (wizardNextBtn) {
         setWizardStep(1, { syncTab: true, scroll: true });
         return;
       }
-      if (!serverConfigured) {
+      if (!isUiConfigured()) {
         await runProvision();
         return;
       }
@@ -1289,7 +1326,8 @@ function setProgressVisible(visible) {
 
 function updateStageVisibility() {
   const checked = STATE.checked;
-  const configured = serverConfigured;
+  const configured = isUiConfigured();
+  const reconfiguring = isReconfigureMode();
 
   if (profilesIntroCard) {
     profilesIntroCard.classList.remove("hidden");
@@ -1306,19 +1344,22 @@ function updateStageVisibility() {
     serversCard.classList.remove("hidden");
   }
   if (clientsCard) {
-    clientsCard.classList.toggle("hidden", !checked || !configured);
+    clientsCard.classList.toggle("hidden", !checked || !serverConfigured);
   }
   if (addClientBtn) {
-    addClientBtn.classList.toggle("hidden", !checked || !configured);
+    addClientBtn.classList.toggle("hidden", !checked || !serverConfigured || reconfiguring);
   }
   if (provisionBtn) {
     provisionBtn.classList.toggle("hidden", !checked || configured);
   }
   profileOnlyFields.forEach((field) => {
-    field.classList.toggle("hidden", !checked);
+    field.classList.toggle("hidden", !checked || reconfiguring);
   });
   if (reconfigureToggle) {
-    reconfigureToggle.classList.add("hidden");
+    reconfigureToggle.classList.toggle("hidden", !(checked && serverConfigured));
+  }
+  if ((!checked || !serverConfigured) && reconfigureCheckbox?.checked) {
+    reconfigureCheckbox.checked = false;
   }
   if (!checked) {
     STATE.wizardStep = 1;
@@ -1591,6 +1632,7 @@ function getFormData() {
   const parsedHost = splitHostAndPort(data.host, data.ssh_port);
   const listenPort = normalizeListenPort(data.listen_port);
   const connectionMode = getConnectionMode({ connection_mode: data.connection_mode });
+  const proxySni = (data.proxy_sni || "").trim().toLowerCase();
   return {
     host: parsedHost.host,
     user: (data.user || "").trim(),
@@ -1599,6 +1641,7 @@ function getFormData() {
     key_content: keyContent || null,
     client_name: (data.client_name || "").trim(),
     listen_port: listenPort,
+    proxy_sni: proxySni || null,
     safe_mode: connectionMode !== "vless_reality" && Boolean(safeToggle?.checked) && !simpleToggle.checked,
     connection_mode: connectionMode,
     remember_login: Boolean(rememberLoginToggle?.checked),
@@ -1624,6 +1667,7 @@ function loadServers() {
         ssh_port: parseOptionalSshPort(item.ssh_port),
         mode: item.mode === "vless_reality" ? "vless_reality" : "amneziawg",
         listen_port: normalizeListenPort(item.listen_port),
+        proxy_sni: String(item.proxy_sni || "").trim().toLowerCase() || undefined,
         clients_count:
           typeof item.clients_count === "number" && item.clients_count >= 0
             ? item.clients_count
@@ -1673,6 +1717,9 @@ function renderServers() {
     }
     if (server.listen_port) {
       parts.push(`${t("meta_port")}: ${server.listen_port}`);
+    }
+    if (server.mode === "vless_reality" && server.proxy_sni) {
+      parts.push(`${t("meta_sni")}: ${server.proxy_sni}`);
     }
     if (server.clients_count !== undefined) {
       parts.push(`${t("meta_clients")}: ${server.clients_count}`);
@@ -1741,6 +1788,7 @@ function upsertServer(entry) {
     ssh_port: parseOptionalSshPort(entry.ssh_port),
     mode: getConnectionMode({ connection_mode: entry.mode }),
     listen_port: normalizeListenPort(entry.listen_port),
+    proxy_sni: String(entry.proxy_sni || "").trim().toLowerCase() || undefined,
     clients_count:
       typeof entry.clients_count === "number" && entry.clients_count >= 0
         ? entry.clients_count
@@ -1783,6 +1831,11 @@ function applyServerToForm(server) {
   }
   if (form.elements.listen_port && server.listen_port) {
     form.elements.listen_port.value = server.listen_port;
+  } else if (form.elements.listen_port) {
+    form.elements.listen_port.value = "";
+  }
+  if (form.elements.proxy_sni) {
+    form.elements.proxy_sni.value = server.proxy_sni || "";
   }
   if (form.elements.password) {
     form.elements.password.value = "";
@@ -1797,6 +1850,7 @@ function applyServerToForm(server) {
     rememberLoginToggle.checked = Boolean(server.session_id);
   }
   updateModeUi({ connection_mode: server.mode });
+  ensureListenPortDefaultForMode();
 }
 
 function removeServer(server) {
@@ -1986,6 +2040,9 @@ function humanizeError(error, data = null) {
   if (!message) {
     return t("status_failed");
   }
+  if (/error reading ssh protocol banner/i.test(message)) {
+    return `${message}. ${t("error_banner_hint")}`;
+  }
   if (/session expired/i.test(message)) {
     return t("status_relogin_required");
   }
@@ -2026,8 +2083,14 @@ async function tryRecoverProvisionFromServer(jobId, clientName, authData) {
     STATE.lastAuth = authData;
     STATE.checked = true;
     serverConfigured = true;
+    if (reconfigureCheckbox) {
+      reconfigureCheckbox.checked = false;
+    }
     if (status.listen_port && form.elements.listen_port) {
       form.elements.listen_port.value = status.listen_port;
+    }
+    if (status.proxy_sni && form.elements.proxy_sni) {
+      form.elements.proxy_sni.value = status.proxy_sni;
     }
     setServerMeta(status);
     updateStageVisibility();
@@ -2144,7 +2207,7 @@ function setSafeVisibility() {
     return;
   }
   const proxyMode = isProxyMode();
-  const shouldShow = !proxyMode && STATE.checked && !serverConfigured;
+  const shouldShow = !proxyMode && STATE.checked && !isUiConfigured();
   safeRow.classList.toggle("hidden", !shouldShow);
   if (shouldShow && !STATE.safeTouched) {
     safeToggle.checked = true;
@@ -2161,7 +2224,7 @@ function updateInstallGuard() {
   if (!installGuard || !installConfirmToggle || !safeToggle) {
     return;
   }
-  const requiresConfirm = !isProxyMode() && STATE.checked && !serverConfigured && !safeToggle.checked;
+  const requiresConfirm = !isProxyMode() && STATE.checked && !isUiConfigured() && !safeToggle.checked;
   installGuard.classList.toggle("hidden", !requiresConfirm);
   if (!requiresConfirm) {
     installConfirmToggle.checked = false;
@@ -2180,7 +2243,7 @@ function updateNextStepMessage() {
     nextStepEl.textContent = t("next_step_initial");
     return;
   }
-  if (serverConfigured) {
+  if (isUiConfigured()) {
     nextStepEl.textContent = t("next_step_after_check_configured");
     return;
   }
@@ -2207,8 +2270,10 @@ function setInstallSummary(data) {
   if (!installSummary) {
     return;
   }
-  const port = data.listen_port || form.elements.listen_port?.value || "-";
   const proxyMode = isProxyMode(data);
+  const port = proxyMode
+    ? data.listen_port || form.elements.listen_port?.value || t("auto_value")
+    : data.listen_port || form.elements.listen_port?.value || "3478";
   const lines = [
     `${t("install_summary_host")}: ${data.host || "-"}`,
     `${t("install_summary_ssh")}: ${data.user || "-"}@${data.host || "-"}:${data.ssh_port || 22}`,
@@ -2253,26 +2318,65 @@ function setSimpleMode(enabled) {
   setSafeVisibility();
   updateNextStepMessage();
   updateModeUi();
+  updateAdvancedToggleUi();
   updateWizardUi();
 }
 
+function updateAdvancedToggleUi() {
+  if (!advancedToggleBtn || !simpleToggle) {
+    return;
+  }
+  const simpleMode = Boolean(simpleToggle.checked);
+  advancedToggleBtn.textContent = simpleMode ? t("advanced_toggle_btn_show") : t("advanced_toggle_btn_hide");
+  advancedToggleBtn.setAttribute("aria-expanded", simpleMode ? "false" : "true");
+}
+
+function ensureListenPortDefaultForMode() {
+  if (!form?.elements?.listen_port) {
+    return;
+  }
+  const mode = getConnectionMode();
+  const currentPort = Number.parseInt(form.elements.listen_port.value || "", 10);
+  if (mode === "vless_reality") {
+    if (currentPort === 3478) {
+      form.elements.listen_port.value = "";
+    }
+    return;
+  }
+  if (!Number.isFinite(currentPort)) {
+    form.elements.listen_port.value = "3478";
+  }
+}
+
+if (simpleToggle) {
+  const storedSimpleMode = localStorage.getItem(SIMPLE_MODE_KEY);
+  if (storedSimpleMode === "true" || storedSimpleMode === "false") {
+    simpleToggle.checked = storedSimpleMode === "true";
+  }
+}
+
 setSimpleMode(simpleToggle?.checked ?? true);
-simpleToggle.addEventListener("change", () => {
-  setSimpleMode(simpleToggle.checked);
-});
+ensureListenPortDefaultForMode();
+if (simpleToggle) {
+  simpleToggle.addEventListener("change", () => {
+    setSimpleMode(simpleToggle.checked);
+    localStorage.setItem(SIMPLE_MODE_KEY, String(simpleToggle.checked));
+  });
+}
+if (advancedToggleBtn && simpleToggle) {
+  advancedToggleBtn.addEventListener("click", () => {
+    simpleToggle.checked = !simpleToggle.checked;
+    setSimpleMode(simpleToggle.checked);
+    localStorage.setItem(SIMPLE_MODE_KEY, String(simpleToggle.checked));
+    if (!simpleToggle.checked && form?.elements?.ssh_port) {
+      form.elements.ssh_port.focus();
+    }
+  });
+}
 
 if (connectionModeSelect) {
   connectionModeSelect.addEventListener("change", () => {
-    const mode = getConnectionMode();
-    if (form?.elements?.listen_port) {
-      const currentPort = Number.parseInt(form.elements.listen_port.value || "", 10);
-      if (mode === "vless_reality" && (!Number.isFinite(currentPort) || currentPort === 3478)) {
-        form.elements.listen_port.value = "443";
-      }
-      if (mode !== "vless_reality" && currentPort === 443) {
-        form.elements.listen_port.value = "3478";
-      }
-    }
+    ensureListenPortDefaultForMode();
     STATE.safeTouched = false;
     serverConfigured = false;
     STATE.checked = false;
@@ -2632,6 +2736,7 @@ async function refreshClients(data) {
       ssh_port: data.ssh_port || undefined,
       mode: getConnectionMode(data),
       listen_port: data.listen_port || undefined,
+      proxy_sni: data.proxy_sni || undefined,
       clients_count: clients.length,
       session_id: data.session_id || undefined,
     });
@@ -2701,8 +2806,35 @@ async function pollJob(jobId, clientName, authData) {
       provisionBtn.disabled = false;
     }
     serverConfigured = true;
+    if (reconfigureCheckbox) {
+      reconfigureCheckbox.checked = false;
+    }
     updateStageVisibility();
     if (authData) {
+      try {
+        const freshStatus = await fetchServerStatus(authData);
+        if (freshStatus?.ok && freshStatus.configured) {
+          if (freshStatus.listen_port && form.elements.listen_port) {
+            form.elements.listen_port.value = freshStatus.listen_port;
+          }
+          if (freshStatus.proxy_sni && form.elements.proxy_sni) {
+            form.elements.proxy_sni.value = freshStatus.proxy_sni;
+          }
+          setServerMeta(freshStatus);
+          upsertServer({
+            host: authData.host,
+            user: authData.user,
+            ssh_port: authData.ssh_port || undefined,
+            mode: getConnectionMode(authData),
+            listen_port: freshStatus.listen_port || authData.listen_port || undefined,
+            proxy_sni: freshStatus.proxy_sni || authData.proxy_sni || undefined,
+            clients_count: freshStatus.clients_count,
+            session_id: authData.remember_login ? authData.session_id || undefined : null,
+          });
+        }
+      } catch (err) {
+        // Non-fatal: profile is already provisioned.
+      }
       await refreshClients(authData);
     }
   }
@@ -2718,6 +2850,9 @@ async function runServerCheck(data) {
   if (!data.host || !data.user) {
     alert(t("alert_fill_host_user"));
     return;
+  }
+  if (reconfigureCheckbox) {
+    reconfigureCheckbox.checked = false;
   }
   setWizardStep(1, { syncTab: true });
   const authData = { ...data };
@@ -2802,6 +2937,9 @@ async function runServerCheck(data) {
     if (result.listen_port && form.elements.listen_port) {
       form.elements.listen_port.value = result.listen_port;
     }
+    if (result.proxy_sni && form.elements.proxy_sni) {
+      form.elements.proxy_sni.value = result.proxy_sni;
+    }
     setServerMeta(result);
     updateStageVisibility();
     upsertServer({
@@ -2810,6 +2948,7 @@ async function runServerCheck(data) {
       ssh_port: authData.ssh_port || undefined,
       mode: getConnectionMode(authData),
       listen_port: result.listen_port || authData.listen_port || undefined,
+      proxy_sni: result.proxy_sni || authData.proxy_sni || undefined,
       clients_count: result.clients_count,
       session_id: authData.remember_login ? authData.session_id || undefined : null,
     });
@@ -2835,6 +2974,7 @@ async function runServerCheck(data) {
         ssh_port: authData.ssh_port || undefined,
         mode: getConnectionMode(authData),
         listen_port: authData.listen_port || undefined,
+        proxy_sni: authData.proxy_sni || undefined,
         session_id: null,
       });
     }
@@ -2892,7 +3032,7 @@ async function runProvision() {
   const previewDone = Boolean(currentServerKey && STATE.previewDoneByServer[currentServerKey]);
   const noviceMode = Boolean(simpleToggle?.checked);
   const proxyMode = isProxyMode(data);
-  if (!proxyMode && noviceMode && !data.safe_mode && !serverConfigured && !previewDone) {
+  if (!proxyMode && noviceMode && !data.safe_mode && !isUiConfigured() && !previewDone) {
     if (safeToggle) {
       safeToggle.checked = true;
     }
@@ -2992,6 +3132,9 @@ async function runProvision() {
   if (data.listen_port) {
     payload.options.listen_port = data.listen_port;
   }
+  if (data.proxy_sni) {
+    payload.options.proxy_sni = data.proxy_sni;
+  }
 
   const currentClientName = data.client_name || "client1";
 
@@ -3010,6 +3153,7 @@ async function runProvision() {
       ssh_port: data.ssh_port || undefined,
       mode: getConnectionMode(data),
       listen_port: data.listen_port || undefined,
+      proxy_sni: data.proxy_sni || undefined,
       session_id: data.remember_login ? data.session_id || undefined : null,
     });
     if (pollTimer) {
@@ -3125,6 +3269,7 @@ addClientBtn.addEventListener("click", async () => {
       ssh_port: data.ssh_port || undefined,
       mode: getConnectionMode(data),
       listen_port: data.listen_port || undefined,
+      proxy_sni: data.proxy_sni || undefined,
       session_id: data.remember_login ? data.session_id || undefined : null,
     });
     serverConfigured = true;

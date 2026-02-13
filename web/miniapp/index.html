@@ -91,6 +91,12 @@
             Сохраняем защищенную сессию для авто-проверки после обновления страницы.
           </small>
         </div>
+        <div class="advanced-shortcut">
+          <button type="button" class="secondary" id="advanced-toggle-btn">Расширенные настройки</button>
+          <small class="field-hint" data-i18n="advanced_toggle_hint">
+            Если нужно изменить SSH порт, ключ или порт сервера - откройте расширенные настройки.
+          </small>
+        </div>
         <div class="onboarding-panel stage-unchecked-only">
           <div class="onboarding-title" data-i18n="onboarding_title">Быстрый старт</div>
           <div class="onboarding-item" data-i18n="onboarding_step1">
@@ -134,7 +140,17 @@
         </label>
         <label class="advanced">
           <span data-i18n="udp_port_label">UDP порт сервера</span>
-          <input name="listen_port" type="number" min="1" max="65535" value="3478" />
+          <input name="listen_port" type="number" min="1" max="65535" placeholder="auto" data-i18n-placeholder="listen_port_placeholder" />
+          <small class="field-hint" data-i18n="listen_port_hint">
+            Для прокси можно оставить пустым: порт подберется автоматически.
+          </small>
+        </label>
+        <label class="advanced">
+          <span data-i18n="proxy_sni_label">SNI домен для прокси (опционально)</span>
+          <input name="proxy_sni" placeholder="auto" data-i18n-placeholder="proxy_sni_placeholder" />
+          <small class="field-hint" data-i18n="proxy_sni_hint">
+            Пусто = авто-подбор оптимального SNI. Заполняйте только если знаете нужный домен.
+          </small>
         </label>
         <div class="advanced safe-row hidden">
           <label class="toggle">
@@ -170,10 +186,10 @@
           </a>
           <label class="toggle hidden" id="reconfigure-toggle">
             <input type="checkbox" id="reconfigure-checkbox" />
-            <span data-i18n="reconfigure_label">Показать настройку сервера</span>
+            <span data-i18n="reconfigure_label">Изменить порт / перенастроить сервер</span>
           </label>
         </div>
-        <div class="toggle-row stage-before-config">
+        <div class="toggle-row">
           <label class="toggle">
             <input type="checkbox" id="simple-toggle" checked />
             <span data-i18n="simple_mode_label">Простой режим</span>

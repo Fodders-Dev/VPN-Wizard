@@ -195,7 +195,7 @@ class ProvisionOptions(BaseModel):
     client_name: str = "client1"
     client_ip: Optional[str] = None
     server_cidr: str = "10.10.0.1/24"
-    listen_port: int = 3478
+    listen_port: Optional[int] = None
     dns: str = "1.1.1.1, 1.0.0.1"
     mtu: Optional[int] = None
     auto_mtu: bool = True
@@ -562,7 +562,18 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
             suffix = "conf"
             if opts.protocol == "vless_reality":
                 proxy = ProxyProvisioner(ssh, progress=progress)
-                proxy_port = opts.listen_port or 443
+                proxy_port = opts.listen_port
+                if not proxy_port:
+                    auto_port = proxy.choose_free_port()
+                    if not auto_port:
+                        JOB_STORE.update(
+                            job_id,
+                            status="error",
+                            error="Could not find a free proxy TCP port automatically. Set it manually.",
+                        )
+                        return
+                    proxy_port = auto_port
+                    progress(f"Proxy port selected automatically: {proxy_port}.")
                 pre_checks = proxy.pre_check(proxy_port)
                 port_check = next((item for item in pre_checks if item.get("name") == "port_available"), None)
                 if port_check and not port_check.get("ok"):
@@ -594,7 +605,7 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
                     client_name=opts.client_name,
                     client_ip=opts.client_ip,
                     server_cidr=opts.server_cidr,
-                    listen_port=opts.listen_port,
+                    listen_port=opts.listen_port or 3478,
                     dns=opts.dns,
                     mtu=opts.mtu,
                     auto_mtu=opts.auto_mtu,
@@ -1026,14 +1037,27 @@ async def server_precheck(payload: ProvisionRequest) -> PrecheckResponse:
             opts = payload.options
             if opts.protocol == "vless_reality":
                 proxy = ProxyProvisioner(ssh)
-                checks = proxy.pre_check(opts.listen_port or 443)
+                proxy_port = opts.listen_port
+                auto_selected = False
+                if not proxy_port:
+                    proxy_port = proxy.choose_free_port() or 443
+                    auto_selected = True
+                checks = proxy.pre_check(proxy_port)
+                if auto_selected:
+                    checks.append(
+                        {
+                            "name": "proxy_port_selected",
+                            "ok": True,
+                            "details": str(proxy_port),
+                        }
+                    )
             else:
                 prov = WireGuardProvisioner(
                     ssh,
                     client_name=opts.client_name,
                     client_ip=opts.client_ip,
                     server_cidr=opts.server_cidr,
-                    listen_port=opts.listen_port,
+                    listen_port=opts.listen_port or 3478,
                     dns=opts.dns,
                     mtu=opts.mtu,
                     auto_mtu=opts.auto_mtu,

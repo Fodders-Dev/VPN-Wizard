@@ -17,8 +17,12 @@ ssh root@YOUR_SERVER_IP 'sudo bash /root/xray-reality-setup.sh --add-client ipho
 
 Параметры (опционально):
 - `--port 443` — TCP порт (обычно 443)
-- `--sni www.cloudflare.com` — домен для маскировки
+- `--sni <domain>` — домен для маскировки (если не указывать, лучше использовать авто-подбор)
 - `--fingerprint chrome` — TLS fingerprint
+
+Рекомендация для РФ:
+- Не ставьте `www.cloudflare.com` как первый/единственный SNI по умолчанию.
+- Лучше использовать авто-подбор или вручную задать более нейтральный домен (например Microsoft/Apple/GitHub).
 
 #### Клиенты
 - Android: v2rayNG (Google Play / GitHub). Нажмите “+” → “Импорт по ссылке” → вставьте `vless://...` из вывода, сохраните.

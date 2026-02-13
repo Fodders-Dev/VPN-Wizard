@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import uuid
@@ -10,24 +11,54 @@ from urllib.parse import quote
 from vpn_wizard.core import SSHRunner
 
 
+def _parse_domain_list(raw: str, fallback: tuple[str, ...]) -> tuple[str, ...]:
+    values: list[str] = []
+    for chunk in (raw or "").split(","):
+        item = chunk.strip().lower().rstrip(".")
+        if not item:
+            continue
+        values.append(item)
+    deduped = list(dict.fromkeys(values))
+    if not deduped:
+        deduped = list(fallback)
+    return tuple(deduped)
+
+
 class ProxyProvisioner:
     XRAY_BIN = "/usr/local/bin/xray"
     XRAY_ETC = "/usr/local/etc/xray"
     XRAY_CONF = f"{XRAY_ETC}/config.json"
     FALLBACK_PORTS = (443, 2053, 2083, 2087, 2096, 8443)
+    DEFAULT_SNI_CANDIDATES = _parse_domain_list(
+        os.getenv(
+            "VPNW_PROXY_SNI_CANDIDATES",
+            "www.microsoft.com,www.apple.com,www.github.com,www.wikipedia.org,www.cloudflare.com",
+        ),
+        ("www.microsoft.com", "www.apple.com", "www.github.com", "www.wikipedia.org", "www.cloudflare.com"),
+    )
+    AVOID_SNI = set(
+        _parse_domain_list(
+            os.getenv("VPNW_PROXY_SNI_AVOID", "www.cloudflare.com,cloudflare.com"),
+            ("www.cloudflare.com", "cloudflare.com"),
+        )
+    )
+    _sni_pattern = re.compile(r"^(?=.{1,253}$)(?!-)(?:[a-zA-Z0-9-]{1,63}\.)+[a-zA-Z]{2,63}$")
 
     def __init__(
         self,
         ssh: SSHRunner,
         progress: Optional[Callable[[str], None]] = None,
         default_port: int = 443,
-        default_sni: str = "www.cloudflare.com",
+        default_sni: Optional[str] = None,
         fingerprint: str = "chrome",
     ) -> None:
         self.ssh = ssh
         self.progress = progress or (lambda _: None)
         self.default_port = default_port
-        self.default_sni = default_sni
+        self.sni_candidates = list(self.DEFAULT_SNI_CANDIDATES)
+        self.default_sni = self._normalize_sni(default_sni) or self.sni_candidates[0]
+        if self.default_sni not in self.sni_candidates:
+            self.sni_candidates.insert(0, self.default_sni)
         self.fingerprint = fingerprint
         self._name_pattern = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
@@ -37,8 +68,25 @@ class ProxyProvisioner:
             raise RuntimeError("Proxy client name must match [a-zA-Z0-9_-]{1,64}.")
         return value
 
+    def _normalize_sni(self, host: Optional[str]) -> str:
+        value = str(host or "").strip().lower().rstrip(".")
+        if not value:
+            return ""
+        return value
+
+    def _is_valid_sni(self, host: str) -> bool:
+        return bool(self._sni_pattern.match(host))
+
+    def _is_avoided_sni(self, host: str) -> bool:
+        value = self._normalize_sni(host)
+        if not value:
+            return True
+        if value in self.AVOID_SNI:
+            return True
+        return any(value.endswith(f".{blocked}") for blocked in self.AVOID_SNI)
+
     def _split_sni_from_dest(self, dest: str) -> str:
-        clean = (dest or "").strip()
+        clean = self._normalize_sni(dest)
         if not clean:
             return self.default_sni
         if ":" in clean:
@@ -51,16 +99,79 @@ class ProxyProvisioner:
         return uuid.uuid4().hex[:16]
 
     def _build_server_names(self, primary_sni: str) -> list[str]:
-        ordered = [primary_sni, "www.cloudflare.com", "www.apple.com"]
+        ordered = [primary_sni] + self.sni_candidates + ["www.cloudflare.com", "www.apple.com"]
         seen: set[str] = set()
         result: list[str] = []
         for item in ordered:
-            value = (item or "").strip()
-            if not value or value in seen:
+            value = self._normalize_sni(item)
+            if not value or value in seen or not self._is_valid_sni(value):
                 continue
             seen.add(value)
             result.append(value)
+            if len(result) >= 6:
+                break
         return result
+
+    def _probe_sni(self, host: str) -> bool:
+        value = self._normalize_sni(host)
+        if not value or not self._is_valid_sni(value):
+            return False
+        strict = self.ssh.run(
+            "bash -lc "
+            + shlex.quote(
+                f"curl -m 6 --tlsv1.3 --http2 -fsSI https://{value} >/dev/null 2>&1 && echo ok || echo fail"
+            ),
+            check=False,
+        ).strip()
+        if strict == "ok":
+            return True
+        relaxed = self.ssh.run(
+            "bash -lc " + shlex.quote(f"curl -m 6 -fsSI https://{value} >/dev/null 2>&1 && echo ok || echo fail"),
+            check=False,
+        ).strip()
+        return relaxed == "ok"
+
+    def _choose_best_sni(self, preferred: Optional[str], existing: Optional[str]) -> str:
+        explicit = self._normalize_sni(preferred)
+        if explicit:
+            if not self._is_valid_sni(explicit):
+                raise RuntimeError("Proxy SNI must be a valid domain name.")
+            self.progress(f"Using custom proxy SNI: {explicit}")
+            return explicit
+
+        ordered: list[str] = []
+        current = self._normalize_sni(existing)
+        if current:
+            ordered.append(current)
+        for item in self.sni_candidates:
+            ordered.append(self._normalize_sni(item))
+        ordered.append(self.default_sni)
+
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for item in ordered:
+            if not item or item in seen or not self._is_valid_sni(item):
+                continue
+            seen.add(item)
+            deduped.append(item)
+
+        preferred_pool = [item for item in deduped if not self._is_avoided_sni(item)]
+        fallback_pool = [item for item in deduped if self._is_avoided_sni(item)]
+        probe_order = preferred_pool + fallback_pool
+        self.progress("Selecting Reality SNI automatically (RU-optimized)")
+        for candidate in probe_order:
+            ok = self._probe_sni(candidate)
+            self.progress(f"SNI probe {candidate}: {'ok' if ok else 'fail'}")
+            if ok:
+                return candidate
+
+        if current and self._is_valid_sni(current):
+            return current
+        if preferred_pool:
+            return preferred_pool[0]
+        if deduped:
+            return deduped[0]
+        return self.default_sni
 
     def _extract_reality_inbound(self, cfg: dict) -> Optional[dict]:
         inbounds = cfg.get("inbounds")
@@ -310,11 +421,12 @@ class ProxyProvisioner:
         port = int(listen_port or self.default_port)
         if port < 1 or port > 65535:
             raise RuntimeError("Proxy port must be between 1 and 65535.")
-        server_name = (sni or self.default_sni).strip() or self.default_sni
 
         self._ensure_prereqs()
         config = self._read_config()
         existing_inbound = self._extract_reality_inbound(config or {}) if config else None
+        existing_sni = self._resolve_sni(existing_inbound) if existing_inbound else None
+        server_name = self._choose_best_sni(sni, existing_sni)
 
         if config and existing_inbound:
             self.progress("Reusing existing Reality config")
@@ -323,7 +435,7 @@ class ProxyProvisioner:
             reality = stream.setdefault("realitySettings", {})
             changed = False
 
-            selected_sni = (sni or self._resolve_sni(inbound) or self.default_sni).strip() or self.default_sni
+            selected_sni = server_name
             selected_port = current_port
             if isinstance(port, int) and 1 <= port <= 65535 and port != current_port:
                 selected_port = port
@@ -333,7 +445,21 @@ class ProxyProvisioner:
             if reality.get("dest") != f"{selected_sni}:443":
                 reality["dest"] = f"{selected_sni}:443"
                 changed = True
-            server_names = self._build_server_names(selected_sni)
+
+            existing_names_raw = reality.get("serverNames")
+            existing_names: list[str] = []
+            if isinstance(existing_names_raw, list):
+                seen_names: set[str] = set()
+                for item in existing_names_raw:
+                    value = self._normalize_sni(item)
+                    if not value or value in seen_names or not self._is_valid_sni(value):
+                        continue
+                    seen_names.add(value)
+                    existing_names.append(value)
+            if existing_names and existing_names[0] == selected_sni:
+                server_names = existing_names
+            else:
+                server_names = self._build_server_names(selected_sni)
             if reality.get("serverNames") != server_names:
                 reality["serverNames"] = server_names
                 changed = True
