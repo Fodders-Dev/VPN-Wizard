@@ -104,7 +104,7 @@ def test_reality_key_parsers_support_legacy_public_key(monkeypatch) -> None:
 def test_choose_free_port_uses_fallback_candidates(monkeypatch) -> None:
     prov = ProxyProvisioner(DummySSH())
     monkeypatch.setattr(prov, "_is_port_busy", lambda port: port in {443, 2053})
-    assert prov.choose_free_port(443) == 2083
+    assert prov.choose_free_port(443) == 8443
 
 
 def test_choose_best_sni_prefers_non_avoided_candidate_when_reachable(monkeypatch) -> None:

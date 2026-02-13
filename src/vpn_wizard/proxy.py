@@ -28,7 +28,7 @@ class ProxyProvisioner:
     XRAY_BIN = "/usr/local/bin/xray"
     XRAY_ETC = "/usr/local/etc/xray"
     XRAY_CONF = f"{XRAY_ETC}/config.json"
-    FALLBACK_PORTS = (443, 2053, 2083, 2087, 2096, 8443)
+    FALLBACK_PORTS = (443, 8443, 2083, 2053, 2087, 2096)
     DEFAULT_SNI_CANDIDATES = _parse_domain_list(
         os.getenv(
             "VPNW_PROXY_SNI_CANDIDATES",
@@ -261,6 +261,46 @@ class ProxyProvisioner:
             if not self._is_port_busy(port):
                 return port
         return None
+
+    def _ensure_firewall_port(self, listen_port: int) -> None:
+        port = int(listen_port)
+        if port < 1 or port > 65535:
+            return
+
+        ufw_active = self.ssh.run(
+            "command -v ufw >/dev/null 2>&1 && "
+            "ufw status 2>/dev/null | head -n 1 | grep -qi 'Status: active' && echo yes || echo no",
+            sudo=True,
+            check=False,
+        ).strip()
+        if ufw_active == "yes":
+            allowed = self.ssh.run(
+                f"ufw status 2>/dev/null | grep -Eiq '^\\s*{port}/tcp\\s+ALLOW' && echo yes || echo no",
+                sudo=True,
+                check=False,
+            ).strip()
+            if allowed != "yes":
+                self.progress(f"Opening TCP {port} in UFW")
+                self.ssh.run(f"ufw allow {port}/tcp", sudo=True, check=False)
+            return
+
+        firewalld_active = self.ssh.run(
+            "command -v firewall-cmd >/dev/null 2>&1 && "
+            "systemctl is-active firewalld >/dev/null 2>&1 && echo yes || echo no",
+            sudo=True,
+            check=False,
+        ).strip()
+        if firewalld_active == "yes":
+            already = self.ssh.run(
+                f"firewall-cmd --quiet --query-port={port}/tcp && echo yes || echo no",
+                sudo=True,
+                check=False,
+            ).strip()
+            if already != "yes":
+                self.progress(f"Opening TCP {port} in firewalld")
+                self.ssh.run(f"firewall-cmd --add-port={port}/tcp", sudo=True, check=False)
+                self.ssh.run(f"firewall-cmd --permanent --add-port={port}/tcp", sudo=True, check=False)
+                self.ssh.run("firewall-cmd --reload", sudo=True, check=False)
 
     def _public_ip(self) -> str:
         ip = self.ssh.run(
@@ -507,6 +547,7 @@ class ProxyProvisioner:
             if changed:
                 self.progress("Updating Xray config")
                 self._write_config(config)
+                self._ensure_firewall_port(selected_port)
                 self.progress("Restarting Xray service")
                 self._restart_xray()
 
@@ -567,6 +608,7 @@ class ProxyProvisioner:
         }
         self.progress("Writing Xray config")
         self._write_config(config)
+        self._ensure_firewall_port(port)
         self.progress("Starting Xray service")
         self._restart_xray()
         host = self._public_ip()
