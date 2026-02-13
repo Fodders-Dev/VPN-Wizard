@@ -50,6 +50,18 @@ class ProxyProvisioner:
     def _random_short_id(self) -> str:
         return uuid.uuid4().hex[:16]
 
+    def _build_server_names(self, primary_sni: str) -> list[str]:
+        ordered = [primary_sni, "www.cloudflare.com", "www.apple.com"]
+        seen: set[str] = set()
+        result: list[str] = []
+        for item in ordered:
+            value = (item or "").strip()
+            if not value or value in seen:
+                continue
+            seen.add(value)
+            result.append(value)
+        return result
+
     def _extract_reality_inbound(self, cfg: dict) -> Optional[dict]:
         inbounds = cfg.get("inbounds")
         if not isinstance(inbounds, list):
@@ -148,15 +160,22 @@ class ProxyProvisioner:
         return ip or getattr(self.ssh.config, "host", "") or "YOUR_SERVER_IP"
 
     def _ensure_prereqs(self) -> None:
-        self.progress("Installing proxy prerequisites")
-        self.ssh.run(
-            "DEBIAN_FRONTEND=noninteractive apt-get update -y",
-            sudo=True,
-        )
-        self.ssh.run(
-            "DEBIAN_FRONTEND=noninteractive apt-get install -y curl jq qrencode",
-            sudo=True,
-        )
+        deps_ok = self.ssh.run(
+            "command -v curl >/dev/null 2>&1 && "
+            "command -v jq >/dev/null 2>&1 && "
+            "command -v qrencode >/dev/null 2>&1 && echo ok || echo missing",
+            check=False,
+        ).strip()
+        if deps_ok != "ok":
+            self.progress("Installing proxy prerequisites")
+            self.ssh.run(
+                "DEBIAN_FRONTEND=noninteractive apt-get update -y",
+                sudo=True,
+            )
+            self.ssh.run(
+                "DEBIAN_FRONTEND=noninteractive apt-get install -y curl jq qrencode",
+                sudo=True,
+            )
         exists = self.ssh.run(
             f"test -x {self.XRAY_BIN} && echo yes || echo no",
             sudo=True,
@@ -294,11 +313,101 @@ class ProxyProvisioner:
         server_name = (sni or self.default_sni).strip() or self.default_sni
 
         self._ensure_prereqs()
+        config = self._read_config()
+        existing_inbound = self._extract_reality_inbound(config or {}) if config else None
+
+        if config and existing_inbound:
+            self.progress("Reusing existing Reality config")
+            inbound, clients, short_ids, private_key, current_port = self._client_state(config)
+            stream = inbound.setdefault("streamSettings", {})
+            reality = stream.setdefault("realitySettings", {})
+            changed = False
+
+            selected_sni = (sni or self._resolve_sni(inbound) or self.default_sni).strip() or self.default_sni
+            selected_port = current_port
+            if isinstance(port, int) and 1 <= port <= 65535 and port != current_port:
+                selected_port = port
+                inbound["port"] = selected_port
+                changed = True
+
+            if reality.get("dest") != f"{selected_sni}:443":
+                reality["dest"] = f"{selected_sni}:443"
+                changed = True
+            server_names = self._build_server_names(selected_sni)
+            if reality.get("serverNames") != server_names:
+                reality["serverNames"] = server_names
+                changed = True
+
+            index = -1
+            for idx, item in enumerate(clients):
+                if not isinstance(item, dict):
+                    continue
+                if str(item.get("email") or "").strip() == name:
+                    index = idx
+                    break
+            if index < 0:
+                clients.append(
+                    {
+                        "id": str(uuid.uuid4()),
+                        "flow": "xtls-rprx-vision",
+                        "email": name,
+                    }
+                )
+                index = len(clients) - 1
+                changed = True
+
+            entry = clients[index]
+            if not isinstance(entry, dict):
+                raise RuntimeError("Invalid Xray client entry format.")
+            if not str(entry.get("id") or "").strip():
+                entry["id"] = str(uuid.uuid4())
+                changed = True
+            if entry.get("flow") != "xtls-rprx-vision":
+                entry["flow"] = "xtls-rprx-vision"
+                changed = True
+            if entry.get("email") != name:
+                entry["email"] = name
+                changed = True
+
+            while len(short_ids) <= index:
+                short_ids.append(self._random_short_id())
+                changed = True
+            short_id = str(short_ids[index] or "").strip()
+            if not short_id:
+                short_id = self._random_short_id()
+                short_ids[index] = short_id
+                changed = True
+
+            if changed:
+                self.progress("Updating Xray config")
+                self._write_config(config)
+                self.progress("Restarting Xray service")
+                self._restart_xray()
+
+            client_uuid = str(entry.get("id") or "").strip()
+            public_key = self._derive_public_key(private_key)
+            host = self._public_ip()
+            link = self._build_link(
+                client_uuid=client_uuid,
+                host=host,
+                port=selected_port,
+                sni=selected_sni,
+                public_key=public_key,
+                short_id=short_id,
+                name=name,
+            )
+            return {
+                "name": name,
+                "link": link,
+                "listen_port": selected_port,
+                "sni": selected_sni,
+            }
+
         self.progress("Generating Reality keys")
         private_key, public_key = self._generate_reality_keypair()
         client_uuid = str(uuid.uuid4())
         short_id = self._random_short_id()
-
+        server_names = self._build_server_names(server_name)
         config = {
             "log": {
                 "access": "/var/log/xray/access.log",
@@ -320,7 +429,7 @@ class ProxyProvisioner:
                             "show": False,
                             "dest": f"{server_name}:443",
                             "xver": 0,
-                            "serverNames": [server_name, "www.cloudflare.com", "www.apple.com"],
+                            "serverNames": server_names,
                             "privateKey": private_key,
                             "shortIds": [short_id],
                         },
@@ -334,7 +443,6 @@ class ProxyProvisioner:
         self._write_config(config)
         self.progress("Starting Xray service")
         self._restart_xray()
-
         host = self._public_ip()
         link = self._build_link(
             client_uuid=client_uuid,

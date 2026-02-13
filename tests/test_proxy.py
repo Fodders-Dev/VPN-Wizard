@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from types import SimpleNamespace
 
 from vpn_wizard.proxy import ProxyProvisioner
@@ -104,3 +105,84 @@ def test_choose_free_port_uses_fallback_candidates(monkeypatch) -> None:
     prov = ProxyProvisioner(DummySSH())
     monkeypatch.setattr(prov, "_is_port_busy", lambda port: port in {443, 2053})
     assert prov.choose_free_port(443) == 2083
+
+
+def _base_reality_config() -> dict:
+    return {
+        "inbounds": [
+            {
+                "port": 2053,
+                "protocol": "vless",
+                "settings": {
+                    "clients": [
+                        {"id": "client-1-id", "flow": "xtls-rprx-vision", "email": "client1"}
+                    ],
+                    "decryption": "none",
+                },
+                "streamSettings": {
+                    "network": "tcp",
+                    "security": "reality",
+                    "realitySettings": {
+                        "dest": "www.cloudflare.com:443",
+                        "serverNames": ["www.cloudflare.com", "www.apple.com"],
+                        "privateKey": "PRIVKEY",
+                        "shortIds": ["sid-client-1"],
+                    },
+                },
+            }
+        ],
+        "outbounds": [{"protocol": "freedom"}],
+    }
+
+
+def test_setup_reuses_existing_reality_without_rotating_keys(monkeypatch) -> None:
+    prov = ProxyProvisioner(DummySSH())
+    cfg = _base_reality_config()
+    writes: list[dict] = []
+    restarts: list[bool] = []
+
+    monkeypatch.setattr(prov, "_ensure_prereqs", lambda: None)
+    monkeypatch.setattr(prov, "_read_config", lambda: cfg)
+    monkeypatch.setattr(prov, "_write_config", lambda payload: writes.append(copy.deepcopy(payload)))
+    monkeypatch.setattr(prov, "_restart_xray", lambda: restarts.append(True))
+    monkeypatch.setattr(prov, "_derive_public_key", lambda private: "PUBKEY")
+    monkeypatch.setattr(prov, "_public_ip", lambda: "1.2.3.4")
+    monkeypatch.setattr(
+        prov,
+        "_generate_reality_keypair",
+        lambda: (_ for _ in ()).throw(AssertionError("must not generate new keys")),
+    )
+
+    result = prov.setup("client1", listen_port=2053, sni=None)
+    assert result["listen_port"] == 2053
+    assert result["sni"] == "www.cloudflare.com"
+    assert "sid=sid-client-1" in result["link"]
+    assert "pbk=PUBKEY" in result["link"]
+    assert not writes
+    assert not restarts
+
+
+def test_setup_adds_client_to_existing_reality_config(monkeypatch) -> None:
+    prov = ProxyProvisioner(DummySSH())
+    cfg = _base_reality_config()
+    writes: list[dict] = []
+    restarts: list[bool] = []
+
+    monkeypatch.setattr(prov, "_ensure_prereqs", lambda: None)
+    monkeypatch.setattr(prov, "_read_config", lambda: cfg)
+    monkeypatch.setattr(prov, "_write_config", lambda payload: writes.append(copy.deepcopy(payload)))
+    monkeypatch.setattr(prov, "_restart_xray", lambda: restarts.append(True))
+    monkeypatch.setattr(prov, "_derive_public_key", lambda private: "PUBKEY")
+    monkeypatch.setattr(prov, "_public_ip", lambda: "1.2.3.4")
+    monkeypatch.setattr(
+        prov,
+        "_generate_reality_keypair",
+        lambda: (_ for _ in ()).throw(AssertionError("must not generate new keys")),
+    )
+
+    result = prov.setup("client2", listen_port=2053, sni="www.cloudflare.com")
+    assert result["listen_port"] == 2053
+    assert len(cfg["inbounds"][0]["settings"]["clients"]) == 2
+    assert len(cfg["inbounds"][0]["streamSettings"]["realitySettings"]["shortIds"]) == 2
+    assert writes
+    assert restarts == [True]
