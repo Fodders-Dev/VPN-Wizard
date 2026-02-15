@@ -208,16 +208,16 @@ class ShadowTLSSSProvisioner:
             install_cmd = r"""
 set -euo pipefail
 arch="$(uname -m)"
-asset_re=""
+asset_suffix=""
 case "$arch" in
-  x86_64|amd64) asset_re="linux-amd64\.tar\.gz$" ;;
-  aarch64|arm64) asset_re="linux-arm64\.tar\.gz$" ;;
-  armv7l) asset_re="linux-armv7\.tar\.gz$" ;;
+  x86_64|amd64) asset_suffix="linux-amd64.tar.gz" ;;
+  aarch64|arm64) asset_suffix="linux-arm64.tar.gz" ;;
+  armv7l) asset_suffix="linux-armv7.tar.gz" ;;
   *) echo "Unsupported arch: $arch" >&2; exit 1 ;;
 esac
 tmp="$(mktemp -d)"
 json="$(curl -fsSL https://api.github.com/repos/SagerNet/sing-box/releases/latest)"
-url="$(printf '%s' "$json" | jq -r ".assets[] | select(.name|test(\"${asset_re}\")) | .browser_download_url" | head -n 1)"
+url="$(printf '%s' "$json" | jq -r --arg suffix "$asset_suffix" '.assets[] | select(.name|endswith($suffix)) | .browser_download_url' | head -n 1)"
 if [ -z "${url:-}" ] || [ "$url" = "null" ]; then
   echo "Failed to locate sing-box release asset for ${arch}" >&2
   exit 1
@@ -625,4 +625,3 @@ rm -rf "$tmp"
             ],
         }
         return json.dumps(config, indent=2, ensure_ascii=False)
-
