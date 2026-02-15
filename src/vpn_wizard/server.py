@@ -221,8 +221,10 @@ class ProvisionResponse(BaseModel):
     ok: bool
     config: Optional[str] = None
     alternatives: Optional[list[dict]] = None
+    auto_config: Optional[str] = None
     qr_png_base64: Optional[str] = None
     download_id: Optional[str] = None
+    auto_download_id: Optional[str] = None
     checks: list[CheckItem] = Field(default_factory=list)
     error: Optional[str] = None
 
@@ -260,8 +262,10 @@ class ClientAddResponse(BaseModel):
     client_ip: Optional[str] = None
     config: Optional[str] = None
     alternatives: Optional[list[dict]] = None
+    auto_config: Optional[str] = None
     qr_png_base64: Optional[str] = None
     download_id: Optional[str] = None
+    auto_download_id: Optional[str] = None
     interface: Optional[str] = None
     error: Optional[str] = None
 
@@ -272,8 +276,10 @@ class ClientExportResponse(BaseModel):
     client_ip: Optional[str] = None
     config: Optional[str] = None
     alternatives: Optional[list[dict]] = None
+    auto_config: Optional[str] = None
     qr_png_base64: Optional[str] = None
     download_id: Optional[str] = None
+    auto_download_id: Optional[str] = None
     interface: Optional[str] = None
     error: Optional[str] = None
 
@@ -290,6 +296,7 @@ class JobStatus(BaseModel):
     error: Optional[str] = None
     config_ready: bool = False
     alternatives: Optional[list[dict]] = None
+    auto_config_ready: bool = False
 
 
 class SessionLoginRequest(BaseModel):
@@ -349,8 +356,10 @@ class Job:
     checks: list[dict] = field(default_factory=list)
     config: Optional[str] = None
     alternatives: Optional[list[dict]] = None
+    auto_config: Optional[str] = None
     qr_png_base64: Optional[str] = None
     download_id: Optional[str] = None
+    auto_download_id: Optional[str] = None
     client_name: Optional[str] = None
     error: Optional[str] = None
 
@@ -379,8 +388,10 @@ class JobStore:
                 checks=list(job.checks),
                 config=job.config,
                 alternatives=job.alternatives,
+                auto_config=job.auto_config,
                 qr_png_base64=job.qr_png_base64,
                 download_id=job.download_id,
+                auto_download_id=job.auto_download_id,
                 client_name=job.client_name,
                 error=job.error,
             )
@@ -566,6 +577,7 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
             opts = payload.options
             JOB_STORE.update(job_id, client_name=opts.client_name)
             alternatives = None
+            auto_config = None
             suffix = "conf"
             if opts.protocol == "vless_reality":
                 proxy = ProxyProvisioner(ssh, progress=progress)
@@ -604,6 +616,7 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
                 )
                 config = result["link"]
                 alternatives = result.get("alternatives")
+                auto_config = proxy.build_singbox_auto_config(primary_link=config, alternatives=alternatives)
                 checks = pre_checks if opts.check else []
                 suffix = "txt"
                 JOB_STORE.update(job_id, client_name=result.get("name") or opts.client_name)
@@ -637,13 +650,18 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
         qr_png = _build_qr_png(config)
         qr_b64 = base64.b64encode(qr_png).decode("ascii")
         download_id = DOWNLOAD_STORE.create(config, qr_png, opts.client_name, suffix=suffix)
+        auto_download_id = None
+        if opts.protocol == "vless_reality" and auto_config:
+            auto_download_id = DOWNLOAD_STORE.create(auto_config, qr_png, f"{opts.client_name}-auto", suffix="json")
         JOB_STORE.update(
             job_id,
             status="done",
             config=config,
             alternatives=alternatives if opts.protocol == "vless_reality" else None,
+            auto_config=auto_config if opts.protocol == "vless_reality" else None,
             qr_png_base64=qr_b64,
             download_id=download_id,
+            auto_download_id=auto_download_id,
             checks=checks,
             error=None,
         )
@@ -724,6 +742,7 @@ def job_status(job_id: str) -> JobStatus:
         error=job.error,
         config_ready=bool(job.config),
         alternatives=job.alternatives,
+        auto_config_ready=bool(job.auto_config),
     )
 
 
@@ -740,8 +759,10 @@ def job_result(job_id: str) -> ProvisionResponse:
         ok=True,
         config=job.config,
         alternatives=job.alternatives,
+        auto_config=job.auto_config,
         qr_png_base64=job.qr_png_base64,
         download_id=job.download_id,
+        auto_download_id=job.auto_download_id,
         checks=job.checks,
         error=None,
     )
@@ -811,6 +832,7 @@ async def client_add(payload: ClientRequest) -> ClientAddResponse:
                 client_name = result["name"]
                 config_value = result["link"]
                 alternatives = result.get("alternatives")
+                auto_config = proxy.build_singbox_auto_config(primary_link=config_value, alternatives=alternatives)
                 client_ip = None
                 iface = result.get("interface")
                 suffix = "txt"
@@ -823,20 +845,26 @@ async def client_add(payload: ClientRequest) -> ClientAddResponse:
                 client_name = result["name"]
                 config_value = result["config"]
                 alternatives = None
+                auto_config = None
                 client_ip = result["ip"]
                 iface = result.get("interface")
                 suffix = "conf"
         qr_png = _build_qr_png(config_value)
         qr_b64 = base64.b64encode(qr_png).decode("ascii")
         download_id = DOWNLOAD_STORE.create(config_value, qr_png, client_name, suffix=suffix)
+        auto_download_id = None
+        if payload.protocol == "vless_reality" and auto_config:
+            auto_download_id = DOWNLOAD_STORE.create(auto_config, qr_png, f"{client_name}-auto", suffix="json")
         return ClientAddResponse(
             ok=True,
             client_name=client_name,
             client_ip=client_ip,
             config=config_value,
             alternatives=alternatives,
+            auto_config=auto_config,
             qr_png_base64=qr_b64,
             download_id=download_id,
+            auto_download_id=auto_download_id,
             interface=iface,
         )
     except Exception as exc:
@@ -897,6 +925,7 @@ async def client_export(payload: ClientRemoveRequest) -> ClientExportResponse:
                 client_name = result["name"]
                 config_value = result["link"]
                 alternatives = result.get("alternatives")
+                auto_config = proxy.build_singbox_auto_config(primary_link=config_value, alternatives=alternatives)
                 client_ip = None
                 iface = result.get("interface")
                 suffix = "txt"
@@ -906,20 +935,26 @@ async def client_export(payload: ClientRemoveRequest) -> ClientExportResponse:
                 client_name = result["name"]
                 config_value = result["config"]
                 alternatives = None
+                auto_config = None
                 client_ip = result["ip"]
                 iface = result.get("interface")
                 suffix = "conf"
         qr_png = _build_qr_png(config_value)
         qr_b64 = base64.b64encode(qr_png).decode("ascii")
         download_id = DOWNLOAD_STORE.create(config_value, qr_png, client_name, suffix=suffix)
+        auto_download_id = None
+        if payload.protocol == "vless_reality" and auto_config:
+            auto_download_id = DOWNLOAD_STORE.create(auto_config, qr_png, f"{client_name}-auto", suffix="json")
         return ClientExportResponse(
             ok=True,
             client_name=client_name,
             client_ip=client_ip,
             config=config_value,
             alternatives=alternatives,
+            auto_config=auto_config,
             qr_png_base64=qr_b64,
             download_id=download_id,
+            auto_download_id=auto_download_id,
             interface=iface,
         )
     except Exception as exc:

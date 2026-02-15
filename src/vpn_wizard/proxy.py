@@ -6,7 +6,7 @@ import re
 import shlex
 import uuid
 from typing import Callable, Optional
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urlparse
 
 from vpn_wizard.core import SSHRunner
 
@@ -462,6 +462,131 @@ class ProxyProvisioner:
                 if len(result) >= 6:
                     return result
         return result
+
+    def _parse_vless_link(self, link: str) -> dict:
+        value = (link or "").strip()
+        if not value.lower().startswith("vless://"):
+            raise RuntimeError("Invalid vless link (expected vless://).")
+        parsed = urlparse(value)
+        if not parsed.username:
+            raise RuntimeError("Invalid vless link: missing UUID.")
+        if not parsed.hostname or not parsed.port:
+            raise RuntimeError("Invalid vless link: missing host/port.")
+        params = parse_qs(parsed.query or "", keep_blank_values=True)
+        # flatten
+        flat = {k: (v[0] if v else "") for k, v in params.items()}
+        sni = self._normalize_sni(flat.get("sni"))
+        fp = str(flat.get("fp") or "").strip().lower()
+        pbk = str(flat.get("pbk") or "").strip()
+        sid = str(flat.get("sid") or "").strip()
+        flow = str(flat.get("flow") or "").strip()
+        if not pbk or not sid:
+            raise RuntimeError("Invalid vless link: missing Reality pbk/sid.")
+        return {
+            "uuid": parsed.username,
+            "host": parsed.hostname,
+            "port": int(parsed.port),
+            "sni": sni,
+            "fp": fp,
+            "pbk": pbk,
+            "sid": sid,
+            "flow": flow or "xtls-rprx-vision",
+        }
+
+    def build_singbox_auto_config(
+        self,
+        *,
+        primary_link: str,
+        alternatives: Optional[list[dict]] = None,
+        strict_route: bool = True,
+        remote_doh: str = "https://dns.google/dns-query",
+        direct_dns: str = "77.88.8.8",
+    ) -> str:
+        # sing-box full config with urltest outbound for auto failover between SNI/FP variants.
+        links: list[str] = []
+        if primary_link:
+            links.append(primary_link)
+        for item in alternatives or []:
+            link = str((item or {}).get("link") or "").strip()
+            if link:
+                links.append(link)
+        # dedupe preserving order
+        links = list(dict.fromkeys(links))
+        if not links:
+            raise RuntimeError("No proxy links available for auto config.")
+
+        parsed = [self._parse_vless_link(link) for link in links[:6]]
+        server = parsed[0]["host"]
+        server_port = parsed[0]["port"]
+        uuid_value = parsed[0]["uuid"]
+        flow = parsed[0]["flow"]
+
+        outbounds: list[dict] = []
+        outbound_tags: list[str] = []
+        for idx, item in enumerate(parsed, start=1):
+            tag = f"p{idx}"
+            outbound_tags.append(tag)
+            outbounds.append(
+                {
+                    "type": "vless",
+                    "tag": tag,
+                    "server": server,
+                    "server_port": server_port,
+                    "uuid": uuid_value,
+                    "flow": flow,
+                    "network": "tcp",
+                    "tls": {
+                        "enabled": True,
+                        "server_name": item["sni"] or "www.microsoft.com",
+                        "utls": {"enabled": True, "fingerprint": item["fp"] or "chrome"},
+                        "reality": {"enabled": True, "public_key": item["pbk"], "short_id": item["sid"]},
+                    },
+                }
+            )
+
+        # urltest auto-selects best outbound by latency and keeps re-testing.
+        outbounds.insert(
+            0,
+            {
+                "type": "urltest",
+                "tag": "proxy-auto",
+                "outbounds": outbound_tags,
+                "url": "https://www.gstatic.com/generate_204",
+                "interval": "2m",
+                "tolerance": 150,
+                "interrupt_exist_connections": True,
+            },
+        )
+        outbounds.append({"type": "direct", "tag": "direct"})
+        outbounds.append({"type": "block", "tag": "block"})
+
+        config = {
+            "log": {"level": "warn"},
+            "dns": {
+                "servers": [
+                    {"tag": "doh", "address": remote_doh, "detour": "proxy-auto"},
+                    {"tag": "local", "address": direct_dns, "detour": "direct"},
+                ],
+                "strategy": "ipv4_only",
+            },
+            "inbounds": [
+                {
+                    "type": "tun",
+                    "tag": "tun-in",
+                    "inet4_address": "172.19.0.1/30",
+                    "auto_route": True,
+                    "strict_route": bool(strict_route),
+                    "stack": "mixed",
+                    "sniff": True,
+                }
+            ],
+            "route": {
+                "auto_detect_interface": True,
+                "final": "proxy-auto",
+            },
+            "outbounds": outbounds,
+        }
+        return json.dumps(config, indent=2, ensure_ascii=False)
 
     def _client_state(self, cfg: dict) -> tuple[dict, list[dict], list[str], str, int]:
         inbound = self._extract_reality_inbound(cfg)
