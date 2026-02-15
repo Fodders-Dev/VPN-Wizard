@@ -136,6 +136,12 @@ def _base_reality_config() -> dict:
                 "streamSettings": {
                     "network": "tcp",
                     "security": "reality",
+                    "sockopt": {
+                        "tcpFastOpen": True,
+                        "tcpKeepAliveIdle": 300,
+                        "tcpKeepAliveInterval": 60,
+                        "tcpUserTimeout": 30000,
+                    },
                     "realitySettings": {
                         "dest": "www.cloudflare.com:443",
                         "serverNames": ["www.cloudflare.com", "www.apple.com"],

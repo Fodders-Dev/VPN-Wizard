@@ -321,6 +321,9 @@ const I18N = {
     faq_ports_body: "Попробуйте другой UDP порт в расширенных настройках (например 3478 или 33434).",
     faq_tyumen_title: "Как добавить профиль?",
     faq_tyumen_body: "Введите имя профиля и нажмите \"Добавить профиль\". Порт можно выбрать в расширенных полях.",
+    faq_proxy_slow_title: "Прокси подключен, но сайты медленные или не грузятся",
+    faq_proxy_slow_body:
+      "Чаще всего это DNS/маршрутизация в клиенте прокси (особенно в РФ).\n\nПроверьте:\n1) Включен ли DNS Routing.\n2) Remote DNS = DoH (https://dns.google/dns-query или https://unfiltered.adguard-dns.com/dns-query).\n3) На Windows попробуйте режим VPN (экспериментальный/TUN) и включите Strict Routing.\n4) Отключите другие VPN/прокси и оставьте активным только один профиль.\n5) Если стало хуже после смены порта/SNI — включите авто и перенастройте прокси.",
     faq_changes_title: "Что именно мы делаем на сервере?",
     faq_changes_body:
       "1) Подключаемся по SSH и проверяем ОС, sudo и свободный порт.\n2) Ставим WireGuard/AmneziaWG и зависимости.\n3) Создаём ключи и конфиги в /etc/amnezia/amneziawg или /etc/wireguard.\n4) Включаем IP forwarding и добавляем NAT (iptables).\n5) Поднимаем сервис awg-quick@ или wg-quick@ и делаем бэкапы конфигов.\n6) Генерируем ваш профиль и QR.\n\nЕсли у вас на сервере есть свои сервисы или строгий firewall — используйте безопасный режим и внимательно прочитайте пункты выше.",
@@ -336,7 +339,7 @@ const I18N = {
       "1) Подключитесь к серверу.\n2) Нажмите \"Настроить сервер\".\n3) Скачайте конфиг и импортируйте в AmneziaWG.",
     help_proxy_title: "Режим антиблок-прокси (VLESS Reality)",
     help_proxy_body:
-      "1) Подключитесь к серверу и настройте прокси (порт/SNI можно оставить пустыми - авто).\n2) Получите ссылку и QR.\n3) Импортируйте в Hiddify/sing-box.\n4) Для РФ: в Hiddify используйте System Proxy, Strict Routing = OFF, DNS Routing = ON, удалённый DNS = https://dns.google/dns-query или https://dns.adguard-dns.com/dns-query.\n5) Оставляйте активным только один профиль.",
+      "1) Подключитесь к серверу и настройте прокси (порт/SNI можно оставить пустыми - авто).\n2) Получите ссылку и QR.\n3) Импортируйте в Hiddify/sing-box и подключитесь.\n4) Для РФ (особенно Windows): чаще стабильнее режим VPN (экспериментальный/TUN) + Strict Routing = ON + DNS Routing = ON. Если ломаются приложения — переключитесь на System Proxy.\n5) DNS: используйте DoH (например https://dns.google/dns-query или https://unfiltered.adguard-dns.com/dns-query). Избегайте udp://1.1.1.1.\n6) Не держите одновременно активным другой VPN/прокси и несколько профилей.",
     help_install_title: "Что установить на устройство",
     help_install_body:
       "VPN: AmneziaWG.\nПрокси: Hiddify (рекомендуется) или v2rayNG/sing-box.",
@@ -574,6 +577,9 @@ const I18N = {
     faq_ports_body: "Try another UDP port in advanced settings (for example 3478 or 33434).",
     faq_tyumen_title: "How to add a profile?",
     faq_tyumen_body: "Enter a profile name and click \"Add profile\". You can change the UDP port in advanced fields.",
+    faq_proxy_slow_title: "Proxy connected but sites are slow or not loading",
+    faq_proxy_slow_body:
+      "This is usually client-side DNS/routing (common on RU networks).\n\nCheck:\n1) DNS Routing is enabled.\n2) Remote DNS is DoH (https://dns.google/dns-query or https://unfiltered.adguard-dns.com/dns-query).\n3) On Windows, try VPN (experimental/TUN) and enable Strict Routing.\n4) Disable other VPN/proxy apps and keep only one active profile.\n5) If it got worse after changing port/SNI, reset them to auto and reconfigure.",
     faq_changes_title: "What exactly do we change on the server?",
     faq_changes_body:
       "1) Connect over SSH and check OS, sudo, and free port.\n2) Install WireGuard/AmneziaWG and dependencies.\n3) Create keys/configs under /etc/amnezia/amneziawg or /etc/wireguard.\n4) Enable IP forwarding and add NAT (iptables).\n5) Start awg-quick@ or wg-quick@ and create config backups.\n6) Generate your profile and QR.\n\nIf your server hosts other services or strict firewall rules, use safe mode and review the steps above.",
@@ -589,7 +595,7 @@ const I18N = {
       "1) Connect to your server.\n2) Click \"Configure server\".\n3) Download config and import it into AmneziaWG.",
     help_proxy_title: "Anti-block proxy mode (VLESS Reality)",
     help_proxy_body:
-      "1) Connect and configure proxy (you can leave port/SNI empty for auto mode).\n2) Get link and QR.\n3) Import into Hiddify/sing-box.\n4) For RU networks: use System Proxy, Strict Routing = OFF, DNS Routing = ON, Remote DNS = https://dns.google/dns-query or https://dns.adguard-dns.com/dns-query.\n5) Keep only one active profile.",
+      "1) Connect and configure proxy (leave port/SNI empty for auto mode).\n2) Get link and QR.\n3) Import into Hiddify/sing-box and connect.\n4) For RU networks (especially Windows): VPN (experimental/TUN) is often more stable with Strict Routing = ON and DNS Routing = ON. If apps break, switch to System Proxy.\n5) DNS: use DoH (for example https://dns.google/dns-query or https://unfiltered.adguard-dns.com/dns-query). Avoid udp://1.1.1.1.\n6) Do not keep another VPN/proxy or multiple profiles active at the same time.",
     help_install_title: "What to install on device",
     help_install_body:
       "VPN: AmneziaWG.\nProxy: Hiddify (recommended) or v2rayNG/sing-box.",
@@ -1438,6 +1444,7 @@ function renderFaq() {
     { titleKey: "faq_safe_title", bodyKey: "faq_safe_body" },
     { titleKey: "faq_ports_title", bodyKey: "faq_ports_body" },
     { titleKey: "faq_tyumen_title", bodyKey: "faq_tyumen_body" },
+    { titleKey: "faq_proxy_slow_title", bodyKey: "faq_proxy_slow_body" },
     { titleKey: "faq_changes_title", bodyKey: "faq_changes_body" },
     { titleKey: "faq_servers_title", bodyKey: "faq_servers_body" },
   ];

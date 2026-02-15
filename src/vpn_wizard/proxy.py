@@ -32,9 +32,11 @@ class ProxyProvisioner:
     DEFAULT_SNI_CANDIDATES = _parse_domain_list(
         os.getenv(
             "VPNW_PROXY_SNI_CANDIDATES",
-            "www.microsoft.com,www.apple.com,www.github.com,www.wikipedia.org,www.cloudflare.com",
+            # Cloudflare часто используется как decoy, но в некоторых RU сетях может быть нестабилен.
+            # Держим его только как optional candidate через env, а не дефолт.
+            "www.microsoft.com,www.apple.com,www.bing.com,www.wikipedia.org,www.github.com",
         ),
-        ("www.microsoft.com", "www.apple.com", "www.github.com", "www.wikipedia.org", "www.cloudflare.com"),
+        ("www.microsoft.com", "www.apple.com", "www.bing.com", "www.wikipedia.org", "www.github.com"),
     )
     AVOID_SNI = set(
         _parse_domain_list(
@@ -99,7 +101,7 @@ class ProxyProvisioner:
         return uuid.uuid4().hex[:16]
 
     def _build_server_names(self, primary_sni: str) -> list[str]:
-        ordered = [primary_sni] + self.sni_candidates + ["www.cloudflare.com", "www.apple.com"]
+        ordered = [primary_sni] + self.sni_candidates
         seen: set[str] = set()
         result: list[str] = []
         for item in ordered:
@@ -119,14 +121,16 @@ class ProxyProvisioner:
         strict = self.ssh.run(
             "bash -lc "
             + shlex.quote(
-                f"curl -m 6 --tlsv1.3 --http2 -fsSI https://{value} >/dev/null 2>&1 && echo ok || echo fail"
+                # Use IPv4 to avoid false negatives on hosts with broken/filtered IPv6 paths.
+                f"curl -4 -m 6 --tlsv1.3 --http2 -fsSI https://{value} >/dev/null 2>&1 && echo ok || echo fail"
             ),
             check=False,
         ).strip()
         if strict == "ok":
             return True
         relaxed = self.ssh.run(
-            "bash -lc " + shlex.quote(f"curl -m 6 -fsSI https://{value} >/dev/null 2>&1 && echo ok || echo fail"),
+            "bash -lc "
+            + shlex.quote(f"curl -4 -m 6 -fsSI https://{value} >/dev/null 2>&1 && echo ok || echo fail"),
             check=False,
         ).strip()
         return relaxed == "ok"
@@ -349,6 +353,14 @@ class ProxyProvisioner:
             "net.core.default_qdisc = fq\n"
             "net.ipv4.tcp_congestion_control = bbr\n"
             "net.ipv4.tcp_fastopen = 3\n"
+            # Helps with PMTUD blackholes which can manifest as 'works then slowly dies' on some networks.
+            "net.ipv4.tcp_mtu_probing = 1\n"
+            # Keepalive helps survive aggressive NATs / mobile networks.
+            "net.ipv4.tcp_keepalive_time = 600\n"
+            "net.ipv4.tcp_keepalive_intvl = 30\n"
+            "net.ipv4.tcp_keepalive_probes = 5\n"
+            # Avoid slow-start penalties after idle (can improve interactive browsing).
+            "net.ipv4.tcp_slow_start_after_idle = 0\n"
             "EOF",
             sudo=True,
             check=False,
@@ -358,6 +370,29 @@ class ProxyProvisioner:
             sudo=True,
             check=False,
         )
+
+    def _ensure_stream_sockopt(self, stream: dict) -> bool:
+        if not isinstance(stream, dict):
+            return False
+        sockopt = stream.get("sockopt")
+        if not isinstance(sockopt, dict):
+            sockopt = {}
+            stream["sockopt"] = sockopt
+        desired = {
+            # Needs kernel support + sysctl net.ipv4.tcp_fastopen=3 (we set it in _ensure_tcp_tuning).
+            "tcpFastOpen": True,
+            # Conservative keepalive/user-timeout settings to reduce "connected but no data" stalls.
+            "tcpKeepAliveIdle": 300,
+            "tcpKeepAliveInterval": 60,
+            # ms
+            "tcpUserTimeout": 30000,
+        }
+        changed = False
+        for key, value in desired.items():
+            if sockopt.get(key) != value:
+                sockopt[key] = value
+                changed = True
+        return changed
 
     def _restart_xray(self) -> None:
         self.ssh.run("systemctl enable xray >/dev/null 2>&1 || true", sudo=True, check=False)
@@ -490,6 +525,8 @@ class ProxyProvisioner:
             stream = inbound.setdefault("streamSettings", {})
             reality = stream.setdefault("realitySettings", {})
             changed = False
+
+            changed = self._ensure_stream_sockopt(stream) or changed
 
             outbounds = config.setdefault("outbounds", [])
             freedom = None
@@ -627,6 +664,12 @@ class ProxyProvisioner:
                     "streamSettings": {
                         "network": "tcp",
                         "security": "reality",
+                        "sockopt": {
+                            "tcpFastOpen": True,
+                            "tcpKeepAliveIdle": 300,
+                            "tcpKeepAliveInterval": 60,
+                            "tcpUserTimeout": 30000,
+                        },
                         "realitySettings": {
                             "show": False,
                             "dest": f"{server_name}:443",
