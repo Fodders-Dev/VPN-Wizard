@@ -244,6 +244,7 @@ def test_singbox_auto_config_keeps_udp_enabled_and_sets_xudp_packet_encoding() -
     # Ensure QUIC is blocked (avoids slow page loads when HTTP/3 is flaky)
     route_rules = (cfg.get("route") or {}).get("rules") or []
     assert any(rule.get("protocol") == ["quic"] and rule.get("outbound") == "block" for rule in route_rules)
+    assert any(rule.get("network") == ["udp"] and rule.get("port") == [443] and rule.get("outbound") == "block" for rule in route_rules)
 
     outbounds = cfg.get("outbounds") or []
     vless_outbounds = [o for o in outbounds if o.get("type") == "vless"]
@@ -252,3 +253,8 @@ def test_singbox_auto_config_keeps_udp_enabled_and_sets_xudp_packet_encoding() -
         # Must not force TCP-only; otherwise UDP is disabled in sing-box.
         assert o.get("network") != "tcp"
         assert o.get("packet_encoding") == "xudp"
+
+    # Ensure urltest doesn't use Google endpoints and uses tag expected by Hiddify ("auto")
+    urltest = next((o for o in outbounds if o.get("type") == "urltest"), None)
+    assert urltest and urltest.get("tag") == "auto"
+    assert "msftconnecttest" in (urltest.get("url") or "")

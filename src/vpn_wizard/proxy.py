@@ -499,7 +499,9 @@ class ProxyProvisioner:
         primary_link: str,
         alternatives: Optional[list[dict]] = None,
         strict_route: bool = True,
-        remote_doh: str = "https://dns.google/dns-query",
+        # In RU networks Google endpoints may be unstable/blocked.
+        # Quad9 is generally a good default for DoH.
+        remote_doh: str = "https://dns.quad9.net/dns-query",
         direct_dns: str = "77.88.8.8",
     ) -> str:
         # sing-box full config with urltest outbound for auto failover between SNI/FP variants.
@@ -551,14 +553,16 @@ class ProxyProvisioner:
             )
 
         # urltest auto-selects best outbound by latency and keeps re-testing.
+        #
+        # Important: do NOT use Google-hosted test URLs here. In RU networks Google domains may be
+        # throttled/blocked which makes urltest mark every proxy as "dead", resulting in "no internet".
         outbounds.insert(
             0,
             {
                 "type": "urltest",
-                "tag": "proxy-auto",
+                "tag": "auto",
                 "outbounds": outbound_tags,
-                # gstatic is the upstream default; keep it, but don't switch too aggressively.
-                "url": "https://www.gstatic.com/generate_204",
+                "url": "https://www.msftconnecttest.com/connecttest.txt",
                 "interval": "5m",
                 # In RU networks latency jitters a lot; avoid flapping.
                 "tolerance": 200,
@@ -573,7 +577,7 @@ class ProxyProvisioner:
             "log": {"level": "warn"},
             "dns": {
                 "servers": [
-                    {"tag": "doh", "address": remote_doh, "detour": "proxy-auto"},
+                    {"tag": "doh", "address": remote_doh, "detour": "auto"},
                     {"tag": "local", "address": direct_dns, "detour": "direct"},
                 ],
                 "strategy": "ipv4_only",
@@ -592,12 +596,17 @@ class ProxyProvisioner:
             "route": {
                 "auto_detect_interface": True,
                 "rules": [
+                    # Disable IPv6 inside the tunnel by default. Many RU ISPs have broken/filtered
+                    # IPv6 paths that cause long hangs and "works then degrades" behavior.
+                    {"inbound": ["tun-in"], "ip_version": 6, "outbound": "block"},
                     # QUIC (UDP/443) часто дает "вроде подключено, но страницы грузятся ужасно"
                     # в TUN-режиме, особенно при DPI/потерях. Блокируем QUIC, чтобы приложения
                     # падали обратно на HTTP/2 (TCP) и шли через прокси.
                     {"inbound": ["tun-in"], "protocol": ["quic"], "outbound": "block"},
+                    # Some stacks don't classify QUIC reliably; block UDP/443 explicitly.
+                    {"inbound": ["tun-in"], "network": ["udp"], "port": [443], "outbound": "block"},
                 ],
-                "final": "proxy-auto",
+                "final": "auto",
             },
             "outbounds": outbounds,
         }
