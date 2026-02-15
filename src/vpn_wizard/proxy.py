@@ -534,7 +534,13 @@ class ProxyProvisioner:
                     "server_port": server_port,
                     "uuid": uuid_value,
                     "flow": flow,
-                    "network": "tcp",
+                    # Important for RU networks:
+                    # do NOT force "network": "tcp" here. If we do, UDP is disabled in sing-box,
+                    # which breaks/cripples QUIC and sometimes DNS in TUN mode, leading to
+                    # "works at first, then becomes slow/timeout" behavior.
+                    #
+                    # With Xray Reality we can carry UDP over TCP via xudp.
+                    "packet_encoding": "xudp",
                     "tls": {
                         "enabled": True,
                         "server_name": item["sni"] or "www.microsoft.com",
@@ -551,10 +557,13 @@ class ProxyProvisioner:
                 "type": "urltest",
                 "tag": "proxy-auto",
                 "outbounds": outbound_tags,
+                # gstatic is the upstream default; keep it, but don't switch too aggressively.
                 "url": "https://www.gstatic.com/generate_204",
-                "interval": "2m",
-                "tolerance": 150,
-                "interrupt_exist_connections": True,
+                "interval": "5m",
+                # In RU networks latency jitters a lot; avoid flapping.
+                "tolerance": 200,
+                # Do not kill existing inbound connections when urltest switches.
+                "interrupt_exist_connections": False,
             },
         )
         outbounds.append({"type": "direct", "tag": "direct"})
@@ -573,7 +582,7 @@ class ProxyProvisioner:
                 {
                     "type": "tun",
                     "tag": "tun-in",
-                    "inet4_address": "172.19.0.1/30",
+                    "address": ["172.19.0.1/30"],
                     "auto_route": True,
                     "strict_route": bool(strict_route),
                     "stack": "mixed",
@@ -582,6 +591,12 @@ class ProxyProvisioner:
             ],
             "route": {
                 "auto_detect_interface": True,
+                "rules": [
+                    # QUIC (UDP/443) часто дает "вроде подключено, но страницы грузятся ужасно"
+                    # в TUN-режиме, особенно при DPI/потерях. Блокируем QUIC, чтобы приложения
+                    # падали обратно на HTTP/2 (TCP) и шли через прокси.
+                    {"inbound": ["tun-in"], "protocol": ["quic"], "outbound": "block"},
+                ],
                 "final": "proxy-auto",
             },
             "outbounds": outbounds,

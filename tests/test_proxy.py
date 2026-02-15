@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 from types import SimpleNamespace
 
 from vpn_wizard.proxy import ProxyProvisioner
@@ -229,3 +230,25 @@ def test_setup_initial_config_uses_ipv4_domain_strategy(monkeypatch) -> None:
     assert isinstance(outbounds, list)
     assert outbounds and outbounds[0].get("protocol") == "freedom"
     assert outbounds[0].get("settings", {}).get("domainStrategy") == "UseIPv4"
+
+
+def test_singbox_auto_config_keeps_udp_enabled_and_sets_xudp_packet_encoding() -> None:
+    prov = ProxyProvisioner(DummySSH())
+    link = (
+        "vless://11111111-1111-1111-1111-111111111111@1.2.3.4:2083"
+        "?encryption=none&flow=xtls-rprx-vision&security=reality"
+        "&sni=www.microsoft.com&fp=chrome&pbk=PUBKEY&sid=abcd1234abcd1234&type=tcp#client1"
+    )
+    cfg = json.loads(prov.build_singbox_auto_config(primary_link=link, alternatives=None))
+
+    # Ensure QUIC is blocked (avoids slow page loads when HTTP/3 is flaky)
+    route_rules = (cfg.get("route") or {}).get("rules") or []
+    assert any(rule.get("protocol") == ["quic"] and rule.get("outbound") == "block" for rule in route_rules)
+
+    outbounds = cfg.get("outbounds") or []
+    vless_outbounds = [o for o in outbounds if o.get("type") == "vless"]
+    assert vless_outbounds, "Expected vless outbounds in sing-box auto config"
+    for o in vless_outbounds:
+        # Must not force TCP-only; otherwise UDP is disabled in sing-box.
+        assert o.get("network") != "tcp"
+        assert o.get("packet_encoding") == "xudp"
