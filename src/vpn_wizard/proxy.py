@@ -343,6 +343,22 @@ class ProxyProvisioner:
             )
         self.ssh.run(f"mkdir -p {self.XRAY_ETC}", sudo=True)
 
+    def _ensure_tcp_tuning(self) -> None:
+        self.ssh.run(
+            "cat > /etc/sysctl.d/99-vpn-wizard-proxy-tuning.conf <<'EOF'\n"
+            "net.core.default_qdisc = fq\n"
+            "net.ipv4.tcp_congestion_control = bbr\n"
+            "net.ipv4.tcp_fastopen = 3\n"
+            "EOF",
+            sudo=True,
+            check=False,
+        )
+        self.ssh.run(
+            "sysctl -p /etc/sysctl.d/99-vpn-wizard-proxy-tuning.conf >/dev/null 2>&1 || true",
+            sudo=True,
+            check=False,
+        )
+
     def _restart_xray(self) -> None:
         self.ssh.run("systemctl enable xray >/dev/null 2>&1 || true", sudo=True, check=False)
         self.ssh.run("systemctl restart xray", sudo=True)
@@ -475,6 +491,23 @@ class ProxyProvisioner:
             reality = stream.setdefault("realitySettings", {})
             changed = False
 
+            outbounds = config.setdefault("outbounds", [])
+            freedom = None
+            if isinstance(outbounds, list):
+                for item in outbounds:
+                    if isinstance(item, dict) and item.get("protocol") == "freedom":
+                        freedom = item
+                        break
+            if freedom is None:
+                freedom = {"protocol": "freedom", "settings": {"domainStrategy": "UseIPv4"}}
+                outbounds.insert(0, freedom)
+                changed = True
+            else:
+                settings = freedom.setdefault("settings", {})
+                if settings.get("domainStrategy") != "UseIPv4":
+                    settings["domainStrategy"] = "UseIPv4"
+                    changed = True
+
             selected_sni = server_name
             selected_port = current_port
             if isinstance(port, int) and 1 <= port <= 65535 and port != current_port:
@@ -544,10 +577,12 @@ class ProxyProvisioner:
                 short_ids[index] = short_id
                 changed = True
 
+            self._ensure_firewall_port(selected_port)
+            self._ensure_tcp_tuning()
+
             if changed:
                 self.progress("Updating Xray config")
                 self._write_config(config)
-                self._ensure_firewall_port(selected_port)
                 self.progress("Restarting Xray service")
                 self._restart_xray()
 
@@ -604,11 +639,15 @@ class ProxyProvisioner:
                     "sniffing": {"enabled": True, "destOverride": ["http", "tls"]},
                 }
             ],
-            "outbounds": [{"protocol": "freedom"}, {"protocol": "blackhole", "tag": "blocked"}],
+            "outbounds": [
+                {"protocol": "freedom", "settings": {"domainStrategy": "UseIPv4"}},
+                {"protocol": "blackhole", "tag": "blocked"},
+            ],
         }
         self.progress("Writing Xray config")
         self._write_config(config)
         self._ensure_firewall_port(port)
+        self._ensure_tcp_tuning()
         self.progress("Starting Xray service")
         self._restart_xray()
         host = self._public_ip()

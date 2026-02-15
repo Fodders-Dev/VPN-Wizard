@@ -336,7 +336,7 @@ const I18N = {
       "1) Подключитесь к серверу.\n2) Нажмите \"Настроить сервер\".\n3) Скачайте конфиг и импортируйте в AmneziaWG.",
     help_proxy_title: "Режим антиблок-прокси (VLESS Reality)",
     help_proxy_body:
-      "1) Подключитесь к серверу и настройте прокси.\n2) Получите ссылку и QR.\n3) Импортируйте в Hiddify/sing-box и подключитесь.",
+      "1) Подключитесь к серверу и настройте прокси (порт/SNI можно оставить пустыми - авто).\n2) Получите ссылку и QR.\n3) Импортируйте в Hiddify/sing-box.\n4) Для РФ: в Hiddify используйте System Proxy, Strict Routing = OFF, DNS Routing = ON, удалённый DNS = https://dns.google/dns-query или https://dns.adguard-dns.com/dns-query.\n5) Оставляйте активным только один профиль.",
     help_install_title: "Что установить на устройство",
     help_install_body:
       "VPN: AmneziaWG.\nПрокси: Hiddify (рекомендуется) или v2rayNG/sing-box.",
@@ -589,7 +589,7 @@ const I18N = {
       "1) Connect to your server.\n2) Click \"Configure server\".\n3) Download config and import it into AmneziaWG.",
     help_proxy_title: "Anti-block proxy mode (VLESS Reality)",
     help_proxy_body:
-      "1) Connect to your server and configure proxy.\n2) Get link and QR.\n3) Import into Hiddify/sing-box and connect.",
+      "1) Connect and configure proxy (you can leave port/SNI empty for auto mode).\n2) Get link and QR.\n3) Import into Hiddify/sing-box.\n4) For RU networks: use System Proxy, Strict Routing = OFF, DNS Routing = ON, Remote DNS = https://dns.google/dns-query or https://dns.adguard-dns.com/dns-query.\n5) Keep only one active profile.",
     help_install_title: "What to install on device",
     help_install_body:
       "VPN: AmneziaWG.\nProxy: Hiddify (recommended) or v2rayNG/sing-box.",

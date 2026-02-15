@@ -145,7 +145,7 @@ def _base_reality_config() -> dict:
                 },
             }
         ],
-        "outbounds": [{"protocol": "freedom"}],
+        "outbounds": [{"protocol": "freedom", "settings": {"domainStrategy": "UseIPv4"}}],
     }
 
 
@@ -200,3 +200,26 @@ def test_setup_adds_client_to_existing_reality_config(monkeypatch) -> None:
     assert len(cfg["inbounds"][0]["streamSettings"]["realitySettings"]["shortIds"]) == 2
     assert writes
     assert restarts == [True]
+
+
+def test_setup_initial_config_uses_ipv4_domain_strategy(monkeypatch) -> None:
+    prov = ProxyProvisioner(DummySSH())
+    writes: list[dict] = []
+
+    monkeypatch.setattr(prov, "_ensure_prereqs", lambda: None)
+    monkeypatch.setattr(prov, "_read_config", lambda: None)
+    monkeypatch.setattr(prov, "_write_config", lambda payload: writes.append(copy.deepcopy(payload)))
+    monkeypatch.setattr(prov, "_restart_xray", lambda: None)
+    monkeypatch.setattr(prov, "_ensure_firewall_port", lambda port: None)
+    monkeypatch.setattr(prov, "_ensure_tcp_tuning", lambda: None)
+    monkeypatch.setattr(prov, "_public_ip", lambda: "1.2.3.4")
+    monkeypatch.setattr(prov, "_choose_best_sni", lambda preferred, existing: "www.microsoft.com")
+    monkeypatch.setattr(prov, "_generate_reality_keypair", lambda: ("PRIV", "PUB"))
+
+    result = prov.setup("client1", listen_port=443)
+    assert result["listen_port"] == 443
+    assert writes
+    outbounds = writes[0].get("outbounds") or []
+    assert isinstance(outbounds, list)
+    assert outbounds and outbounds[0].get("protocol") == "freedom"
+    assert outbounds[0].get("settings", {}).get("domainStrategy") == "UseIPv4"
