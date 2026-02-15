@@ -186,6 +186,7 @@ const I18N = {
     copy_title: "Конфиг для ручного копирования",
     copy_title_proxy: "Ссылка (опционально)",
     copy_hint: "Можно выделить и скопировать вручную.",
+    copy_btn_auto_config: "Скопировать авто-конфиг",
     alt_links_title: "Если не работает: альтернативные ссылки",
     alt_links_hint:
       "Импортируйте одну из ссылок в клиент прокси и проверьте. Иногда помогает смена SNI/FP из-за блокировок.",
@@ -450,6 +451,7 @@ const I18N = {
     copy_title: "Config for manual copy",
     copy_title_proxy: "Link (optional)",
     copy_hint: "Select and copy manually if needed.",
+    copy_btn_auto_config: "Copy auto config",
     alt_links_title: "If it doesn't work: alternative links",
     alt_links_hint:
       "Import one of the links into your proxy client and try again. Sometimes switching SNI/FP helps under blocking.",
@@ -1053,12 +1055,18 @@ if (copyConfigBtn) {
     try {
       const ok = await copyToClipboard(config);
       if (!ok && configText) {
+        if (configCopy) {
+          configCopy.classList.remove("hidden");
+        }
         configText.focus();
         configText.select();
       }
       setStatus(ok ? t("copy_done") : t("copy_failed"));
     } catch (err) {
       if (configText) {
+        if (configCopy) {
+          configCopy.classList.remove("hidden");
+        }
         configText.focus();
         configText.select();
       }
@@ -1291,8 +1299,18 @@ async function copyToClipboard(text) {
 
 function setDownload(config, qrBase64, name, options = {}) {
   const safeName = name || "client1";
-  const { showResult = true, scroll = true, downloadId = null, autoDownloadId = null, alternatives = null } = options;
-  const ext = isProxyMode(STATE.lastAuth) ? "txt" : "conf";
+  const {
+    showResult = true,
+    scroll = true,
+    downloadId = null,
+    autoDownloadId = null,
+    alternatives = null,
+    autoConfigText = null,
+  } = options;
+  const proxyMode = isProxyMode(STATE.lastAuth);
+  const copyText = config || (proxyMode ? autoConfigText : null);
+  const copyIsAuto = proxyMode && !config && Boolean(autoConfigText);
+  const ext = proxyMode ? "txt" : "conf";
 
   if (STATE.downloads.configUrl?.startsWith("blob:")) {
     URL.revokeObjectURL(STATE.downloads.configUrl);
@@ -1300,7 +1318,7 @@ function setDownload(config, qrBase64, name, options = {}) {
   const remoteConfigUrl = buildDownloadUrl(downloadId, "config");
   const configUrl = config ? remoteConfigUrl || buildConfigUrl(config) : null;
   STATE.downloads.configUrl = configUrl;
-  STATE.downloads.configText = config || null;
+  STATE.downloads.configText = copyText || null;
   if (configUrl && downloadLink) {
     downloadLink.download = `${safeName}.${ext}`;
     downloadLink.href = configUrl;
@@ -1331,13 +1349,14 @@ function setDownload(config, qrBase64, name, options = {}) {
     }
   }
   if (copyConfigBtn) {
-    copyConfigBtn.classList.toggle("hidden", !config);
+    copyConfigBtn.textContent = copyIsAuto ? t("copy_btn_auto_config") : t("copy_btn");
+    copyConfigBtn.classList.toggle("hidden", !copyText);
   }
   if (configCopy) {
     configCopy.classList.toggle("hidden", !config);
   }
   if (configText) {
-    configText.value = config || "";
+    configText.value = copyText || "";
   }
 
   // Alternative links: proxy-only helper for RU networks (DPI issues).
@@ -2192,6 +2211,7 @@ async function tryRecoverProvisionFromServer(jobId, clientName, authData) {
       setDownload(exported.config, exported.qr_png_base64, exported.client_name || exportName, {
         downloadId: exported.download_id,
         autoDownloadId: exported.auto_download_id || null,
+        autoConfigText: exported.auto_config || null,
         alternatives: exported.alternatives || null,
       });
       setStatus(isProxyMode(authData) ? t("download_ready_proxy") : t("download_ready"));
@@ -2661,6 +2681,7 @@ function renderClients(list = STATE.clients) {
         setDownload(result.config, result.qr_png_base64, result.client_name, {
           downloadId: result.download_id,
           autoDownloadId: result.auto_download_id || null,
+          autoConfigText: result.auto_config || null,
           alternatives: result.alternatives || null,
         });
         setStatus(`${t("status_client_ready")}: ${result.client_name}`);
@@ -2724,6 +2745,7 @@ function renderClients(list = STATE.clients) {
         setDownload(result.config, result.qr_png_base64, result.client_name, {
           downloadId: result.download_id,
           autoDownloadId: result.auto_download_id || null,
+          autoConfigText: result.auto_config || null,
           alternatives: result.alternatives || null,
         });
         setStatus(`${t("status_client_rotated")}: ${result.client_name}`);
@@ -2892,6 +2914,7 @@ async function pollJob(jobId, clientName, authData) {
     setDownload(result.config, result.qr_png_base64, clientName || "client1", {
       downloadId: result.download_id,
       autoDownloadId: result.auto_download_id || null,
+      autoConfigText: result.auto_config || null,
       alternatives: result.alternatives || null,
     });
     const checks = result.checks || [];
@@ -3362,6 +3385,7 @@ addClientBtn.addEventListener("click", async () => {
     setDownload(result.config, result.qr_png_base64, result.client_name, {
       downloadId: result.download_id,
       autoDownloadId: result.auto_download_id || null,
+      autoConfigText: result.auto_config || null,
       alternatives: result.alternatives || null,
     });
     setStatus(`${t("status_client_ready")}: ${result.client_name}`);
