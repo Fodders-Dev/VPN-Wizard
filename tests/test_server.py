@@ -25,6 +25,7 @@ def test_job_store_create_update_and_progress() -> None:
     assert stored is not None
     assert stored.status == "running"
     assert stored.progress == ["step 1"]
+    assert stored.alternatives is None
 
 
 def test_download_config_returns_attachment() -> None:

@@ -220,6 +220,7 @@ class CheckItem(BaseModel):
 class ProvisionResponse(BaseModel):
     ok: bool
     config: Optional[str] = None
+    alternatives: Optional[list[dict]] = None
     qr_png_base64: Optional[str] = None
     download_id: Optional[str] = None
     checks: list[CheckItem] = Field(default_factory=list)
@@ -258,6 +259,7 @@ class ClientAddResponse(BaseModel):
     client_name: Optional[str] = None
     client_ip: Optional[str] = None
     config: Optional[str] = None
+    alternatives: Optional[list[dict]] = None
     qr_png_base64: Optional[str] = None
     download_id: Optional[str] = None
     interface: Optional[str] = None
@@ -269,6 +271,7 @@ class ClientExportResponse(BaseModel):
     client_name: Optional[str] = None
     client_ip: Optional[str] = None
     config: Optional[str] = None
+    alternatives: Optional[list[dict]] = None
     qr_png_base64: Optional[str] = None
     download_id: Optional[str] = None
     interface: Optional[str] = None
@@ -286,6 +289,7 @@ class JobStatus(BaseModel):
     checks: list[CheckItem] = Field(default_factory=list)
     error: Optional[str] = None
     config_ready: bool = False
+    alternatives: Optional[list[dict]] = None
 
 
 class SessionLoginRequest(BaseModel):
@@ -344,6 +348,7 @@ class Job:
     progress: list[str] = field(default_factory=list)
     checks: list[dict] = field(default_factory=list)
     config: Optional[str] = None
+    alternatives: Optional[list[dict]] = None
     qr_png_base64: Optional[str] = None
     download_id: Optional[str] = None
     client_name: Optional[str] = None
@@ -373,6 +378,7 @@ class JobStore:
                 progress=list(job.progress),
                 checks=list(job.checks),
                 config=job.config,
+                alternatives=job.alternatives,
                 qr_png_base64=job.qr_png_base64,
                 download_id=job.download_id,
                 client_name=job.client_name,
@@ -559,6 +565,7 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
         with _ssh_connection(payload.ssh, payload.session_id, logger=progress) as (ssh, _resolved):
             opts = payload.options
             JOB_STORE.update(job_id, client_name=opts.client_name)
+            alternatives = None
             suffix = "conf"
             if opts.protocol == "vless_reality":
                 proxy = ProxyProvisioner(ssh, progress=progress)
@@ -596,6 +603,7 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
                     sni=opts.proxy_sni,
                 )
                 config = result["link"]
+                alternatives = result.get("alternatives")
                 checks = pre_checks if opts.check else []
                 suffix = "txt"
                 JOB_STORE.update(job_id, client_name=result.get("name") or opts.client_name)
@@ -633,6 +641,7 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
             job_id,
             status="done",
             config=config,
+            alternatives=alternatives if opts.protocol == "vless_reality" else None,
             qr_png_base64=qr_b64,
             download_id=download_id,
             checks=checks,
@@ -714,6 +723,7 @@ def job_status(job_id: str) -> JobStatus:
         checks=job.checks,
         error=job.error,
         config_ready=bool(job.config),
+        alternatives=job.alternatives,
     )
 
 
@@ -729,6 +739,7 @@ def job_result(job_id: str) -> ProvisionResponse:
     return ProvisionResponse(
         ok=True,
         config=job.config,
+        alternatives=job.alternatives,
         qr_png_base64=job.qr_png_base64,
         download_id=job.download_id,
         checks=job.checks,
@@ -799,6 +810,7 @@ async def client_add(payload: ClientRequest) -> ClientAddResponse:
                 result = proxy.add_client(payload.client_name or "client1")
                 client_name = result["name"]
                 config_value = result["link"]
+                alternatives = result.get("alternatives")
                 client_ip = None
                 iface = result.get("interface")
                 suffix = "txt"
@@ -810,6 +822,7 @@ async def client_add(payload: ClientRequest) -> ClientAddResponse:
                 result = prov.add_client(client_name=payload.client_name, client_ip=payload.client_ip)
                 client_name = result["name"]
                 config_value = result["config"]
+                alternatives = None
                 client_ip = result["ip"]
                 iface = result.get("interface")
                 suffix = "conf"
@@ -821,6 +834,7 @@ async def client_add(payload: ClientRequest) -> ClientAddResponse:
             client_name=client_name,
             client_ip=client_ip,
             config=config_value,
+            alternatives=alternatives,
             qr_png_base64=qr_b64,
             download_id=download_id,
             interface=iface,
@@ -882,6 +896,7 @@ async def client_export(payload: ClientRemoveRequest) -> ClientExportResponse:
                 result = proxy.export_client(payload.client_name)
                 client_name = result["name"]
                 config_value = result["link"]
+                alternatives = result.get("alternatives")
                 client_ip = None
                 iface = result.get("interface")
                 suffix = "txt"
@@ -890,6 +905,7 @@ async def client_export(payload: ClientRemoveRequest) -> ClientExportResponse:
                 result = prov.export_client(payload.client_name)
                 client_name = result["name"]
                 config_value = result["config"]
+                alternatives = None
                 client_ip = result["ip"]
                 iface = result.get("interface")
                 suffix = "conf"
@@ -901,6 +917,7 @@ async def client_export(payload: ClientRemoveRequest) -> ClientExportResponse:
             client_name=client_name,
             client_ip=client_ip,
             config=config_value,
+            alternatives=alternatives,
             qr_png_base64=qr_b64,
             download_id=download_id,
             interface=iface,

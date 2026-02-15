@@ -333,6 +333,53 @@ button.ghost {
   color: var(--muted);
 }
 
+.alt-links {
+  margin-top: 12px;
+  text-align: left;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.alt-links-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.alt-links-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.alt-link-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.alt-link-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.alt-link-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.alt-links-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .step3-hint {
   margin-top: 12px;
   font-size: 13px;

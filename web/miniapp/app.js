@@ -8,6 +8,8 @@ const configCopy = document.getElementById("config-copy");
 const configText = document.getElementById("config-text");
 const qrImage = document.getElementById("qr-image");
 const qrDownload = document.getElementById("qr-download");
+const altLinksCard = document.getElementById("alt-links");
+const altLinksList = document.getElementById("alt-links-list");
 const provisionBtn = document.getElementById("provision-btn");
 const progressLog = document.getElementById("progress-log");
 const progressFill = document.getElementById("progress-fill");
@@ -179,6 +181,9 @@ const I18N = {
     copy_title: "Конфиг для ручного копирования",
     copy_title_proxy: "Ссылка для ручного копирования",
     copy_hint: "Можно выделить и скопировать вручную.",
+    alt_links_title: "Если не работает: альтернативные ссылки",
+    alt_links_hint:
+      "Импортируйте одну из ссылок в клиент прокси и проверьте. Иногда помогает смена SNI/FP из-за блокировок.",
     step3_hint: "Откройте AmneziaWG и нажмите \"+\", чтобы добавить файл конфигурации.",
     step3_hint_proxy: "Откройте клиент прокси (Hiddify/sing-box), импортируйте ссылку или QR и подключитесь.",
     apps_title: "Скачать приложение AmneziaWG",
@@ -435,6 +440,9 @@ const I18N = {
     copy_title: "Config for manual copy",
     copy_title_proxy: "Link for manual copy",
     copy_hint: "Select and copy manually if needed.",
+    alt_links_title: "If it doesn't work: alternative links",
+    alt_links_hint:
+      "Import one of the links into your proxy client and try again. Sometimes switching SNI/FP helps under blocking.",
     step3_hint: "Open AmneziaWG and press \"+\" to add the configuration file.",
     step3_hint_proxy: "Open your proxy client (Hiddify/sing-box), import the link or scan QR, then connect.",
     apps_title: "Get AmneziaWG",
@@ -1266,7 +1274,7 @@ async function copyToClipboard(text) {
 
 function setDownload(config, qrBase64, name, options = {}) {
   const safeName = name || "client1";
-  const { showResult = true, scroll = true, downloadId = null } = options;
+  const { showResult = true, scroll = true, downloadId = null, alternatives = null } = options;
   const ext = isProxyMode(STATE.lastAuth) ? "txt" : "conf";
 
   if (STATE.downloads.configUrl?.startsWith("blob:")) {
@@ -1292,6 +1300,44 @@ function setDownload(config, qrBase64, name, options = {}) {
   }
   if (configText) {
     configText.value = config || "";
+  }
+
+  // Alternative links: proxy-only helper for RU networks (DPI issues).
+  if (altLinksCard && altLinksList) {
+    const proxyMode = isProxyMode(STATE.lastAuth);
+    const list = Array.isArray(alternatives) ? alternatives : [];
+    altLinksList.innerHTML = "";
+    altLinksCard.classList.toggle("hidden", !(proxyMode && list.length));
+    if (proxyMode && list.length) {
+      list.slice(0, 6).forEach((item, idx) => {
+        const row = document.createElement("div");
+        row.className = "alt-link-row";
+
+        const meta = document.createElement("div");
+        meta.className = "alt-link-meta";
+        const sni = String(item?.sni || "").trim();
+        const fp = String(item?.fp || "").trim();
+        meta.textContent = `${idx + 1}. SNI: ${sni || "-"} · FP: ${fp || "-"}`;
+
+        const actions = document.createElement("div");
+        actions.className = "alt-link-actions";
+
+        const copyBtn = document.createElement("button");
+        copyBtn.type = "button";
+        copyBtn.className = "secondary";
+        copyBtn.textContent = currentLang === "ru" ? "Скопировать" : "Copy";
+        const link = String(item?.link || "");
+        copyBtn.addEventListener("click", async () => {
+          const ok = await copyToClipboard(link);
+          setStatus(ok ? t("copy_done") : t("copy_failed"));
+        });
+
+        actions.appendChild(copyBtn);
+        row.appendChild(meta);
+        row.appendChild(actions);
+        altLinksList.appendChild(row);
+      });
+    }
   }
 
   if (qrBase64) {
@@ -2107,6 +2153,7 @@ async function tryRecoverProvisionFromServer(jobId, clientName, authData) {
       const exported = await exportClient(authData, exportName);
       setDownload(exported.config, exported.qr_png_base64, exported.client_name || exportName, {
         downloadId: exported.download_id,
+        alternatives: exported.alternatives || null,
       });
       setStatus(isProxyMode(authData) ? t("download_ready_proxy") : t("download_ready"));
     } catch (exportErr) {
@@ -2572,6 +2619,7 @@ function renderClients(list = STATE.clients) {
         const result = await exportClient(STATE.lastAuth, client.name);
         setDownload(result.config, result.qr_png_base64, result.client_name, {
           downloadId: result.download_id,
+          alternatives: result.alternatives || null,
         });
         setStatus(`${t("status_client_ready")}: ${result.client_name}`);
       } catch (err) {
@@ -2633,6 +2681,7 @@ function renderClients(list = STATE.clients) {
         const result = await rotateClient(STATE.lastAuth, client.name);
         setDownload(result.config, result.qr_png_base64, result.client_name, {
           downloadId: result.download_id,
+          alternatives: result.alternatives || null,
         });
         setStatus(`${t("status_client_rotated")}: ${result.client_name}`);
         await refreshClients(STATE.lastAuth);
@@ -2799,6 +2848,7 @@ async function pollJob(jobId, clientName, authData) {
     const result = await fetchJson(`/api/jobs/${jobId}/result`);
     setDownload(result.config, result.qr_png_base64, clientName || "client1", {
       downloadId: result.download_id,
+      alternatives: result.alternatives || null,
     });
     const checks = result.checks || [];
     if (checks.length) {
@@ -3267,6 +3317,7 @@ addClientBtn.addEventListener("click", async () => {
     }
     setDownload(result.config, result.qr_png_base64, result.client_name, {
       downloadId: result.download_id,
+      alternatives: result.alternatives || null,
     });
     setStatus(`${t("status_client_ready")}: ${result.client_name}`);
     setProgressState("done");

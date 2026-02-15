@@ -45,6 +45,7 @@ class ProxyProvisioner:
         )
     )
     _sni_pattern = re.compile(r"^(?=.{1,253}$)(?!-)(?:[a-zA-Z0-9-]{1,63}\.)+[a-zA-Z]{2,63}$")
+    FINGERPRINT_CANDIDATES = ("chrome", "firefox", "safari", "edge")
 
     def __init__(
         self,
@@ -408,13 +409,17 @@ class ProxyProvisioner:
         public_key: str,
         short_id: str,
         name: str,
+        fingerprint: Optional[str] = None,
     ) -> str:
+        fp = (fingerprint or self.fingerprint or "chrome").strip().lower()
+        if fp not in self.FINGERPRINT_CANDIDATES:
+            fp = "chrome"
         params = {
             "encryption": "none",
             "flow": "xtls-rprx-vision",
             "security": "reality",
             "sni": sni,
-            "fp": self.fingerprint,
+            "fp": fp,
             "pbk": public_key,
             "sid": short_id,
             "type": "tcp",
@@ -422,6 +427,41 @@ class ProxyProvisioner:
         query = "&".join(f"{key}={quote(str(value), safe='')}" for key, value in params.items())
         tag = quote(name, safe="-_.")
         return f"vless://{client_uuid}@{host}:{port}?{query}#{tag}"
+
+    def _build_alternatives(
+        self,
+        *,
+        client_uuid: str,
+        host: str,
+        port: int,
+        public_key: str,
+        short_id: str,
+        name: str,
+        server_names: list[str],
+        selected_sni: str,
+    ) -> list[dict]:
+        # Provide a few "switch-and-try" alternatives for RU networks.
+        # Many issues are DPI-specific; changing SNI/fingerprint often helps without server changes.
+        snis = [self._normalize_sni(selected_sni)] + [self._normalize_sni(item) for item in (server_names or [])]
+        snis = [item for item in dict.fromkeys([s for s in snis if s and self._is_valid_sni(s)])]
+        fps = list(dict.fromkeys([self.fingerprint] + list(self.FINGERPRINT_CANDIDATES)))
+        result: list[dict] = []
+        for sni in snis[:4]:
+            for fp in fps[:3]:
+                link = self._build_link(
+                    client_uuid=client_uuid,
+                    host=host,
+                    port=port,
+                    sni=sni,
+                    public_key=public_key,
+                    short_id=short_id,
+                    name=name,
+                    fingerprint=fp,
+                )
+                result.append({"sni": sni, "fp": fp, "link": link})
+                if len(result) >= 6:
+                    return result
+        return result
 
     def _client_state(self, cfg: dict) -> tuple[dict, list[dict], list[str], str, int]:
         inbound = self._extract_reality_inbound(cfg)
@@ -567,7 +607,11 @@ class ProxyProvisioner:
                     seen_names.add(value)
                     existing_names.append(value)
             if existing_names and existing_names[0] == selected_sni:
-                server_names = existing_names
+                # Keep existing only if it doesn't contain avoided SNI; otherwise rebuild to remove risky names.
+                if any(self._is_avoided_sni(item) for item in existing_names[1:]):
+                    server_names = self._build_server_names(selected_sni)
+                else:
+                    server_names = existing_names
             else:
                 server_names = self._build_server_names(selected_sni)
             if reality.get("serverNames") != server_names:
@@ -635,11 +679,23 @@ class ProxyProvisioner:
                 short_id=short_id,
                 name=name,
             )
+            alternatives = self._build_alternatives(
+                client_uuid=client_uuid,
+                host=host,
+                port=selected_port,
+                public_key=public_key,
+                short_id=short_id,
+                name=name,
+                server_names=server_names,
+                selected_sni=selected_sni,
+            )
             return {
                 "name": name,
                 "link": link,
                 "listen_port": selected_port,
                 "sni": selected_sni,
+                "server_names": server_names,
+                "alternatives": alternatives,
             }
 
         self.progress("Generating Reality keys")
@@ -703,11 +759,23 @@ class ProxyProvisioner:
             short_id=short_id,
             name=name,
         )
+        alternatives = self._build_alternatives(
+            client_uuid=client_uuid,
+            host=host,
+            port=port,
+            public_key=public_key,
+            short_id=short_id,
+            name=name,
+            server_names=server_names,
+            selected_sni=server_name,
+        )
         return {
             "name": name,
             "link": link,
             "listen_port": port,
             "sni": server_name,
+            "server_names": server_names,
+            "alternatives": alternatives,
         }
 
     def list_clients(self) -> list[dict]:
@@ -758,7 +826,33 @@ class ProxyProvisioner:
             short_id=short_id,
             name=name,
         )
-        return {"name": name, "link": link, "interface": "vless-reality"}
+        stream = inbound.get("streamSettings") or {}
+        reality = stream.get("realitySettings") or {}
+        raw_names = reality.get("serverNames") or []
+        server_names: list[str] = []
+        if isinstance(raw_names, list):
+            for item in raw_names:
+                value = self._normalize_sni(item)
+                if value and self._is_valid_sni(value) and value not in server_names:
+                    server_names.append(value)
+        alternatives = self._build_alternatives(
+            client_uuid=client_uuid,
+            host=host,
+            port=port,
+            public_key=public_key,
+            short_id=short_id,
+            name=name,
+            server_names=server_names,
+            selected_sni=sni,
+        )
+        return {
+            "name": name,
+            "link": link,
+            "interface": "vless-reality",
+            "sni": sni,
+            "server_names": server_names,
+            "alternatives": alternatives,
+        }
 
     def add_client(self, client_name: Optional[str]) -> dict:
         name = self._validate_name(client_name)
