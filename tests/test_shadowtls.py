@@ -37,7 +37,7 @@ def _base_server_config() -> dict:
                 "tag": "ss-in",
                 "listen": "127.0.0.1",
                 "listen_port": 20000,
-                "method": "2022-blake3-chacha20-poly1305",
+                "method": "2022-blake3-aes-128-gcm",
                 "password": "SERVERPASS",
                 "users": [{"name": "client1", "password": "USER1"}],
                 "multiplex": {"enabled": True},
@@ -106,4 +106,3 @@ def test_add_client_updates_both_inbound_user_lists(monkeypatch) -> None:
     assert result["name"] == "client2"
     assert writes
     assert restarts == [True]
-

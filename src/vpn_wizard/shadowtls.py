@@ -28,7 +28,9 @@ class ShadowTLSSSProvisioner:
     CONFIG_PATH = "/usr/local/etc/sing-box/config.json"
     SERVICE_NAME = "sing-box"
 
-    SS_METHOD = "2022-blake3-chacha20-poly1305"
+    # Hiddify / some sing-box builds enable SS2022 EIH which works only with AES methods.
+    # Prefer AES-128-GCM for broad compatibility + decent performance.
+    SS_METHOD = "2022-blake3-aes-128-gcm"
     SS_KEY_LEN = 32
 
     # Prefer 443 to blend in. Keep Cloudflare last (some RU networks may have issues with it).
@@ -300,6 +302,9 @@ rm -rf "$tmp"
         listen_port = stls.get("listen_port")
         if not isinstance(listen_port, int):
             raise RuntimeError("ShadowTLS listen_port is missing/invalid.")
+        method = str(ss.get("method") or "").strip()
+        if not method:
+            raise RuntimeError("Shadowsocks method is missing.")
         server_password = str(ss.get("password") or "").strip()
         if not server_password:
             raise RuntimeError("Shadowsocks server password is missing.")
@@ -383,8 +388,16 @@ rm -rf "$tmp"
 
         if cfg:
             stls, ss, current_port, server_password, _existing_handshake = self._state(cfg)
+            changed = False
+            current_method = str(ss.get("method") or "").strip()
+            if current_method and current_method != self.SS_METHOD:
+                self.progress(f"Updating Shadowsocks method: {current_method} -> {self.SS_METHOD}")
+                ss["method"] = self.SS_METHOD
+                changed = True
             if stls.get("handshake") != {"server": handshake_server, "server_port": 443}:
                 stls["handshake"] = {"server": handshake_server, "server_port": 443}
+                changed = True
+            if changed:
                 self._write_config(cfg)
             users_stls = stls.setdefault("users", [])
             users_ss = ss.setdefault("users", [])

@@ -822,9 +822,10 @@ def download_config(download_id: str) -> Response:
     if not item:
         raise HTTPException(status_code=404, detail="Download not found")
     filename = _download_filename(item.name, item.suffix or "conf")
+    media_type = "application/json" if (item.suffix or "").lower() == "json" else "text/plain"
     return Response(
         content=item.config,
-        media_type="text/plain",
+        media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
