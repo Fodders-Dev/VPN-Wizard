@@ -4,6 +4,7 @@ const progressCard = document.getElementById("progress-card");
 const resultCard = document.getElementById("result-card");
 const downloadLink = document.getElementById("download-link");
 const downloadAutoLink = document.getElementById("download-auto-link");
+const copyAutoUrlBtn = document.getElementById("copy-auto-url-btn");
 const copyConfigBtn = document.getElementById("copy-config-btn");
 const configCopy = document.getElementById("config-copy");
 const configText = document.getElementById("config-text");
@@ -175,6 +176,7 @@ const I18N = {
     download_btn: "Скачать конфиг",
     download_btn_proxy: "Скачать ссылку",
     download_btn_auto: "Скачать авто-конфиг",
+    copy_auto_url_btn: "Скопировать ссылку авто-подписки",
     download_qr_btn: "Скачать QR",
     copy_btn: "Скопировать конфиг",
     copy_done: "Конфиг скопирован.",
@@ -435,6 +437,7 @@ const I18N = {
     download_btn: "Download config",
     download_btn_proxy: "Download link",
     download_btn_auto: "Download auto config",
+    copy_auto_url_btn: "Copy auto profile URL",
     download_qr_btn: "Download QR",
     copy_btn: "Copy config",
     copy_done: "Config copied.",
@@ -1309,6 +1312,14 @@ function setDownload(config, qrBase64, name, options = {}) {
       downloadAutoLink.download = `${safeName}-auto.json`;
       downloadAutoLink.href = autoUrl;
       downloadAutoLink.dataset.url = autoUrl;
+    }
+    if (copyAutoUrlBtn) {
+      copyAutoUrlBtn.textContent = t("copy_auto_url_btn");
+      copyAutoUrlBtn.classList.toggle("hidden", !(proxyMode && autoUrl));
+      copyAutoUrlBtn.onclick = async () => {
+        const ok = await copyToClipboard(autoUrl || "");
+        setStatus(ok ? t("copy_done") : t("copy_failed"));
+      };
     }
   }
   if (copyConfigBtn) {
