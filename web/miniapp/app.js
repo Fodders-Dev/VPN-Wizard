@@ -128,7 +128,8 @@ const I18N = {
     connection_mode_hint: "VPN быстрее для всего устройства. Прокси лучше при жестких блокировках.",
     connection_mode_switch_hint: "Режим можно менять в любой момент: после смены нажмите \"Подключиться\".",
     mode_vpn: "VPN (AmneziaWG)",
-    mode_proxy: "Антиблок прокси (VLESS Reality)",
+    mode_proxy: "Антиблок прокси (ShadowTLS)",
+    mode_proxy_legacy: "Legacy прокси (VLESS Reality)",
     remember_login_label: "Запомнить вход на этом устройстве",
     remember_login_hint: "Сессия хранится на этом устройстве и обновляется после входа.",
     remember_login_saved: "Вход сохранен",
@@ -166,15 +167,15 @@ const I18N = {
     simple_mode_label: "Режим новичка (рекомендуется)",
     simple_mode_hint: "Пошаговый безопасный сценарий. Отключайте только если уверены в действиях.",
     provision_btn: "Настроить сервер и получить первый профиль",
-    provision_btn_proxy: "Настроить прокси и получить первую ссылку",
+    provision_btn_proxy: "Настроить прокси и получить доступ",
     add_client_btn: "Добавить профиль",
     add_client_btn_proxy: "Добавить прокси-профиль",
     step2_title: "Шаг 2. Прогресс",
     status_waiting: "Ожидание...",
     step3_title: "Шаг 3. Скачать",
-    step3_title_proxy: "Шаг 3. Ссылка и QR",
+    step3_title_proxy: "Шаг 3. Доступ",
     download_btn: "Скачать конфиг",
-    download_btn_proxy: "Скачать ссылку",
+    download_btn_proxy: "Скачать (опционально)",
     download_btn_auto: "Скачать авто-конфиг",
     copy_auto_url_btn: "Скопировать ссылку авто-подписки",
     download_qr_btn: "Скачать QR",
@@ -183,13 +184,14 @@ const I18N = {
     copy_failed: "Не удалось скопировать конфиг.",
     copy_empty: "Сначала получите конфиг.",
     copy_title: "Конфиг для ручного копирования",
-    copy_title_proxy: "Ссылка для ручного копирования",
+    copy_title_proxy: "Ссылка (опционально)",
     copy_hint: "Можно выделить и скопировать вручную.",
     alt_links_title: "Если не работает: альтернативные ссылки",
     alt_links_hint:
       "Импортируйте одну из ссылок в клиент прокси и проверьте. Иногда помогает смена SNI/FP из-за блокировок.",
     step3_hint: "Откройте AmneziaWG и нажмите \"+\", чтобы добавить файл конфигурации.",
-    step3_hint_proxy: "Откройте клиент прокси (Hiddify/sing-box), импортируйте ссылку или QR и подключитесь.",
+    step3_hint_proxy:
+      "Откройте клиент прокси (Hiddify/sing-box), добавьте профиль по ссылке авто-подписки и подключитесь.",
     apps_title: "Скачать приложение AmneziaWG",
     apps_title_proxy: "Рекомендуемые клиенты прокси",
     apps_android: "Android (Google Play)",
@@ -269,7 +271,7 @@ const I18N = {
     status_precheck_done: "Предпросмотр готов. Чтобы установить VPN, отключите предпросмотр.",
     server_use_hint: "Введите пароль или ключ и нажмите \"Подключиться\".",
     download_ready: "Скачайте конфиг и отсканируйте QR.",
-    download_ready_proxy: "Скопируйте ссылку или отсканируйте QR в клиенте прокси.",
+    download_ready_proxy: "Скопируйте ссылку авто-подписки и добавьте профиль в Hiddify/sing-box.",
     check_ok: "ok",
     check_fail: "fail",
     auto_value: "авто",
@@ -286,6 +288,7 @@ const I18N = {
     meta_tyumen: "Доп. порт",
     protocol_amneziawg: "AmneziaWG",
     protocol_wireguard: "WireGuard",
+    protocol_shadowtls_ss: "ShadowTLS + SS2022",
     protocol_vless_reality: "VLESS Reality",
     alert_fill_host_user: "Заполните поля Host и User.",
     alert_check_first: "Сначала нажмите \"Подключиться\".",
@@ -332,7 +335,7 @@ const I18N = {
     faq_tyumen_body: "Введите имя профиля и нажмите \"Добавить профиль\". Порт можно выбрать в расширенных полях.",
     faq_proxy_slow_title: "Прокси подключен, но сайты медленные или не грузятся",
     faq_proxy_slow_body:
-      "Чаще всего это DNS/маршрутизация в клиенте прокси (особенно в РФ).\n\nПроверьте:\n1) Включен ли DNS Routing.\n2) Remote DNS = DoH (https://dns.google/dns-query или https://unfiltered.adguard-dns.com/dns-query).\n3) На Windows попробуйте режим VPN (экспериментальный/TUN) и включите Strict Routing.\n4) Отключите другие VPN/прокси и оставьте активным только один профиль.\n5) Если стало хуже после смены порта/SNI — включите авто и перенастройте прокси.",
+      "Чаще всего это DNS/маршрутизация в клиенте прокси (особенно в РФ).\n\nПроверьте:\n1) Включен ли DNS Routing.\n2) Remote DNS = DoH (например https://dns.quad9.net/dns-query или https://unfiltered.adguard-dns.com/dns-query).\n3) На Windows попробуйте режим VPN (экспериментальный/TUN) и включите Strict Routing.\n4) Отключите другие VPN/прокси и оставьте активным только один профиль.\n5) Если стало хуже после смены порта/SNI — включите авто и перенастройте прокси.",
     faq_changes_title: "Что именно мы делаем на сервере?",
     faq_changes_body:
       "1) Подключаемся по SSH и проверяем ОС, sudo и свободный порт.\n2) Ставим WireGuard/AmneziaWG и зависимости.\n3) Создаём ключи и конфиги в /etc/amnezia/amneziawg или /etc/wireguard.\n4) Включаем IP forwarding и добавляем NAT (iptables).\n5) Поднимаем сервис awg-quick@ или wg-quick@ и делаем бэкапы конфигов.\n6) Генерируем ваш профиль и QR.\n\nЕсли у вас на сервере есть свои сервисы или строгий firewall — используйте безопасный режим и внимательно прочитайте пункты выше.",
@@ -346,9 +349,9 @@ const I18N = {
     help_vpn_title: "Режим VPN (AmneziaWG)",
     help_vpn_body:
       "1) Подключитесь к серверу.\n2) Нажмите \"Настроить сервер\".\n3) Скачайте конфиг и импортируйте в AmneziaWG.",
-    help_proxy_title: "Режим антиблок-прокси (VLESS Reality)",
+    help_proxy_title: "Режим антиблок-прокси (ShadowTLS)",
     help_proxy_body:
-      "1) Подключитесь к серверу и настройте прокси (порт/SNI можно оставить пустыми - авто).\n2) Получите ссылку и QR.\n3) Импортируйте в Hiddify/sing-box и подключитесь.\n4) Для РФ (особенно Windows): чаще стабильнее режим VPN (экспериментальный/TUN) + Strict Routing = ON + DNS Routing = ON. Если ломаются приложения — переключитесь на System Proxy.\n5) DNS: используйте DoH (например https://dns.google/dns-query или https://unfiltered.adguard-dns.com/dns-query). Избегайте udp://1.1.1.1.\n6) Не держите одновременно активным другой VPN/прокси и несколько профилей.",
+      "1) Подключитесь к серверу и настройте прокси (порт/SNI можно оставить пустыми - авто).\n2) Скопируйте ссылку авто-подписки.\n3) В Hiddify/sing-box добавьте профиль по URL и подключитесь.\n4) Для РФ (особенно Windows): чаще стабильнее режим VPN (экспериментальный/TUN) + Strict Routing = ON + DNS Routing = ON. Если ломаются приложения — переключитесь на System Proxy.\n5) DNS: используйте DoH (например https://dns.quad9.net/dns-query или https://unfiltered.adguard-dns.com/dns-query). Избегайте udp://1.1.1.1.\n6) Не держите одновременно активным другой VPN/прокси и несколько профилей.",
     help_install_title: "Что установить на устройство",
     help_install_body:
       "VPN: AmneziaWG.\nПрокси: Hiddify (рекомендуется) или v2rayNG/sing-box.",
@@ -389,7 +392,8 @@ const I18N = {
     connection_mode_hint: "VPN is faster for full-device traffic. Proxy works better under strict blocking.",
     connection_mode_switch_hint: "You can switch modes anytime: after changing it, click \"Connect\" again.",
     mode_vpn: "VPN (AmneziaWG)",
-    mode_proxy: "Anti-block proxy (VLESS Reality)",
+    mode_proxy: "Anti-block proxy (ShadowTLS)",
+    mode_proxy_legacy: "Legacy proxy (VLESS Reality)",
     remember_login_label: "Remember login on this device",
     remember_login_hint: "A secure session is stored on this device and refreshed after login.",
     remember_login_saved: "Login remembered",
@@ -427,15 +431,15 @@ const I18N = {
     simple_mode_label: "Novice mode (recommended)",
     simple_mode_hint: "Safe step-by-step flow. Disable only if you understand the risks.",
     provision_btn: "Configure server and get the first profile",
-    provision_btn_proxy: "Configure proxy and get the first link",
+    provision_btn_proxy: "Configure proxy and get access",
     add_client_btn: "Add profile",
     add_client_btn_proxy: "Add proxy profile",
     step2_title: "Step 2: Progress",
     status_waiting: "Waiting...",
     step3_title: "Step 3: Download",
-    step3_title_proxy: "Step 3: Link and QR",
+    step3_title_proxy: "Step 3: Access",
     download_btn: "Download config",
-    download_btn_proxy: "Download link",
+    download_btn_proxy: "Download (optional)",
     download_btn_auto: "Download auto config",
     copy_auto_url_btn: "Copy auto profile URL",
     download_qr_btn: "Download QR",
@@ -444,13 +448,14 @@ const I18N = {
     copy_failed: "Failed to copy config.",
     copy_empty: "Generate a config first.",
     copy_title: "Config for manual copy",
-    copy_title_proxy: "Link for manual copy",
+    copy_title_proxy: "Link (optional)",
     copy_hint: "Select and copy manually if needed.",
     alt_links_title: "If it doesn't work: alternative links",
     alt_links_hint:
       "Import one of the links into your proxy client and try again. Sometimes switching SNI/FP helps under blocking.",
     step3_hint: "Open AmneziaWG and press \"+\" to add the configuration file.",
-    step3_hint_proxy: "Open your proxy client (Hiddify/sing-box), import the link or scan QR, then connect.",
+    step3_hint_proxy:
+      "Open your proxy client (Hiddify/sing-box), add a profile using the auto profile URL, then connect.",
     apps_title: "Get AmneziaWG",
     apps_title_proxy: "Recommended proxy clients",
     apps_android: "Android (Google Play)",
@@ -530,7 +535,7 @@ const I18N = {
     status_precheck_done: "Preview ready. Disable preview to install the VPN.",
     server_use_hint: "Enter password or key and click \"Connect\".",
     download_ready: "Ready. Download your config and scan the QR.",
-    download_ready_proxy: "Ready. Copy the link or scan the QR in your proxy client.",
+    download_ready_proxy: "Ready. Copy the auto profile URL and add it to Hiddify/sing-box.",
     check_ok: "ok",
     check_fail: "fail",
     auto_value: "auto",
@@ -547,6 +552,7 @@ const I18N = {
     meta_tyumen: "Alt port",
     protocol_amneziawg: "AmneziaWG",
     protocol_wireguard: "WireGuard",
+    protocol_shadowtls_ss: "ShadowTLS + SS2022",
     protocol_vless_reality: "VLESS Reality",
     alert_fill_host_user: "Please fill in Host and User fields first.",
     alert_check_first: "Please click \"Connect\" first.",
@@ -593,7 +599,7 @@ const I18N = {
     faq_tyumen_body: "Enter a profile name and click \"Add profile\". You can change the UDP port in advanced fields.",
     faq_proxy_slow_title: "Proxy connected but sites are slow or not loading",
     faq_proxy_slow_body:
-      "This is usually client-side DNS/routing (common on RU networks).\n\nCheck:\n1) DNS Routing is enabled.\n2) Remote DNS is DoH (https://dns.google/dns-query or https://unfiltered.adguard-dns.com/dns-query).\n3) On Windows, try VPN (experimental/TUN) and enable Strict Routing.\n4) Disable other VPN/proxy apps and keep only one active profile.\n5) If it got worse after changing port/SNI, reset them to auto and reconfigure.",
+      "This is usually client-side DNS/routing (common on RU networks).\n\nCheck:\n1) DNS Routing is enabled.\n2) Remote DNS is DoH (for example https://dns.quad9.net/dns-query or https://unfiltered.adguard-dns.com/dns-query).\n3) On Windows, try VPN (experimental/TUN) and enable Strict Routing.\n4) Disable other VPN/proxy apps and keep only one active profile.\n5) If it got worse after changing port/SNI, reset them to auto and reconfigure.",
     faq_changes_title: "What exactly do we change on the server?",
     faq_changes_body:
       "1) Connect over SSH and check OS, sudo, and free port.\n2) Install WireGuard/AmneziaWG and dependencies.\n3) Create keys/configs under /etc/amnezia/amneziawg or /etc/wireguard.\n4) Enable IP forwarding and add NAT (iptables).\n5) Start awg-quick@ or wg-quick@ and create config backups.\n6) Generate your profile and QR.\n\nIf your server hosts other services or strict firewall rules, use safe mode and review the steps above.",
@@ -607,9 +613,9 @@ const I18N = {
     help_vpn_title: "VPN mode (AmneziaWG)",
     help_vpn_body:
       "1) Connect to your server.\n2) Click \"Configure server\".\n3) Download config and import it into AmneziaWG.",
-    help_proxy_title: "Anti-block proxy mode (VLESS Reality)",
+    help_proxy_title: "Anti-block proxy mode (ShadowTLS)",
     help_proxy_body:
-      "1) Connect and configure proxy (leave port/SNI empty for auto mode).\n2) Get link and QR.\n3) Import into Hiddify/sing-box and connect.\n4) For RU networks (especially Windows): VPN (experimental/TUN) is often more stable with Strict Routing = ON and DNS Routing = ON. If apps break, switch to System Proxy.\n5) DNS: use DoH (for example https://dns.google/dns-query or https://unfiltered.adguard-dns.com/dns-query). Avoid udp://1.1.1.1.\n6) Do not keep another VPN/proxy or multiple profiles active at the same time.",
+      "1) Connect and configure proxy (leave port/SNI empty for auto mode).\n2) Copy the auto profile URL.\n3) In Hiddify/sing-box add a profile by URL and connect.\n4) For RU networks (especially Windows): VPN (experimental/TUN) is often more stable with Strict Routing = ON and DNS Routing = ON. If apps break, switch to System Proxy.\n5) DNS: use DoH (for example https://dns.quad9.net/dns-query or https://unfiltered.adguard-dns.com/dns-query). Avoid udp://1.1.1.1.\n6) Do not keep another VPN/proxy or multiple profiles active at the same time.",
     help_install_title: "What to install on device",
     help_install_body:
       "VPN: AmneziaWG.\nProxy: Hiddify (recommended) or v2rayNG/sing-box.",
@@ -857,13 +863,15 @@ function revealProfilesTab() {
   }
 }
 
+const PROXY_MODES = new Set(["shadowtls_ss", "vless_reality"]);
+
 function getConnectionMode(data = null) {
   const mode = (data?.connection_mode || connectionModeSelect?.value || "amneziawg").toString();
-  return mode === "vless_reality" ? "vless_reality" : "amneziawg";
+  return PROXY_MODES.has(mode) ? mode : "amneziawg";
 }
 
 function isProxyMode(data = null) {
-  return getConnectionMode(data) === "vless_reality";
+  return PROXY_MODES.has(getConnectionMode(data));
 }
 
 function updateModeUi(data = null) {
@@ -1679,7 +1687,7 @@ function splitHostAndPort(rawHost, rawPort) {
 }
 
 function makeServerKey(host, user, sshPort, mode = "amneziawg") {
-  const normalizedMode = mode === "vless_reality" ? "vless_reality" : "amneziawg";
+  const normalizedMode = PROXY_MODES.has(mode) ? mode : "amneziawg";
   return `${(host || "").trim().toLowerCase()}|${(user || "").trim().toLowerCase()}|${normalizeSshPort(
     sshPort,
     22,
@@ -1725,7 +1733,7 @@ function getFormData() {
     client_name: (data.client_name || "").trim(),
     listen_port: listenPort,
     proxy_sni: proxySni || null,
-    safe_mode: connectionMode !== "vless_reality" && Boolean(safeToggle?.checked) && !simpleToggle.checked,
+    safe_mode: !isProxyMode({ connection_mode: connectionMode }) && Boolean(safeToggle?.checked) && !simpleToggle.checked,
     connection_mode: connectionMode,
     remember_login: Boolean(rememberLoginToggle?.checked),
     session_id: STATE.activeSessionId || null,
@@ -1748,7 +1756,7 @@ function loadServers() {
         host: String(item.host || "").trim(),
         user: String(item.user || "").trim(),
         ssh_port: parseOptionalSshPort(item.ssh_port),
-        mode: item.mode === "vless_reality" ? "vless_reality" : "amneziawg",
+        mode: PROXY_MODES.has(String(item.mode || "")) ? String(item.mode) : "amneziawg",
         listen_port: normalizeListenPort(item.listen_port),
         proxy_sni: String(item.proxy_sni || "").trim().toLowerCase() || undefined,
         clients_count:
@@ -1801,7 +1809,7 @@ function renderServers() {
     if (server.listen_port) {
       parts.push(`${t("meta_port")}: ${server.listen_port}`);
     }
-    if (server.mode === "vless_reality" && server.proxy_sni) {
+    if (PROXY_MODES.has(server.mode) && server.proxy_sni) {
       parts.push(`${t("meta_sni")}: ${server.proxy_sni}`);
     }
     if (server.clients_count !== undefined) {
@@ -2422,7 +2430,7 @@ function ensureListenPortDefaultForMode() {
   }
   const mode = getConnectionMode();
   const currentPort = Number.parseInt(form.elements.listen_port.value || "", 10);
-  if (mode === "vless_reality") {
+  if (PROXY_MODES.has(mode)) {
     if (currentPort === 3478) {
       form.elements.listen_port.value = "";
     }
@@ -2626,8 +2634,10 @@ function renderClients(list = STATE.clients) {
     meta.className = "client-meta";
     const handshake = client.latest_handshake || "-";
     const transfer = formatTransfer(client.transfer_rx, client.transfer_tx);
+    const proxyProtocol = proxyMode ? getConnectionMode(STATE.lastAuth) : null;
+    const proxyProtocolLabel = proxyProtocol ? t(`protocol_${proxyProtocol}`) || proxyProtocol : "";
     const parts = proxyMode
-      ? [`${t("meta_protocol")}: ${t("protocol_vless_reality")}`]
+      ? [`${t("meta_protocol")}: ${proxyProtocolLabel}`]
       : [
           `${t("client_ip")}: ${client.ip || "-"}`,
           `${t("client_handshake")}: ${handshake}`,

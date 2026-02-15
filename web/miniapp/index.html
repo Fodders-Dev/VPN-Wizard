@@ -73,7 +73,8 @@
           <span data-i18n="connection_mode_label">Режим подключения</span>
           <select name="connection_mode" id="connection-mode">
             <option value="amneziawg" data-i18n="mode_vpn">VPN (AmneziaWG)</option>
-            <option value="vless_reality" data-i18n="mode_proxy">Антиблок прокси (VLESS Reality)</option>
+            <option value="shadowtls_ss" data-i18n="mode_proxy">Антиблок прокси (ShadowTLS)</option>
+            <option value="vless_reality" data-i18n="mode_proxy_legacy">Legacy прокси (VLESS Reality)</option>
           </select>
           <small class="field-hint" data-i18n="connection_mode_hint">
             VPN быстрее для всего устройства. Прокси лучше при жестких блокировках.
@@ -296,11 +297,11 @@
           </div>
         </div>
         <div class="help-block">
-          <div class="help-block-title" data-i18n="help_proxy_title">Режим антиблок-прокси (VLESS Reality)</div>
+          <div class="help-block-title" data-i18n="help_proxy_title">Режим антиблок-прокси (ShadowTLS)</div>
           <div class="help-block-body" data-i18n="help_proxy_body">
             1) Подключитесь к серверу и настройте прокси.
-            2) Получите ссылку и QR.
-            3) Импортируйте в Hiddify/sing-box и подключитесь.
+            2) Скопируйте ссылку авто-подписки.
+            3) Добавьте профиль по URL в Hiddify/sing-box и подключитесь.
           </div>
         </div>
         <div class="help-block">

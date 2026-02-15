@@ -24,6 +24,7 @@ import uvicorn
 
 from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
 from vpn_wizard.proxy import ProxyProvisioner
+from vpn_wizard.shadowtls import ShadowTLSSSProvisioner
 
 
 app = FastAPI(title="VPN Wizard API")
@@ -576,9 +577,12 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
         with _ssh_connection(payload.ssh, payload.session_id, logger=progress) as (ssh, _resolved):
             opts = payload.options
             JOB_STORE.update(job_id, client_name=opts.client_name)
+            config = None
             alternatives = None
             auto_config = None
+            checks: list[dict] = []
             suffix = "conf"
+
             if opts.protocol == "vless_reality":
                 proxy = ProxyProvisioner(ssh, progress=progress)
                 proxy_port = opts.listen_port
@@ -620,6 +624,47 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
                 checks = pre_checks if opts.check else []
                 suffix = "txt"
                 JOB_STORE.update(job_id, client_name=result.get("name") or opts.client_name)
+
+            elif opts.protocol == "shadowtls_ss":
+                proxy = ShadowTLSSSProvisioner(ssh, progress=progress)
+                proxy_port = opts.listen_port
+                if not proxy_port:
+                    auto_port = proxy.choose_free_port()
+                    if not auto_port:
+                        JOB_STORE.update(
+                            job_id,
+                            status="error",
+                            error="Could not find a free proxy TCP port automatically. Set it manually.",
+                        )
+                        return
+                    proxy_port = auto_port
+                    progress(f"Proxy port selected automatically: {proxy_port}.")
+                pre_checks = proxy.pre_check(int(proxy_port))
+                port_check = next((item for item in pre_checks if item.get("name") == "port_available"), None)
+                if port_check and not port_check.get("ok"):
+                    fallback_port = proxy.choose_free_port(int(proxy_port))
+                    if fallback_port and fallback_port != proxy_port:
+                        progress(f"Proxy port {proxy_port} is busy. Switching to free port {fallback_port}.")
+                        proxy_port = fallback_port
+                        pre_checks = proxy.pre_check(int(proxy_port))
+                for item in pre_checks:
+                    progress(
+                        f"precheck {item.get('name')}: {'ok' if item.get('ok') else 'fail'} ({item.get('details')})"
+                    )
+                critical = {"os_supported", "sudo", "port_available"}
+                if any(item.get("name") in critical and not item.get("ok") for item in pre_checks):
+                    JOB_STORE.update(job_id, status="error", error="Precheck failed.", checks=pre_checks)
+                    return
+                result = proxy.setup(
+                    client_name=opts.client_name or "client1",
+                    listen_port=int(proxy_port),
+                    sni=opts.proxy_sni,
+                )
+                auto_config = result.get("auto_config")
+                checks = pre_checks if opts.check else []
+                suffix = "txt"
+                JOB_STORE.update(job_id, client_name=result.get("name") or opts.client_name)
+
             else:
                 prov = WireGuardProvisioner(
                     ssh,
@@ -647,18 +692,21 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
                 config = prov.export_client_config()
                 checks = prov.post_check() if opts.check else []
 
-        qr_png = _build_qr_png(config)
-        qr_b64 = base64.b64encode(qr_png).decode("ascii")
-        download_id = DOWNLOAD_STORE.create(config, qr_png, opts.client_name, suffix=suffix)
+        # We store a QR for every downloadable item (store schema requirement), but only show
+        # a meaningful QR to the user when `config` is actually a QR-friendly payload (WG config / vless://).
+        qr_seed = config if config else "VPN Wizard"
+        qr_png = _build_qr_png(qr_seed) if (config or auto_config) else None
+        qr_b64 = base64.b64encode(qr_png).decode("ascii") if (qr_png and config) else None
+        download_id = DOWNLOAD_STORE.create(config, qr_png, opts.client_name, suffix=suffix) if (config and qr_png) else None
         auto_download_id = None
-        if opts.protocol == "vless_reality" and auto_config:
+        if opts.protocol in {"vless_reality", "shadowtls_ss"} and auto_config and qr_png:
             auto_download_id = DOWNLOAD_STORE.create(auto_config, qr_png, f"{opts.client_name}-auto", suffix="json")
         JOB_STORE.update(
             job_id,
             status="done",
             config=config,
             alternatives=alternatives if opts.protocol == "vless_reality" else None,
-            auto_config=auto_config if opts.protocol == "vless_reality" else None,
+            auto_config=auto_config if opts.protocol in {"vless_reality", "shadowtls_ss"} else None,
             qr_png_base64=qr_b64,
             download_id=download_id,
             auto_download_id=auto_download_id,
@@ -814,6 +862,9 @@ async def client_list(payload: RollbackRequest) -> ClientListResponse:
             if payload.protocol == "vless_reality":
                 proxy = ProxyProvisioner(ssh)
                 clients = proxy.list_clients()
+            elif payload.protocol == "shadowtls_ss":
+                proxy = ShadowTLSSSProvisioner(ssh)
+                clients = proxy.list_clients()
             else:
                 prov = WireGuardProvisioner(ssh)
                 clients = prov.list_clients()
@@ -836,6 +887,16 @@ async def client_add(payload: ClientRequest) -> ClientAddResponse:
                 client_ip = None
                 iface = result.get("interface")
                 suffix = "txt"
+            elif payload.protocol == "shadowtls_ss":
+                proxy = ShadowTLSSSProvisioner(ssh)
+                result = proxy.add_client(payload.client_name or "client1")
+                client_name = result["name"]
+                config_value = None
+                alternatives = None
+                auto_config = result.get("auto_config")
+                client_ip = None
+                iface = result.get("interface")
+                suffix = "txt"
             else:
                 prov_kwargs = {}
                 if payload.listen_port:
@@ -849,11 +910,16 @@ async def client_add(payload: ClientRequest) -> ClientAddResponse:
                 client_ip = result["ip"]
                 iface = result.get("interface")
                 suffix = "conf"
-        qr_png = _build_qr_png(config_value)
-        qr_b64 = base64.b64encode(qr_png).decode("ascii")
-        download_id = DOWNLOAD_STORE.create(config_value, qr_png, client_name, suffix=suffix)
+        qr_seed = config_value if config_value else "VPN Wizard"
+        qr_png = _build_qr_png(qr_seed) if (config_value or auto_config) else None
+        qr_b64 = base64.b64encode(qr_png).decode("ascii") if (qr_png and config_value) else None
+        download_id = (
+            DOWNLOAD_STORE.create(config_value, qr_png, client_name, suffix=suffix)
+            if (config_value and qr_png)
+            else None
+        )
         auto_download_id = None
-        if payload.protocol == "vless_reality" and auto_config:
+        if payload.protocol in {"vless_reality", "shadowtls_ss"} and auto_config and qr_png:
             auto_download_id = DOWNLOAD_STORE.create(auto_config, qr_png, f"{client_name}-auto", suffix="json")
         return ClientAddResponse(
             ok=True,
@@ -878,6 +944,9 @@ async def client_remove(payload: ClientRemoveRequest) -> RollbackResponse:
             if payload.protocol == "vless_reality":
                 proxy = ProxyProvisioner(ssh)
                 ok = proxy.remove_client(payload.client_name)
+            elif payload.protocol == "shadowtls_ss":
+                proxy = ShadowTLSSSProvisioner(ssh)
+                ok = proxy.remove_client(payload.client_name)
             else:
                 prov = WireGuardProvisioner(ssh)
                 ok = prov.remove_client(payload.client_name)
@@ -891,7 +960,7 @@ async def client_remove(payload: ClientRemoveRequest) -> RollbackResponse:
 @app.post("/api/clients/rotate", response_model=ClientAddResponse)
 async def client_rotate(payload: ClientRemoveRequest) -> ClientAddResponse:
     try:
-        if payload.protocol == "vless_reality":
+        if payload.protocol in {"vless_reality", "shadowtls_ss"}:
             return ClientAddResponse(ok=False, error="Rotate is not supported for proxy profiles.")
         with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
             prov_kwargs = {}
@@ -929,6 +998,16 @@ async def client_export(payload: ClientRemoveRequest) -> ClientExportResponse:
                 client_ip = None
                 iface = result.get("interface")
                 suffix = "txt"
+            elif payload.protocol == "shadowtls_ss":
+                proxy = ShadowTLSSSProvisioner(ssh)
+                result = proxy.export_client(payload.client_name)
+                client_name = result["name"]
+                config_value = None
+                alternatives = None
+                auto_config = result.get("auto_config")
+                client_ip = None
+                iface = result.get("interface")
+                suffix = "txt"
             else:
                 prov = WireGuardProvisioner(ssh)
                 result = prov.export_client(payload.client_name)
@@ -939,11 +1018,16 @@ async def client_export(payload: ClientRemoveRequest) -> ClientExportResponse:
                 client_ip = result["ip"]
                 iface = result.get("interface")
                 suffix = "conf"
-        qr_png = _build_qr_png(config_value)
-        qr_b64 = base64.b64encode(qr_png).decode("ascii")
-        download_id = DOWNLOAD_STORE.create(config_value, qr_png, client_name, suffix=suffix)
+        qr_seed = config_value if config_value else "VPN Wizard"
+        qr_png = _build_qr_png(qr_seed) if (config_value or auto_config) else None
+        qr_b64 = base64.b64encode(qr_png).decode("ascii") if (qr_png and config_value) else None
+        download_id = (
+            DOWNLOAD_STORE.create(config_value, qr_png, client_name, suffix=suffix)
+            if (config_value and qr_png)
+            else None
+        )
         auto_download_id = None
-        if payload.protocol == "vless_reality" and auto_config:
+        if payload.protocol in {"vless_reality", "shadowtls_ss"} and auto_config and qr_png:
             auto_download_id = DOWNLOAD_STORE.create(auto_config, qr_png, f"{client_name}-auto", suffix="json")
         return ClientExportResponse(
             ok=True,
@@ -1058,10 +1142,14 @@ async def server_status(payload: RollbackRequest) -> ServerStatusResponse:
         with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
             if payload.protocol == "vless_reality":
                 status = ProxyProvisioner(ssh).detect_status()
+            elif payload.protocol == "shadowtls_ss":
+                status = ShadowTLSSSProvisioner(ssh).detect_status()
             elif payload.protocol:
                 status = _detect_server_status(ssh)
             else:
                 status = _detect_server_status(ssh)
+                if not status.get("configured"):
+                    status = ShadowTLSSSProvisioner(ssh).detect_status()
                 if not status.get("configured"):
                     status = ProxyProvisioner(ssh).detect_status()
 
@@ -1095,6 +1183,22 @@ async def server_precheck(payload: ProvisionRequest) -> PrecheckResponse:
                     proxy_port = proxy.choose_free_port() or 443
                     auto_selected = True
                 checks = proxy.pre_check(proxy_port)
+                if auto_selected:
+                    checks.append(
+                        {
+                            "name": "proxy_port_selected",
+                            "ok": True,
+                            "details": str(proxy_port),
+                        }
+                    )
+            elif opts.protocol == "shadowtls_ss":
+                proxy = ShadowTLSSSProvisioner(ssh)
+                proxy_port = opts.listen_port
+                auto_selected = False
+                if not proxy_port:
+                    proxy_port = proxy.choose_free_port() or 443
+                    auto_selected = True
+                checks = proxy.pre_check(int(proxy_port))
                 if auto_selected:
                     checks.append(
                         {

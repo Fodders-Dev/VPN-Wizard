@@ -16,3 +16,8 @@ new ca/
 !.env.example
 *.key
 *.pem
+
+# Local artifacts
+tumen-logs/
+tyumen-*.conf
+tyumen-*.png

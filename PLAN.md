@@ -9,6 +9,8 @@
 - [x] Add remember-login flow via API sessions (`/api/sessions/login`, `/api/sessions/revoke`)
 - [x] Add miniapp server switching controls (use / forget login / delete)
 - [x] Cover server-side session and host:port parsing with tests
-- [x] Add anti-block proxy mode (VLESS Reality): setup/status/client links in API + miniapp mode switch
+- [x] Add anti-block proxy mode (ShadowTLS + SS2022 via sing-box) as primary
+- [x] Keep legacy proxy mode (VLESS Reality via Xray) as fallback
+- [x] Redact secrets in SSH progress logs (multiline commands / x25519 -i)
 
-Next: Добавить e2e-тесты miniapp сценариев для двух режимов (VPN/Proxy), включая сохранение сервера и переключение mode.
+Next: Добавить e2e-тесты miniapp сценариев для двух режимов (VPN/Proxy ShadowTLS), включая сохранение сервера и переключение mode.

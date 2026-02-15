@@ -84,6 +84,18 @@ class SSHRunner:
             self.client.close()
             self.client = None
 
+    def _format_command_for_log(self, command: str) -> str:
+        # Never log multi-line commands verbatim. We often use heredocs to write config files,
+        # and those can contain secrets (private keys, passwords, etc.).
+        cleaned = command.strip()
+        if "\n" in cleaned:
+            first = cleaned.splitlines()[0].strip()
+            cleaned = f"{first}  # (multiline redacted)"
+
+        # Redact common secret-looking CLI patterns (best-effort).
+        cleaned = re.sub(r"(\bx25519\b\s+-i\s+)\S+", r"\1***", cleaned)
+        return cleaned
+
     def run(self, command: str, sudo: bool = False, check: bool = True, pty: bool = True) -> str:
         if not self.client:
             raise RuntimeError("SSH client not connected.")
@@ -95,7 +107,7 @@ class SSHRunner:
             else:
                 wrapped = f"sudo {wrapped}"
 
-        self.log(f"$ {command}")
+        self.log(f"$ {self._format_command_for_log(command)}")
         if sudo and self.config.password and pty:
             pty = False  # Avoid echoing the sudo password into stdout/stderr
         stdin, stdout, stderr = self.client.exec_command(wrapped, get_pty=pty)
