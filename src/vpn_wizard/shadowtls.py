@@ -36,7 +36,8 @@ class ShadowTLSSSProvisioner:
     SS_KEY_LEN = 32
 
     # Prefer 443 to blend in. Keep Cloudflare last (some RU networks may have issues with it).
-    FALLBACK_PORTS = (443, 8443, 2053, 2083, 2087, 2096, 4443, 7443, 9443)
+    # Prefer ports that are usually less filtered in RU networks.
+    FALLBACK_PORTS = (443, 8443, 9443, 10443, 2053, 2096, 2087, 2083, 4443, 7443)
     HANDSHAKE_CANDIDATES = (
         "www.microsoft.com",
         "www.apple.com",
@@ -396,6 +397,10 @@ rm -rf "$tmp"
                 self.progress(f"Updating Shadowsocks method: {current_method} -> {self.SS_METHOD}")
                 ss["method"] = self.SS_METHOD
                 changed = True
+            mux = ss.get("multiplex") if isinstance(ss.get("multiplex"), dict) else {}
+            if mux.get("enabled") is not False:
+                ss["multiplex"] = {"enabled": False}
+                changed = True
             if stls.get("handshake") != {"server": handshake_server, "server_port": 443}:
                 stls["handshake"] = {"server": handshake_server, "server_port": 443}
                 changed = True
@@ -458,7 +463,7 @@ rm -rf "$tmp"
                     "method": self.SS_METHOD,
                     "password": server_password,
                     "users": [{"name": name, "password": user_password}],
-                    "multiplex": {"enabled": True},
+                    "multiplex": {"enabled": False},
                 },
             ],
             "outbounds": [{"type": "direct", "tag": "direct"}],
@@ -603,7 +608,7 @@ rm -rf "$tmp"
             # Multi-user SS2022: client uses "<server_password>:<user_password>"
             "password": f"{server_password}:{user_password}",
             "detour": "st-out",
-            "multiplex": {"enabled": True},
+            "multiplex": {"enabled": False},
         }
         config = {
             "log": {"level": "warn"},
@@ -628,6 +633,7 @@ rm -rf "$tmp"
             "route": {
                 "auto_detect_interface": True,
                 "rules": [
+                    {"ip_version": 6, "outbound": "block"},
                     {"inbound": ["tun-in"], "ip_version": 6, "outbound": "block"},
                     {"inbound": ["tun-in"], "protocol": ["quic"], "outbound": "block"},
                     {"inbound": ["tun-in"], "network": ["udp"], "port": [443], "outbound": "block"},
@@ -637,7 +643,7 @@ rm -rf "$tmp"
             "outbounds": [
                 shadowsocks_out,
                 shadowtls_out,
-                {"type": "direct", "tag": "direct"},
+                {"type": "direct", "tag": "direct", "domain_strategy": "ipv4_only"},
                 {"type": "block", "tag": "block"},
             ],
         }
