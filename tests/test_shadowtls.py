@@ -54,26 +54,33 @@ def test_build_singbox_client_config_contains_shadowtls_and_ss_chain() -> None:
         prov.build_singbox_client_config(
             host="1.2.3.4",
             port=443,
+            fallback_ports=[443, 8443, 2053],
             handshake_sni="www.microsoft.com",
             server_password="SERVERPASS",
             user_password="USER1",
         )
     )
     outbounds = cfg.get("outbounds") or []
-    ss = next((o for o in outbounds if o.get("type") == "shadowsocks"), None)
-    st = next((o for o in outbounds if o.get("type") == "shadowtls"), None)
-    assert ss and st
-    assert ss.get("detour") == "st-out"
-    assert ss.get("server") == "1.2.3.4"
-    assert ss.get("server_port") == 443
-    assert ss.get("password") == "SERVERPASS:USER1"
-    assert st.get("server") == "1.2.3.4"
-    assert st.get("server_port") == 443
-    assert st.get("password") == "USER1"
-    assert (st.get("tls") or {}).get("server_name") == "www.microsoft.com"
+    urltest = next((o for o in outbounds if o.get("type") == "urltest"), None)
+    ss_outbounds = [o for o in outbounds if o.get("type") == "shadowsocks"]
+    st_outbounds = [o for o in outbounds if o.get("type") == "shadowtls"]
+    assert urltest is not None
+    assert urltest.get("tag") == "auto"
+    assert len(ss_outbounds) == 3
+    assert len(st_outbounds) == 3
+    assert "msftconnecttest" in str(urltest.get("url") or "")
+    for ss in ss_outbounds:
+        assert ss.get("server") == "1.2.3.4"
+        assert ss.get("password") == "SERVERPASS:USER1"
+        assert str(ss.get("detour") or "").startswith("st-")
+    for st in st_outbounds:
+        assert st.get("server") == "1.2.3.4"
+        assert st.get("password") == "USER1"
+        assert (st.get("tls") or {}).get("server_name") == "www.microsoft.com"
 
     # RU defaults: block IPv6 and QUIC/UDP443 inside tunnel.
     rules = (cfg.get("route") or {}).get("rules") or []
+    assert (cfg.get("route") or {}).get("final") == "auto"
     assert any(r.get("ip_version") == 6 and r.get("outbound") == "block" for r in rules)
     assert any(r.get("protocol") == ["quic"] and r.get("outbound") == "block" for r in rules)
     assert any(r.get("network") == ["udp"] and r.get("port") == [443] and r.get("outbound") == "block" for r in rules)
@@ -106,5 +113,29 @@ def test_add_client_updates_both_inbound_user_lists(monkeypatch) -> None:
 
     result = prov.add_client("client2")
     assert result["name"] == "client2"
+    assert writes
+    assert restarts == [True]
+
+
+def test_setup_reuses_existing_config_and_adds_fallback_ports(monkeypatch) -> None:
+    prov = ShadowTLSSSProvisioner(DummySSH())
+    cfg = _base_server_config()
+    writes: list[dict] = []
+    restarts: list[bool] = []
+
+    monkeypatch.setattr(prov, "_ensure_prereqs", lambda: None)
+    monkeypatch.setattr(prov, "_read_config", lambda: cfg)
+    monkeypatch.setattr(prov, "_write_config", lambda payload: writes.append(copy.deepcopy(payload)))
+    monkeypatch.setattr(prov, "_restart", lambda: restarts.append(True))
+    monkeypatch.setattr(prov, "_ensure_firewall_port", lambda port: None)
+    monkeypatch.setattr(prov, "_ensure_tcp_tuning", lambda: None)
+    monkeypatch.setattr(prov, "_public_ip", lambda: "1.2.3.4")
+    monkeypatch.setattr(prov, "_is_port_busy", lambda port: port == 443)
+
+    result = prov.setup("client1", listen_port=443, sni="www.microsoft.com")
+    assert result["listen_port"] == 443
+    assert len(result["listen_ports"]) >= 2
+    shadowtls_inbounds = [item for item in (cfg.get("inbounds") or []) if item.get("type") == "shadowtls"]
+    assert len(shadowtls_inbounds) >= 2
     assert writes
     assert restarts == [True]

@@ -14,6 +14,7 @@ Turn a rented VPS into a fast VPN and anti-block proxy with ready configs/links/
 - core: SSH connect, OS detect, WireGuard install, IP forwarding, NAT/firewall, client config generation
 - core: anti-block proxy provisioning (sing-box):
   - primary: ShadowTLS v3 + Shadowsocks 2022 (SS2022) for RU networks (stable DNS/routing defaults)
+  - ShadowTLS default: multi-port server listen + client urltest auto-failover between ports
   - legacy fallback: VLESS Reality (Xray)
 - core: optional network tuning (BBR, buffers) and MTU default for speed/stability
 - cli: `provision`, `export`, `status`
@@ -37,6 +38,7 @@ Turn a rented VPS into a fast VPN and anti-block proxy with ready configs/links/
 - Server (proxy mode, legacy): `/usr/local/etc/xray/config.json` with VLESS Reality inbound
 - Local: exported client config + optional QR PNG
 - Local (proxy mode, primary): auto-config JSON (sing-box/Hiddify profile URL)
+  - includes urltest selector + multiple ShadowTLS ports for failover
 - Local (proxy mode, legacy): exported `vless://` link (txt) + QR PNG
 
 ## Constraints

@@ -38,6 +38,7 @@ class ShadowTLSSSProvisioner:
     # Prefer 443 to blend in. Keep Cloudflare last (some RU networks may have issues with it).
     # Prefer ports that are usually less filtered in RU networks.
     FALLBACK_PORTS = (443, 8443, 9443, 10443, 2053, 2096, 2087, 2083, 4443, 7443)
+    MAX_PUBLIC_PORTS = 4
     HANDSHAKE_CANDIDATES = (
         "www.microsoft.com",
         "www.apple.com",
@@ -50,7 +51,7 @@ class ShadowTLSSSProvisioner:
         self.ssh = ssh
         self.progress = progress or (lambda _msg: None)
         self._name_pattern = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-        self._sni_pattern = re.compile(r"^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(\\.[a-z0-9-]{1,63})+$")
+        self._sni_pattern = re.compile(r"^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9-]{1,63})+$")
 
     def _validate_name(self, name: Optional[str]) -> str:
         value = (name or "client1").strip()
@@ -85,6 +86,41 @@ class ShadowTLSSSProvisioner:
             if not self._is_port_busy(port):
                 return port
         return None
+
+    def _select_public_ports(self, preferred_port: int, existing_ports: Optional[list[int]] = None) -> list[int]:
+        """
+        Build a stable list of public listen ports.
+
+        Rules:
+        - keep preferred port first;
+        - keep already configured ports (don't drop existing profiles on re-run);
+        - add extra free fallback ports from FALLBACK_PORTS;
+        - cap list length for predictability.
+        """
+        selected: list[int] = []
+        seen: set[int] = set()
+
+        def _push(port: int) -> None:
+            if not (1 <= int(port) <= 65535):
+                return
+            value = int(port)
+            if value in seen:
+                return
+            seen.add(value)
+            selected.append(value)
+
+        _push(preferred_port)
+        for port in existing_ports or []:
+            _push(port)
+        for port in self.FALLBACK_PORTS:
+            if len(selected) >= self.MAX_PUBLIC_PORTS:
+                break
+            if port in seen:
+                continue
+            if not self._is_port_busy(port):
+                _push(port)
+
+        return selected[: self.MAX_PUBLIC_PORTS]
 
     def _ensure_firewall_port(self, listen_port: int) -> None:
         port = int(listen_port)
@@ -297,13 +333,44 @@ rm -rf "$tmp"
                 return item
         return None
 
-    def _state(self, cfg: dict) -> tuple[dict, dict, int, str, str]:
-        stls = self._extract_inbound(cfg, "shadowtls")
+    def _extract_inbounds(self, cfg: dict, inbound_type: str) -> list[dict]:
+        result: list[dict] = []
+        for item in cfg.get("inbounds") or []:
+            if isinstance(item, dict) and item.get("type") == inbound_type:
+                result.append(item)
+        return result
+
+    def _build_shadowtls_inbound(
+        self,
+        *,
+        tag: str,
+        listen_port: int,
+        handshake_server: str,
+        users: list[dict],
+    ) -> dict:
+        return {
+            "type": "shadowtls",
+            "tag": tag,
+            "listen": "::",
+            "listen_port": int(listen_port),
+            "detour": "ss-in",
+            "version": 3,
+            "users": users,
+            "handshake": {"server": handshake_server, "server_port": 443},
+            "strict_mode": True,
+        }
+
+    def _state(self, cfg: dict) -> tuple[list[dict], dict, list[int], str, str]:
+        stls_list = self._extract_inbounds(cfg, "shadowtls")
         ss = self._extract_inbound(cfg, "shadowsocks")
-        if not stls or not ss:
+        if not stls_list or not ss:
             raise RuntimeError("sing-box ShadowTLS/Shadowsocks inbounds not found.")
-        listen_port = stls.get("listen_port")
-        if not isinstance(listen_port, int):
+        listen_ports: list[int] = []
+        for stls in stls_list:
+            port = stls.get("listen_port")
+            if isinstance(port, int) and 1 <= port <= 65535 and port not in listen_ports:
+                listen_ports.append(port)
+        if not listen_ports:
             raise RuntimeError("ShadowTLS listen_port is missing/invalid.")
         method = str(ss.get("method") or "").strip()
         if not method:
@@ -311,30 +378,38 @@ rm -rf "$tmp"
         server_password = str(ss.get("password") or "").strip()
         if not server_password:
             raise RuntimeError("Shadowsocks server password is missing.")
-        handshake = (stls.get("handshake") or {}) if isinstance(stls.get("handshake"), dict) else {}
+        first_stls = stls_list[0]
+        handshake = (first_stls.get("handshake") or {}) if isinstance(first_stls.get("handshake"), dict) else {}
         handshake_server = str(handshake.get("server") or "").strip()
         if not handshake_server:
             handshake_server = "www.microsoft.com"
-        return stls, ss, listen_port, server_password, handshake_server
+        return stls_list, ss, listen_ports, server_password, handshake_server
 
     def detect_status(self) -> dict:
         cfg = self._read_config()
         if not cfg:
             return {"configured": False}
-        stls = self._extract_inbound(cfg, "shadowtls")
+        stls_list = self._extract_inbounds(cfg, "shadowtls")
         ss = self._extract_inbound(cfg, "shadowsocks")
-        if not stls or not ss:
+        if not stls_list or not ss:
             return {"configured": False}
         users = []
         raw_users = ss.get("users") or []
         if isinstance(raw_users, list):
             users = raw_users
         service_state = self.ssh.run("systemctl is-active sing-box || true", sudo=True, check=False).strip()
-        handshake = (stls.get("handshake") or {}) if isinstance(stls.get("handshake"), dict) else {}
+        primary = stls_list[0]
+        handshake = (primary.get("handshake") or {}) if isinstance(primary.get("handshake"), dict) else {}
+        listen_ports: list[int] = []
+        for inbound in stls_list:
+            port = inbound.get("listen_port")
+            if isinstance(port, int) and 1 <= port <= 65535 and port not in listen_ports:
+                listen_ports.append(port)
         return {
             "configured": True,
             "protocol": "shadowtls_ss",
-            "listen_port": stls.get("listen_port"),
+            "listen_port": listen_ports[0] if listen_ports else None,
+            "listen_ports": listen_ports,
             "clients_count": len(users),
             "sni": str(handshake.get("server") or "").strip() or None,
             "service_active": service_state == "active",
@@ -376,59 +451,94 @@ rm -rf "$tmp"
         cfg = self._read_config()
 
         existing_sni = None
+        existing_ports: list[int] = []
         if cfg:
             try:
-                stls, _ss, current_port, _server_password, handshake_server = self._state(cfg)
+                _stls_list, _ss, ports, _server_password, handshake_server = self._state(cfg)
                 existing_sni = handshake_server
-                if current_port != port:
-                    self.progress(f"Updating ShadowTLS port: {current_port} -> {port}")
-                    stls["listen_port"] = port
-                    self._write_config(cfg)
+                existing_ports = ports
             except Exception:
                 cfg = None
 
         handshake_server = self._choose_handshake_sni(sni, existing_sni)
+        target_ports = self._select_public_ports(port, existing_ports)
+        if not target_ports:
+            raise RuntimeError("Could not find a free proxy TCP port automatically. Set it manually.")
 
         if cfg:
-            stls, ss, current_port, server_password, _existing_handshake = self._state(cfg)
+            _stls_list, ss, _current_ports, server_password, _existing_handshake = self._state(cfg)
             changed = False
+
             current_method = str(ss.get("method") or "").strip()
             if current_method and current_method != self.SS_METHOD:
                 self.progress(f"Updating Shadowsocks method: {current_method} -> {self.SS_METHOD}")
                 ss["method"] = self.SS_METHOD
                 changed = True
+
             mux = ss.get("multiplex") if isinstance(ss.get("multiplex"), dict) else {}
             if mux.get("enabled") is not False:
                 ss["multiplex"] = {"enabled": False}
                 changed = True
-            if stls.get("handshake") != {"server": handshake_server, "server_port": 443}:
-                stls["handshake"] = {"server": handshake_server, "server_port": 443}
-                changed = True
-            if changed:
-                self._write_config(cfg)
-            users_stls = stls.setdefault("users", [])
+
             users_ss = ss.setdefault("users", [])
-            if not isinstance(users_stls, list) or not isinstance(users_ss, list):
+            if not isinstance(users_ss, list):
                 raise RuntimeError("Invalid sing-box config: users must be lists.")
 
+            inbounds = cfg.setdefault("inbounds", [])
+            if not isinstance(inbounds, list):
+                raise RuntimeError("Invalid sing-box config: inbounds must be a list.")
+
+            desired_stls: list[dict] = []
+            for idx, selected_port in enumerate(target_ports):
+                stls_tag = "shadowtls-in" if idx == 0 else f"shadowtls-in-{selected_port}"
+                users_copy = [dict(item) for item in users_ss if isinstance(item, dict)]
+                desired_stls.append(
+                    self._build_shadowtls_inbound(
+                        tag=stls_tag,
+                        listen_port=selected_port,
+                        handshake_server=handshake_server,
+                        users=users_copy,
+                    )
+                )
+
+            passthrough_inbounds = [item for item in inbounds if isinstance(item, dict) and item.get("type") != "shadowtls"]
+            desired_inbounds = desired_stls + passthrough_inbounds
+            if inbounds != desired_inbounds:
+                cfg["inbounds"] = desired_inbounds
+                changed = True
+
             if any(isinstance(u, dict) and str(u.get("name") or "").strip() == name for u in users_ss):
-                self._ensure_firewall_port(int(current_port))
+                if changed:
+                    self._write_config(cfg)
+                for selected_port in target_ports:
+                    self._ensure_firewall_port(int(selected_port))
                 self._ensure_tcp_tuning()
                 self._restart()
                 exported = self.export_client(name)
-                exported["listen_port"] = int(current_port)
+                exported["listen_port"] = int(target_ports[0])
+                exported["listen_ports"] = [int(item) for item in target_ports]
                 exported["sni"] = handshake_server
                 return exported
 
             user_password = self._random_b64(self.SS_KEY_LEN)
-            users_stls.append({"name": name, "password": user_password})
             users_ss.append({"name": name, "password": user_password})
+
+            for inbound in cfg.get("inbounds") or []:
+                if not isinstance(inbound, dict) or inbound.get("type") != "shadowtls":
+                    continue
+                users_stls = inbound.setdefault("users", [])
+                if not isinstance(users_stls, list):
+                    raise RuntimeError("Invalid sing-box config: users must be lists.")
+                users_stls.append({"name": name, "password": user_password})
+
             self._write_config(cfg)
-            self._ensure_firewall_port(int(current_port))
+            for selected_port in target_ports:
+                self._ensure_firewall_port(int(selected_port))
             self._ensure_tcp_tuning()
             self._restart()
             exported = self.export_client(name)
-            exported["listen_port"] = int(current_port)
+            exported["listen_port"] = int(target_ports[0])
+            exported["listen_ports"] = [int(item) for item in target_ports]
             exported["sni"] = handshake_server
             return exported
 
@@ -441,20 +551,23 @@ rm -rf "$tmp"
             if local_ss_port > 40000:
                 raise RuntimeError("Could not find a free local Shadowsocks port.")
 
+        initial_users = [{"name": name, "password": user_password}]
+        shadowtls_inbounds: list[dict] = []
+        for idx, selected_port in enumerate(target_ports):
+            stls_tag = "shadowtls-in" if idx == 0 else f"shadowtls-in-{selected_port}"
+            shadowtls_inbounds.append(
+                self._build_shadowtls_inbound(
+                    tag=stls_tag,
+                    listen_port=selected_port,
+                    handshake_server=handshake_server,
+                    users=[dict(item) for item in initial_users],
+                )
+            )
+
         cfg = {
             "log": {"level": "warn"},
-            "inbounds": [
-                {
-                    "type": "shadowtls",
-                    "tag": "shadowtls-in",
-                    "listen": "::",
-                    "listen_port": port,
-                    "detour": "ss-in",
-                    "version": 3,
-                    "users": [{"name": name, "password": user_password}],
-                    "handshake": {"server": handshake_server, "server_port": 443},
-                    "strict_mode": True,
-                },
+            "inbounds": shadowtls_inbounds
+            + [
                 {
                     "type": "shadowsocks",
                     "tag": "ss-in",
@@ -462,7 +575,7 @@ rm -rf "$tmp"
                     "listen_port": local_ss_port,
                     "method": self.SS_METHOD,
                     "password": server_password,
-                    "users": [{"name": name, "password": user_password}],
+                    "users": [dict(item) for item in initial_users],
                     "multiplex": {"enabled": False},
                 },
             ],
@@ -471,12 +584,14 @@ rm -rf "$tmp"
         }
         self.progress("Writing sing-box config (ShadowTLS + Shadowsocks)")
         self._write_config(cfg)
-        self._ensure_firewall_port(port)
+        for selected_port in target_ports:
+            self._ensure_firewall_port(selected_port)
         self._ensure_tcp_tuning()
         self.progress("Restarting sing-box service")
         self._restart()
         exported = self.export_client(name)
-        exported["listen_port"] = port
+        exported["listen_port"] = target_ports[0]
+        exported["listen_ports"] = [int(item) for item in target_ports]
         exported["sni"] = handshake_server
         return exported
 
@@ -501,7 +616,7 @@ rm -rf "$tmp"
         cfg = self._read_config()
         if not cfg:
             raise RuntimeError("sing-box config not found.")
-        stls, ss, listen_port, server_password, handshake_server = self._state(cfg)
+        _stls_list, ss, listen_ports, server_password, handshake_server = self._state(cfg)
         users = ss.get("users") or []
         if not isinstance(users, list):
             raise RuntimeError("Invalid sing-box config: users must be a list.")
@@ -517,7 +632,8 @@ rm -rf "$tmp"
         host = self._public_ip()
         auto_config = self.build_singbox_client_config(
             host=host,
-            port=int(listen_port),
+            port=int(listen_ports[0]),
+            fallback_ports=[int(item) for item in listen_ports],
             handshake_sni=handshake_server,
             server_password=server_password,
             user_password=user_password,
@@ -526,7 +642,8 @@ rm -rf "$tmp"
             "name": name,
             "interface": "shadowtls-ss",
             "auto_config": auto_config,
-            "listen_port": int(listen_port),
+            "listen_port": int(listen_ports[0]),
+            "listen_ports": [int(item) for item in listen_ports],
             "sni": handshake_server,
         }
 
@@ -535,16 +652,19 @@ rm -rf "$tmp"
         cfg = self._read_config()
         if not cfg:
             raise RuntimeError("sing-box config not found. Run proxy setup first.")
-        stls, ss, _listen_port, _server_password, handshake_server = self._state(cfg)
-        users_stls = stls.setdefault("users", [])
+        stls_list, ss, _listen_ports, _server_password, _handshake_server = self._state(cfg)
         users_ss = ss.setdefault("users", [])
-        if not isinstance(users_stls, list) or not isinstance(users_ss, list):
+        if not isinstance(users_ss, list):
             raise RuntimeError("Invalid sing-box config: users must be lists.")
         if any(isinstance(u, dict) and str(u.get("name") or "").strip() == name for u in users_ss):
             return self.export_client(name)
         user_password = self._random_b64(self.SS_KEY_LEN)
-        users_stls.append({"name": name, "password": user_password})
         users_ss.append({"name": name, "password": user_password})
+        for stls in stls_list:
+            users_stls = stls.setdefault("users", [])
+            if not isinstance(users_stls, list):
+                raise RuntimeError("Invalid sing-box config: users must be lists.")
+            users_stls.append({"name": name, "password": user_password})
         self._write_config(cfg)
         self._restart()
         return self.export_client(name)
@@ -554,25 +674,28 @@ rm -rf "$tmp"
         cfg = self._read_config()
         if not cfg:
             return False
-        stls, ss, _listen_port, _server_password, _handshake_server = self._state(cfg)
-        users_stls = stls.get("users") or []
+        stls_list, ss, _listen_ports, _server_password, _handshake_server = self._state(cfg)
         users_ss = ss.get("users") or []
-        if not isinstance(users_stls, list) or not isinstance(users_ss, list):
+        if not isinstance(users_ss, list):
             return False
         idx_ss = next(
             (i for i, u in enumerate(users_ss) if isinstance(u, dict) and str(u.get("name") or "").strip() == name),
             -1,
         )
-        idx_stls = next(
-            (i for i, u in enumerate(users_stls) if isinstance(u, dict) and str(u.get("name") or "").strip() == name),
-            -1,
-        )
-        if idx_ss < 0 and idx_stls < 0:
+        if idx_ss < 0:
             return False
         if idx_ss >= 0:
             del users_ss[idx_ss]
-        if idx_stls >= 0:
-            del users_stls[idx_stls]
+        for stls in stls_list:
+            users_stls = stls.get("users") or []
+            if not isinstance(users_stls, list):
+                continue
+            idx_stls = next(
+                (i for i, u in enumerate(users_stls) if isinstance(u, dict) and str(u.get("name") or "").strip() == name),
+                -1,
+            )
+            if idx_stls >= 0:
+                del users_stls[idx_stls]
         self._write_config(cfg)
         self._restart()
         return True
@@ -582,6 +705,7 @@ rm -rf "$tmp"
         *,
         host: str,
         port: int,
+        fallback_ports: Optional[list[int]] = None,
         handshake_sni: str,
         server_password: str,
         user_password: str,
@@ -589,32 +713,67 @@ rm -rf "$tmp"
         remote_doh: str = "https://dns.quad9.net/dns-query",
         direct_dns: str = "77.88.8.8",
     ) -> str:
-        # sing-box full config for Hiddify: one proxy outbound (ShadowTLS -> SS2022) + TUN.
-        shadowtls_out = {
-            "type": "shadowtls",
-            "tag": "st-out",
-            "server": host,
-            "server_port": int(port),
-            "version": 3,
-            "password": str(user_password),
-            "tls": {"enabled": True, "server_name": str(handshake_sni)},
-        }
-        shadowsocks_out = {
-            "type": "shadowsocks",
-            "tag": "proxy",
-            "server": host,
-            "server_port": int(port),
-            "method": self.SS_METHOD,
-            # Multi-user SS2022: client uses "<server_password>:<user_password>"
-            "password": f"{server_password}:{user_password}",
-            "detour": "st-out",
-            "multiplex": {"enabled": False},
-        }
+        selected_ports: list[int] = []
+        for item in [int(port)] + [int(p) for p in (fallback_ports or [])]:
+            if 1 <= item <= 65535 and item not in selected_ports:
+                selected_ports.append(item)
+        if not selected_ports:
+            selected_ports = [int(port)]
+
+        # sing-box full config for Hiddify:
+        # - ShadowTLS + SS2022 chains for multiple ports
+        # - urltest auto-failover between chains
+        outbounds: list[dict] = []
+        chain_tags: list[str] = []
+        for idx, selected_port in enumerate(selected_ports, start=1):
+            ss_tag = f"p{idx}"
+            st_tag = f"st-{selected_port}"
+            chain_tags.append(ss_tag)
+            outbounds.append(
+                {
+                    "type": "shadowsocks",
+                    "tag": ss_tag,
+                    "server": host,
+                    "server_port": int(selected_port),
+                    "method": self.SS_METHOD,
+                    # Multi-user SS2022: client uses "<server_password>:<user_password>"
+                    "password": f"{server_password}:{user_password}",
+                    "detour": st_tag,
+                    "multiplex": {"enabled": False},
+                }
+            )
+            outbounds.append(
+                {
+                    "type": "shadowtls",
+                    "tag": st_tag,
+                    "server": host,
+                    "server_port": int(selected_port),
+                    "version": 3,
+                    "password": str(user_password),
+                    "tls": {"enabled": True, "server_name": str(handshake_sni)},
+                }
+            )
+
+        outbounds.insert(
+            0,
+            {
+                "type": "urltest",
+                "tag": "auto",
+                "outbounds": chain_tags,
+                "url": "https://www.msftconnecttest.com/connecttest.txt",
+                "interval": "5m",
+                "tolerance": 200,
+                "interrupt_exist_connections": False,
+            },
+        )
+        outbounds.append({"type": "direct", "tag": "direct", "domain_strategy": "ipv4_only"})
+        outbounds.append({"type": "block", "tag": "block"})
+
         config = {
             "log": {"level": "warn"},
             "dns": {
                 "servers": [
-                    {"tag": "doh", "address": remote_doh, "detour": "proxy"},
+                    {"tag": "doh", "address": remote_doh, "detour": "auto"},
                     {"tag": "local", "address": direct_dns, "detour": "direct"},
                 ],
                 "strategy": "ipv4_only",
@@ -638,13 +797,8 @@ rm -rf "$tmp"
                     {"inbound": ["tun-in"], "protocol": ["quic"], "outbound": "block"},
                     {"inbound": ["tun-in"], "network": ["udp"], "port": [443], "outbound": "block"},
                 ],
-                "final": "proxy",
+                "final": "auto",
             },
-            "outbounds": [
-                shadowsocks_out,
-                shadowtls_out,
-                {"type": "direct", "tag": "direct", "domain_strategy": "ipv4_only"},
-                {"type": "block", "tag": "block"},
-            ],
+            "outbounds": outbounds,
         }
         return json.dumps(config, indent=2, ensure_ascii=False)

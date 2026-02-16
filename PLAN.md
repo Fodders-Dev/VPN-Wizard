@@ -13,4 +13,4 @@
 - [x] Keep legacy proxy mode (VLESS Reality via Xray) as fallback
 - [x] Redact secrets in SSH progress logs (multiline commands / x25519 -i)
 
-Next: Добавить e2e-тесты miniapp сценариев для двух режимов (VPN/Proxy ShadowTLS), включая сохранение сервера и переключение mode.
+Next: Добавить e2e-тесты miniapp сценариев для ShadowTLS multi-port failover (auto URL import в Hiddify + проверка переключения VPN/System proxy).
