@@ -28,9 +28,11 @@ class ShadowTLSSSProvisioner:
     CONFIG_PATH = "/usr/local/etc/sing-box/config.json"
     SERVICE_NAME = "sing-box"
 
-    # Hiddify / some sing-box builds enable SS2022 EIH which works only with AES methods.
-    # Prefer AES-128-GCM for broad compatibility + decent performance.
-    SS_METHOD = "2022-blake3-aes-128-gcm"
+    # Hiddify / sing-box interoperability:
+    # - SS2022 EIH works only with AES methods;
+    # - we keep AES-256 here because our generated keys are 32-byte base64 and
+    #   this avoids "required 16, got 32" client-side failures.
+    SS_METHOD = "2022-blake3-aes-256-gcm"
     SS_KEY_LEN = 32
 
     # Prefer 443 to blend in. Keep Cloudflare last (some RU networks may have issues with it).
@@ -595,6 +597,8 @@ rm -rf "$tmp"
         shadowsocks_out = {
             "type": "shadowsocks",
             "tag": "proxy",
+            "server": host,
+            "server_port": int(port),
             "method": self.SS_METHOD,
             # Multi-user SS2022: client uses "<server_password>:<user_password>"
             "password": f"{server_password}:{user_password}",

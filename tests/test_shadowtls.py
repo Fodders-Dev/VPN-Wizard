@@ -37,7 +37,7 @@ def _base_server_config() -> dict:
                 "tag": "ss-in",
                 "listen": "127.0.0.1",
                 "listen_port": 20000,
-                "method": "2022-blake3-aes-128-gcm",
+                "method": "2022-blake3-aes-256-gcm",
                 "password": "SERVERPASS",
                 "users": [{"name": "client1", "password": "USER1"}],
                 "multiplex": {"enabled": True},
@@ -64,6 +64,8 @@ def test_build_singbox_client_config_contains_shadowtls_and_ss_chain() -> None:
     st = next((o for o in outbounds if o.get("type") == "shadowtls"), None)
     assert ss and st
     assert ss.get("detour") == "st-out"
+    assert ss.get("server") == "1.2.3.4"
+    assert ss.get("server_port") == 443
     assert ss.get("password") == "SERVERPASS:USER1"
     assert st.get("server") == "1.2.3.4"
     assert st.get("server_port") == 443
