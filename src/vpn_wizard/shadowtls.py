@@ -633,7 +633,8 @@ rm -rf "$tmp"
         auto_config = self.build_singbox_client_config(
             host=host,
             port=int(listen_ports[0]),
-            fallback_ports=[int(item) for item in listen_ports],
+            # Keep client profile single-hop via primary port for stability in Hiddify.
+            fallback_ports=[],
             handshake_sni=handshake_server,
             server_password=server_password,
             user_password=user_password,
@@ -721,8 +722,8 @@ rm -rf "$tmp"
             selected_ports = [int(port)]
 
         # sing-box full config for Hiddify:
-        # - ShadowTLS + SS2022 chains for multiple ports
-        # - selector group for stable default routing (manual fallback in UI)
+        # - ShadowTLS + SS2022 chain(s)
+        # - final route pinned to primary chain (avoids Hiddify urltest flaps)
         outbounds: list[dict] = []
         chain_tags: list[str] = []
         for idx, selected_port in enumerate(selected_ports, start=1):
@@ -754,16 +755,7 @@ rm -rf "$tmp"
                 }
             )
 
-        outbounds.insert(
-            0,
-            {
-                "type": "selector",
-                "tag": "proxy",
-                "outbounds": chain_tags,
-                "default": chain_tags[0] if chain_tags else "direct",
-                "interrupt_exist_connections": False,
-            },
-        )
+        primary_tag = chain_tags[0] if chain_tags else "direct"
         outbounds.append({"type": "direct", "tag": "direct", "domain_strategy": "ipv4_only"})
         outbounds.append({"type": "block", "tag": "block"})
 
@@ -771,7 +763,7 @@ rm -rf "$tmp"
             "log": {"level": "warn"},
             "dns": {
                 "servers": [
-                    {"tag": "doh", "address": remote_doh, "detour": "proxy"},
+                    {"tag": "doh", "address": remote_doh, "detour": primary_tag},
                     {"tag": "local", "address": direct_dns, "detour": "direct"},
                 ],
                 "strategy": "ipv4_only",
@@ -795,7 +787,7 @@ rm -rf "$tmp"
                     {"inbound": ["tun-in"], "protocol": ["quic"], "outbound": "block"},
                     {"inbound": ["tun-in"], "network": ["udp"], "port": [443], "outbound": "block"},
                 ],
-                "final": "proxy",
+                "final": primary_tag,
             },
             "outbounds": outbounds,
         }

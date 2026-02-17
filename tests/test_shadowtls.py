@@ -54,7 +54,7 @@ def test_build_singbox_client_config_contains_shadowtls_and_ss_chain() -> None:
         prov.build_singbox_client_config(
             host="1.2.3.4",
             port=443,
-            fallback_ports=[443, 8443, 2053],
+            fallback_ports=[],
             handshake_sni="www.microsoft.com",
             server_password="SERVERPASS",
             user_password="USER1",
@@ -64,12 +64,9 @@ def test_build_singbox_client_config_contains_shadowtls_and_ss_chain() -> None:
     selector = next((o for o in outbounds if o.get("type") == "selector"), None)
     ss_outbounds = [o for o in outbounds if o.get("type") == "shadowsocks"]
     st_outbounds = [o for o in outbounds if o.get("type") == "shadowtls"]
-    assert selector is not None
-    assert selector.get("tag") == "proxy"
-    assert selector.get("default") == "p1"
-    assert len(ss_outbounds) == 3
-    assert len(st_outbounds) == 3
-    assert set(selector.get("outbounds") or []) == {"p1", "p2", "p3"}
+    assert selector is None
+    assert len(ss_outbounds) == 1
+    assert len(st_outbounds) == 1
     for ss in ss_outbounds:
         assert ss.get("server") == "1.2.3.4"
         assert ss.get("password") == "SERVERPASS:USER1"
@@ -81,10 +78,10 @@ def test_build_singbox_client_config_contains_shadowtls_and_ss_chain() -> None:
 
     # RU defaults: block IPv6 and QUIC/UDP443 inside tunnel.
     rules = (cfg.get("route") or {}).get("rules") or []
-    assert (cfg.get("route") or {}).get("final") == "proxy"
+    assert (cfg.get("route") or {}).get("final") == "p1"
     dns = cfg.get("dns") or {}
     doh = next((item for item in (dns.get("servers") or []) if item.get("tag") == "doh"), {})
-    assert doh.get("detour") == "proxy"
+    assert doh.get("detour") == "p1"
     assert any(r.get("ip_version") == 6 and r.get("outbound") == "block" for r in rules)
     assert any(r.get("protocol") == ["quic"] and r.get("outbound") == "block" for r in rules)
     assert any(r.get("network") == ["udp"] and r.get("port") == [443] and r.get("outbound") == "block" for r in rules)
