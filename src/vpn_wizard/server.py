@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 import tempfile
 from typing import Callable, Optional
 import threading
+import re
 import uuid
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
@@ -549,7 +550,29 @@ def _detect_package_version() -> str:
     try:
         return importlib.metadata.version("vpn-wizard")
     except Exception:
-        return "unknown"
+        pass
+
+    # When running from source (e.g. Railway Nixpacks with PYTHONPATH=src),
+    # package metadata might not be available. Fall back to pyproject.toml.
+    try:
+        here = Path(__file__).resolve()
+        for root in [here.parents[2], *here.parents]:
+            pyproject = root / "pyproject.toml"
+            if not pyproject.exists():
+                continue
+            text = pyproject.read_text(encoding="utf-8", errors="ignore")
+            match = re.search(r'(?m)^version\\s*=\\s*\"([^\"]+)\"\\s*$', text)
+            if match:
+                return match.group(1).strip()
+    except Exception:
+        pass
+
+    return "unknown"
+
+
+def _iso_utc(ts: datetime) -> str:
+    # Always emit an explicit UTC marker to avoid confusion across regions.
+    return ts.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 class VersionResponse(BaseModel):
@@ -567,8 +590,8 @@ def api_version() -> Response:
         ok=True,
         version=_detect_package_version(),
         commit_sha=_detect_commit_sha(),
-        started_at_utc=APP_STARTED_AT.isoformat(),
-        now_utc=datetime.now(timezone.utc).isoformat(),
+        started_at_utc=_iso_utc(APP_STARTED_AT),
+        now_utc=_iso_utc(datetime.now(timezone.utc)),
     ).model_dump()
     # Avoid confusion during rollouts.
     return JSONResponse(payload, headers={"Cache-Control": "no-store"})
