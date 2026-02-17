@@ -21,3 +21,4 @@ new ca/
 tumen-logs/
 tyumen-*.conf
 tyumen-*.png
+tmp_current_config.json

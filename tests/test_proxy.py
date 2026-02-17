@@ -254,7 +254,16 @@ def test_singbox_auto_config_keeps_udp_enabled_and_sets_xudp_packet_encoding() -
         assert o.get("network") != "tcp"
         assert o.get("packet_encoding") == "xudp"
 
-    # Ensure urltest doesn't use Google endpoints and uses tag expected by Hiddify ("auto")
+    # Default: route should be pinned to a selector tagged "proxy".
+    selector = next((o for o in outbounds if o.get("type") == "selector"), None)
+    assert selector and selector.get("tag") == "proxy"
+    assert (cfg.get("route") or {}).get("final") == "proxy"
+    dns = cfg.get("dns") or {}
+    doh = next((item for item in (dns.get("servers") or []) if item.get("tag") == "doh"), {})
+    assert doh.get("detour") == "proxy"
+
+    # Optional: urltest can be enabled via env; if present, it must not use Google endpoints.
     urltest = next((o for o in outbounds if o.get("type") == "urltest"), None)
-    assert urltest and urltest.get("tag") == "auto"
-    assert "msftconnecttest" in (urltest.get("url") or "")
+    if urltest:
+        assert urltest.get("tag") == "auto"
+        assert "msftconnecttest" in (urltest.get("url") or "")

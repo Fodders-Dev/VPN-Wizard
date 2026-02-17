@@ -24,7 +24,7 @@ def _base_server_config() -> dict:
             {
                 "type": "shadowtls",
                 "tag": "shadowtls-in",
-                "listen": "::",
+                "listen": "0.0.0.0",
                 "listen_port": 443,
                 "detour": "ss-in",
                 "version": 3,
@@ -64,7 +64,7 @@ def test_build_singbox_client_config_contains_shadowtls_and_ss_chain() -> None:
     selector = next((o for o in outbounds if o.get("type") == "selector"), None)
     ss_outbounds = [o for o in outbounds if o.get("type") == "shadowsocks"]
     st_outbounds = [o for o in outbounds if o.get("type") == "shadowtls"]
-    assert selector is None
+    assert selector and selector.get("tag") == "proxy"
     assert len(ss_outbounds) == 1
     assert len(st_outbounds) == 1
     for ss in ss_outbounds:
@@ -78,10 +78,10 @@ def test_build_singbox_client_config_contains_shadowtls_and_ss_chain() -> None:
 
     # RU defaults: block IPv6 and QUIC/UDP443 inside tunnel.
     rules = (cfg.get("route") or {}).get("rules") or []
-    assert (cfg.get("route") or {}).get("final") == "p1"
+    assert (cfg.get("route") or {}).get("final") == "proxy"
     dns = cfg.get("dns") or {}
     doh = next((item for item in (dns.get("servers") or []) if item.get("tag") == "doh"), {})
-    assert doh.get("detour") == "p1"
+    assert doh.get("detour") == "proxy"
     assert any(r.get("ip_version") == 6 and r.get("outbound") == "block" for r in rules)
     assert any(r.get("protocol") == ["quic"] and r.get("outbound") == "block" for r in rules)
     assert any(r.get("network") == ["udp"] and r.get("port") == [443] and r.get("outbound") == "block" for r in rules)
@@ -135,8 +135,8 @@ def test_setup_reuses_existing_config_and_adds_fallback_ports(monkeypatch) -> No
 
     result = prov.setup("client1", listen_port=443, sni="www.microsoft.com")
     assert result["listen_port"] == 443
-    assert len(result["listen_ports"]) >= 2
+    assert len(result["listen_ports"]) == 1
     shadowtls_inbounds = [item for item in (cfg.get("inbounds") or []) if item.get("type") == "shadowtls"]
-    assert len(shadowtls_inbounds) >= 2
+    assert len(shadowtls_inbounds) == 1
     assert writes
     assert restarts == [True]

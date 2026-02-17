@@ -72,9 +72,27 @@ body {
   flex-wrap: wrap;
 }
 
+.title-wrap {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .title {
   font-size: 28px;
   font-weight: 700;
+}
+
+.version-pill {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--surface-border);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: 0.2px;
+  user-select: text;
 }
 
 .subtitle {

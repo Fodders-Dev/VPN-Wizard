@@ -72,6 +72,7 @@ const wizardHintEl = document.getElementById("wizard-hint");
 const wizardStepButtons = document.querySelectorAll(".wizard-step-btn");
 const wizardPrevBtn = document.getElementById("wizard-prev-btn");
 const wizardNextBtn = document.getElementById("wizard-next-btn");
+const versionPill = document.getElementById("version-pill");
 
 const PROXY_APP_URLS = {
   android: "https://github.com/hiddify/hiddify-app/releases",
@@ -1643,11 +1644,60 @@ function normalizeApiBase(value) {
 
 const API_BASE = normalizeApiBase(resolveApiBase());
 
+function fnv1a(text) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    // 32-bit FNV-1a
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash >>> 0;
+}
+
+async function computeUiFingerprint() {
+  // Fetch the deployed asset and hash it. This gives a stable "UI build id" on Vercel static hosting.
+  // no-store reduces confusion during rollouts.
+  const response = await fetch("app.js", { cache: "no-store" });
+  const text = await response.text();
+  const hash = fnv1a(text).toString(16).padStart(8, "0");
+  return hash.slice(0, 8);
+}
+
+function shortCommit(value) {
+  const clean = String(value || "").trim();
+  if (!clean) return "";
+  return clean.length > 8 ? clean.slice(0, 8) : clean;
+}
+
+async function refreshVersionPill() {
+  if (!versionPill) return;
+  try {
+    const ui = await computeUiFingerprint();
+    let apiPart = "";
+    try {
+      const api = await fetchJson("/api/version");
+      const commit = shortCommit(api?.commit_sha);
+      const ver = String(api?.version || "").trim();
+      if (ver || commit) {
+        apiPart = ` · api ${ver || "?"}${commit ? `+${commit}` : ""}`;
+      }
+      versionPill.title = api ? JSON.stringify(api, null, 2) : "";
+    } catch (err) {
+      // Non-fatal: UI hash still helps verify Vercel deployment.
+    }
+    versionPill.textContent = `ui ${ui}${apiPart}`;
+    versionPill.classList.remove("hidden");
+  } catch (err) {
+    // Leave hidden on failure.
+  }
+}
+
 function cleanupLegacySecrets() {
   LEGACY_KEYS.forEach((key) => localStorage.removeItem(key));
 }
 
 cleanupLegacySecrets();
+refreshVersionPill();
 
 function normalizeSshPort(value, fallback = 22) {
   const port = Number.parseInt(value, 10);

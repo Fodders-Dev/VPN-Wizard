@@ -35,10 +35,12 @@ class ShadowTLSSSProvisioner:
     SS_METHOD = "2022-blake3-aes-256-gcm"
     SS_KEY_LEN = 32
 
-    # Prefer 443 to blend in. Keep Cloudflare last (some RU networks may have issues with it).
-    # Prefer ports that are usually less filtered in RU networks.
-    FALLBACK_PORTS = (443, 8443, 9443, 10443, 2053, 2096, 2087, 2083, 4443, 7443)
-    MAX_PUBLIC_PORTS = 4
+    # RU DPI reality:
+    # - 443 is the most reliable option;
+    # - "CDN-ish" ports (2053/2083/2096/etc) are often filtered by some ISPs.
+    # Keep a conservative list to avoid generating profiles that work in NL/US but fail in RU.
+    FALLBACK_PORTS = (443, 8443, 9443, 10443, 4443, 5443, 6443, 7443)
+    MAX_PUBLIC_PORTS = 1
     HANDSHAKE_CANDIDATES = (
         "www.microsoft.com",
         "www.apple.com",
@@ -52,6 +54,18 @@ class ShadowTLSSSProvisioner:
         self.progress = progress or (lambda _msg: None)
         self._name_pattern = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
         self._sni_pattern = re.compile(r"^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9-]{1,63})+$")
+        raw_max = (os.getenv("VPNW_SHADOWTLS_MAX_PUBLIC_PORTS") or "").strip()
+        try:
+            requested = int(raw_max) if raw_max else int(self.MAX_PUBLIC_PORTS)
+        except ValueError:
+            requested = int(self.MAX_PUBLIC_PORTS)
+        self.max_public_ports = max(1, min(8, requested))
+        self.enable_urltest = (os.getenv("VPNW_SHADOWTLS_ENABLE_URLTEST") or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
 
     def _validate_name(self, name: Optional[str]) -> str:
         value = (name or "client1").strip()
@@ -74,6 +88,19 @@ class ShadowTLSSSProvisioner:
             check=False,
         ).strip()
         return state == "busy"
+
+    def _tcp_port_owner(self, listen_port: int) -> str:
+        # Best-effort: parse process name from ss output.
+        # Requires privileges to see pid/program name; root works.
+        raw = self.ssh.run(
+            "bash -lc "
+            + shlex.quote(
+                f"ss -ltnpH | grep -E ':{int(listen_port)}([^0-9]|$)' | head -n 1 || true"
+            ),
+            check=False,
+        )
+        match = re.search(r'users:\\(\\(\"([^\"]+)\"', raw or "")
+        return match.group(1) if match else ""
 
     def choose_free_port(self, preferred_port: Optional[int] = None) -> Optional[int]:
         candidates: list[int] = []
@@ -113,14 +140,14 @@ class ShadowTLSSSProvisioner:
         for port in existing_ports or []:
             _push(port)
         for port in self.FALLBACK_PORTS:
-            if len(selected) >= self.MAX_PUBLIC_PORTS:
+            if len(selected) >= self.max_public_ports:
                 break
             if port in seen:
                 continue
             if not self._is_port_busy(port):
                 _push(port)
 
-        return selected[: self.MAX_PUBLIC_PORTS]
+        return selected[: self.max_public_ports]
 
     def _ensure_firewall_port(self, listen_port: int) -> None:
         port = int(listen_port)
@@ -351,7 +378,8 @@ rm -rf "$tmp"
         return {
             "type": "shadowtls",
             "tag": tag,
-            "listen": "::",
+            # Bind IPv4 explicitly to avoid edge cases with IPv6-only sockets on some kernels.
+            "listen": "0.0.0.0",
             "listen_port": int(listen_port),
             "detour": "ss-in",
             "version": 3,
@@ -437,8 +465,19 @@ rm -rf "$tmp"
             sudo_details = "passwordless" if sudo_ok else "sudo requires password"
         checks.append({"name": "sudo", "ok": sudo_ok, "details": sudo_details})
 
-        port_state = "busy" if self._is_port_busy(int(listen_port)) else "free"
-        checks.append({"name": "port_available", "ok": port_state != "busy", "details": port_state})
+        owner = self._tcp_port_owner(int(listen_port))
+        if owner == self.SERVICE_NAME:
+            checks.append(
+                {
+                    "name": "port_available",
+                    "ok": True,
+                    "details": f"in-use by {self.SERVICE_NAME} (reconfigure safe)",
+                }
+            )
+        else:
+            port_state = "busy" if self._is_port_busy(int(listen_port)) else "free"
+            details = f"busy({owner})" if (port_state == "busy" and owner) else port_state
+            checks.append({"name": "port_available", "ok": port_state != "busy", "details": details})
         return checks
 
     def setup(self, client_name: Optional[str], listen_port: int, sni: Optional[str] = None) -> dict:
@@ -724,7 +763,8 @@ rm -rf "$tmp"
 
         # sing-box full config for Hiddify:
         # - ShadowTLS + SS2022 chain(s)
-        # - final route pinned to primary chain (avoids Hiddify urltest flaps)
+        # - route uses a selector pinned to the primary chain by default.
+        #   (RU networks frequently block some non-standard ports; urltest-based auto failover is fragile.)
         outbounds: list[dict] = []
         chain_tags: list[str] = []
         for idx, selected_port in enumerate(selected_ports, start=1):
@@ -757,27 +797,25 @@ rm -rf "$tmp"
             )
 
         primary_tag = chain_tags[0] if chain_tags else "direct"
-        final_tag = primary_tag
-        if len(chain_tags) > 1:
-            # Built-in failover: sing-box will pick the healthiest outbound.
-            outbounds.append(
-                {
-                    "type": "selector",
-                    "tag": "proxy",
-                    "outbounds": chain_tags,
-                    "default": primary_tag,
-                }
-            )
+        outbounds.append(
+            {
+                "type": "selector",
+                "tag": "proxy",
+                "outbounds": chain_tags or ["direct"],
+                "default": primary_tag if chain_tags else "direct",
+            }
+        )
+        if self.enable_urltest and len(chain_tags) > 1:
             outbounds.append(
                 {
                     "type": "urltest",
                     "tag": "auto",
                     "outbounds": chain_tags,
                     "interval": "45s",
-                    "tolerance": 100,
+                    "tolerance": 200,
+                    "interrupt_exist_connections": False,
                 }
             )
-            final_tag = "auto"
 
         outbounds.append({"type": "direct", "tag": "direct", "domain_strategy": "ipv4_only"})
         outbounds.append({"type": "block", "tag": "block"})
@@ -786,7 +824,7 @@ rm -rf "$tmp"
             "log": {"level": "warn"},
             "dns": {
                 "servers": [
-                    {"tag": "doh", "address": remote_doh, "detour": final_tag},
+                    {"tag": "doh", "address": remote_doh, "detour": "proxy"},
                     {"tag": "local", "address": direct_dns, "detour": "direct"},
                 ],
                 "strategy": "ipv4_only",
@@ -810,7 +848,7 @@ rm -rf "$tmp"
                     {"inbound": ["tun-in"], "protocol": ["quic"], "outbound": "block"},
                     {"inbound": ["tun-in"], "network": ["udp"], "port": [443], "outbound": "block"},
                 ],
-                "final": final_tag,
+                "final": "proxy",
             },
             "outbounds": outbounds,
         }

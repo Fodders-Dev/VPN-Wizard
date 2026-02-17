@@ -31,11 +31,11 @@
    - Публичная часть: `~/.ssh/id_ed25519.pub`. В ней должна быть **одна строка** вида `ssh-ed25519 AAAA... email`. Если разбито на несколько строк — пересоздай файл: `ssh-keygen -y -f ~/.ssh/id_ed25519 > ~/.ssh/id_ed25519.pub`.
    - На сервере содержимое этой строки должно лежать в `~/.ssh/authorized_keys`.
 2. **Если видишь `Permission denied (publickey)`:**
-   - Разово войди по паролю: `ssh artem@212.69.84.167` → пароль `N4okFpso7S`.
+   - Разово войди по паролю: `ssh artem@212.69.84.167` → пароль `<YOUR_PASSWORD>`.
    - После входа добавь ключ:
-     ```
-     mkdir -p ~/.ssh && chmod 700 ~/.ssh
-     echo "<содержимое ~/.ssh/id_ed25519.pub>" >> ~/.ssh/authorized_keys
+      ```
+      mkdir -p ~/.ssh && chmod 700 ~/.ssh
+      echo "<содержимое ~/.ssh/id_ed25519.pub>" >> ~/.ssh/authorized_keys
      chmod 600 ~/.ssh/authorized_keys
      ```
      Либо с локалки выполни `ssh-copy-id -i ~/.ssh/id_ed25519 artem@212.69.84.167` (запросит пароль один раз).

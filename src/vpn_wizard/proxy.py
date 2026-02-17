@@ -28,7 +28,8 @@ class ProxyProvisioner:
     XRAY_BIN = "/usr/local/bin/xray"
     XRAY_ETC = "/usr/local/etc/xray"
     XRAY_CONF = f"{XRAY_ETC}/config.json"
-    FALLBACK_PORTS = (443, 8443, 2083, 2053, 2087, 2096)
+    # Conservative RU-friendly port list. Some ISPs filter "CDN-ish" ports (2053/2083/2096/etc).
+    FALLBACK_PORTS = (443, 8443, 9443, 10443, 4443)
     DEFAULT_SNI_CANDIDATES = _parse_domain_list(
         os.getenv(
             "VPNW_PROXY_SNI_CANDIDATES",
@@ -64,6 +65,12 @@ class ProxyProvisioner:
             self.sni_candidates.insert(0, self.default_sni)
         self.fingerprint = fingerprint
         self._name_pattern = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+        self.enable_urltest = (os.getenv("VPNW_VLESS_REALITY_ENABLE_URLTEST") or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
 
     def _validate_name(self, name: Optional[str]) -> str:
         value = (name or "client1").strip()
@@ -254,6 +261,17 @@ class ProxyProvisioner:
             check=False,
         ).strip()
         return state == "busy"
+
+    def _tcp_port_owner(self, listen_port: int) -> str:
+        raw = self.ssh.run(
+            "bash -lc "
+            + shlex.quote(
+                f"ss -ltnpH | grep -E ':{int(listen_port)}([^0-9]|$)' | head -n 1 || true"
+            ),
+            check=False,
+        )
+        match = re.search(r'users:\\(\\(\"([^\"]+)\"', raw or "")
+        return match.group(1) if match else ""
 
     def choose_free_port(self, preferred_port: Optional[int] = None) -> Optional[int]:
         candidates: list[int] = []
@@ -552,24 +570,35 @@ class ProxyProvisioner:
                 }
             )
 
-        # urltest auto-selects best outbound by latency and keeps re-testing.
-        #
-        # Important: do NOT use Google-hosted test URLs here. In RU networks Google domains may be
-        # throttled/blocked which makes urltest mark every proxy as "dead", resulting in "no internet".
+        # Default route is a selector pinned to primary outbound.
+        # urltest-based auto switching is optional because some clients treat urltest failures
+        # as "no internet", especially when part of the port set is filtered in RU networks.
         outbounds.insert(
             0,
             {
-                "type": "urltest",
-                "tag": "auto",
+                "type": "selector",
+                "tag": "proxy",
                 "outbounds": outbound_tags,
-                "url": "https://www.msftconnecttest.com/connecttest.txt",
-                "interval": "5m",
-                # In RU networks latency jitters a lot; avoid flapping.
-                "tolerance": 200,
-                # Do not kill existing inbound connections when urltest switches.
-                "interrupt_exist_connections": False,
+                "default": outbound_tags[0] if outbound_tags else "direct",
             },
         )
+        if self.enable_urltest and len(outbound_tags) > 1:
+            # Important: do NOT use Google-hosted test URLs here. In RU networks Google domains may be
+            # throttled/blocked which makes urltest mark every proxy as "dead", resulting in "no internet".
+            outbounds.insert(
+                0,
+                {
+                    "type": "urltest",
+                    "tag": "auto",
+                    "outbounds": outbound_tags,
+                    "url": "https://www.msftconnecttest.com/connecttest.txt",
+                    "interval": "5m",
+                    # In RU networks latency jitters a lot; avoid flapping.
+                    "tolerance": 200,
+                    # Do not kill existing inbound connections when urltest switches.
+                    "interrupt_exist_connections": False,
+                },
+            )
         outbounds.append({"type": "direct", "tag": "direct"})
         outbounds.append({"type": "block", "tag": "block"})
 
@@ -577,7 +606,7 @@ class ProxyProvisioner:
             "log": {"level": "warn"},
             "dns": {
                 "servers": [
-                    {"tag": "doh", "address": remote_doh, "detour": "auto"},
+                    {"tag": "doh", "address": remote_doh, "detour": "proxy"},
                     {"tag": "local", "address": direct_dns, "detour": "direct"},
                 ],
                 "strategy": "ipv4_only",
@@ -606,7 +635,7 @@ class ProxyProvisioner:
                     # Some stacks don't classify QUIC reliably; block UDP/443 explicitly.
                     {"inbound": ["tun-in"], "network": ["udp"], "port": [443], "outbound": "block"},
                 ],
-                "final": "auto",
+                "final": "proxy",
             },
             "outbounds": outbounds,
         }
@@ -692,8 +721,19 @@ class ProxyProvisioner:
             sudo_details = "passwordless" if sudo_ok else "sudo requires password"
         checks.append({"name": "sudo", "ok": sudo_ok, "details": sudo_details})
 
-        port_state = "busy" if self._is_port_busy(listen_port) else "free"
-        checks.append({"name": "port_available", "ok": port_state != "busy", "details": port_state})
+        owner = self._tcp_port_owner(int(listen_port))
+        if owner == "xray":
+            checks.append(
+                {
+                    "name": "port_available",
+                    "ok": True,
+                    "details": "in-use by xray (reconfigure safe)",
+                }
+            )
+        else:
+            port_state = "busy" if self._is_port_busy(listen_port) else "free"
+            details = f"busy({owner})" if (port_state == "busy" and owner) else port_state
+            checks.append({"name": "port_available", "ok": port_state != "busy", "details": details})
         return checks
 
     def setup(self, client_name: Optional[str], listen_port: int, sni: Optional[str] = None) -> dict:

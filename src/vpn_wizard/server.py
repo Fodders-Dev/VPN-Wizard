@@ -4,10 +4,13 @@ from dataclasses import dataclass, field
 import base64
 from collections import OrderedDict
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from io import BytesIO
+import importlib.metadata
 import os
 from pathlib import Path
 import socket
+import subprocess
 import time
 from urllib.parse import urlparse
 import tempfile
@@ -17,6 +20,7 @@ import uuid
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 import qrcode
@@ -28,6 +32,7 @@ from vpn_wizard.shadowtls import ShadowTLSSSProvisioner
 
 
 app = FastAPI(title="VPN Wizard API")
+APP_STARTED_AT = datetime.now(timezone.utc)
 raw_origins = os.getenv("VPNW_CORS_ORIGINS", "")
 cors_origins: list[str] = []
 if raw_origins:
@@ -512,6 +517,61 @@ SESSION_STORE = SessionStore(
     ttl_seconds=int(os.getenv("VPNW_SESSION_TTL_SECONDS", "86400")),
     limit=int(os.getenv("VPNW_SESSION_LIMIT", "512")),
 )
+
+def _safe_subprocess(args: list[str], timeout_s: float = 0.35) -> str:
+    try:
+        out = subprocess.check_output(args, stderr=subprocess.DEVNULL, timeout=timeout_s)
+        return out.decode("utf-8", "ignore").strip()
+    except Exception:
+        return ""
+
+
+def _detect_commit_sha() -> Optional[str]:
+    # CI/CD environments usually expose one of these.
+    for key in (
+        "RAILWAY_GIT_COMMIT_SHA",
+        "VERCEL_GIT_COMMIT_SHA",
+        "GITHUB_SHA",
+        "COMMIT_SHA",
+        "SOURCE_VERSION",
+        "RENDER_GIT_COMMIT",
+    ):
+        value = (os.getenv(key) or "").strip()
+        if value:
+            return value
+
+    # Best-effort fallback for environments that keep the git checkout.
+    sha = _safe_subprocess(["git", "rev-parse", "HEAD"])
+    return sha or None
+
+
+def _detect_package_version() -> str:
+    try:
+        return importlib.metadata.version("vpn-wizard")
+    except Exception:
+        return "unknown"
+
+
+class VersionResponse(BaseModel):
+    ok: bool
+    name: str = "vpn-wizard"
+    version: str
+    commit_sha: Optional[str] = None
+    started_at_utc: str
+    now_utc: str
+
+
+@app.get("/api/version", response_model=VersionResponse)
+def api_version() -> Response:
+    payload = VersionResponse(
+        ok=True,
+        version=_detect_package_version(),
+        commit_sha=_detect_commit_sha(),
+        started_at_utc=APP_STARTED_AT.isoformat(),
+        now_utc=datetime.now(timezone.utc).isoformat(),
+    ).model_dump()
+    # Avoid confusion during rollouts.
+    return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
 
 def _safe_name(name: Optional[str]) -> str:

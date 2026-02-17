@@ -132,5 +132,5 @@ Client config expectations:
 - Miniapp now supports explicit SSH port input and `host:port` format (for non-standard SSH ports).
 - Miniapp supports two setup modes: `VPN (AmneziaWG)` and `Proxy (ShadowTLS + SS2022)`.
 - Proxy mode (ShadowTLS) exports an auto-config profile URL (Hiddify / sing-box). Legacy proxy mode exports a `vless://` link + QR.
-- ShadowTLS auto-config now includes multiple server ports + `urltest` auto-failover; re-run "Настроить прокси" and re-import the new URL after backend updates.
+- ShadowTLS proxy configs are pinned to the primary port by default (to avoid RU ISP port filtering breaking urltest-based failover). Optional urltest can be enabled via `VPNW_SHADOWTLS_ENABLE_URLTEST=1`.
 - `/api/download/<id>/config` is a snapshot: if server/proxy was reconfigured, generate a fresh URL/profile (old URL may point to outdated settings).
