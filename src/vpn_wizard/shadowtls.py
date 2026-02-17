@@ -722,7 +722,7 @@ rm -rf "$tmp"
 
         # sing-box full config for Hiddify:
         # - ShadowTLS + SS2022 chains for multiple ports
-        # - urltest auto-failover between chains
+        # - selector group for stable default routing (manual fallback in UI)
         outbounds: list[dict] = []
         chain_tags: list[str] = []
         for idx, selected_port in enumerate(selected_ports, start=1):
@@ -757,12 +757,10 @@ rm -rf "$tmp"
         outbounds.insert(
             0,
             {
-                "type": "urltest",
-                "tag": "auto",
+                "type": "selector",
+                "tag": "proxy",
                 "outbounds": chain_tags,
-                "url": "https://www.msftconnecttest.com/connecttest.txt",
-                "interval": "5m",
-                "tolerance": 200,
+                "default": chain_tags[0] if chain_tags else "direct",
                 "interrupt_exist_connections": False,
             },
         )
@@ -773,7 +771,7 @@ rm -rf "$tmp"
             "log": {"level": "warn"},
             "dns": {
                 "servers": [
-                    {"tag": "doh", "address": remote_doh, "detour": "auto"},
+                    {"tag": "doh", "address": remote_doh, "detour": "proxy"},
                     {"tag": "local", "address": direct_dns, "detour": "direct"},
                 ],
                 "strategy": "ipv4_only",
@@ -797,7 +795,7 @@ rm -rf "$tmp"
                     {"inbound": ["tun-in"], "protocol": ["quic"], "outbound": "block"},
                     {"inbound": ["tun-in"], "network": ["udp"], "port": [443], "outbound": "block"},
                 ],
-                "final": "auto",
+                "final": "proxy",
             },
             "outbounds": outbounds,
         }

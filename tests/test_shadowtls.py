@@ -61,14 +61,15 @@ def test_build_singbox_client_config_contains_shadowtls_and_ss_chain() -> None:
         )
     )
     outbounds = cfg.get("outbounds") or []
-    urltest = next((o for o in outbounds if o.get("type") == "urltest"), None)
+    selector = next((o for o in outbounds if o.get("type") == "selector"), None)
     ss_outbounds = [o for o in outbounds if o.get("type") == "shadowsocks"]
     st_outbounds = [o for o in outbounds if o.get("type") == "shadowtls"]
-    assert urltest is not None
-    assert urltest.get("tag") == "auto"
+    assert selector is not None
+    assert selector.get("tag") == "proxy"
+    assert selector.get("default") == "p1"
     assert len(ss_outbounds) == 3
     assert len(st_outbounds) == 3
-    assert "msftconnecttest" in str(urltest.get("url") or "")
+    assert set(selector.get("outbounds") or []) == {"p1", "p2", "p3"}
     for ss in ss_outbounds:
         assert ss.get("server") == "1.2.3.4"
         assert ss.get("password") == "SERVERPASS:USER1"
@@ -80,7 +81,10 @@ def test_build_singbox_client_config_contains_shadowtls_and_ss_chain() -> None:
 
     # RU defaults: block IPv6 and QUIC/UDP443 inside tunnel.
     rules = (cfg.get("route") or {}).get("rules") or []
-    assert (cfg.get("route") or {}).get("final") == "auto"
+    assert (cfg.get("route") or {}).get("final") == "proxy"
+    dns = cfg.get("dns") or {}
+    doh = next((item for item in (dns.get("servers") or []) if item.get("tag") == "doh"), {})
+    assert doh.get("detour") == "proxy"
     assert any(r.get("ip_version") == 6 and r.get("outbound") == "block" for r in rules)
     assert any(r.get("protocol") == ["quic"] and r.get("outbound") == "block" for r in rules)
     assert any(r.get("network") == ["udp"] and r.get("port") == [443] and r.get("outbound") == "block" for r in rules)
