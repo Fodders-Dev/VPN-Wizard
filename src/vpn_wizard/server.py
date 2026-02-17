@@ -547,6 +547,10 @@ def _detect_commit_sha() -> Optional[str]:
 
 
 def _detect_package_version() -> str:
+    explicit = (os.getenv("VPNW_VERSION") or "").strip()
+    if explicit:
+        return explicit
+
     try:
         return importlib.metadata.version("vpn-wizard")
     except Exception:
@@ -554,20 +558,31 @@ def _detect_package_version() -> str:
 
     # When running from source (e.g. Railway Nixpacks with PYTHONPATH=src),
     # package metadata might not be available. Fall back to pyproject.toml.
+    candidates: list[Path] = []
+    try:
+        candidates.append(Path.cwd() / "pyproject.toml")
+    except Exception:
+        pass
+    candidates.append(Path("/app/pyproject.toml"))
     try:
         here = Path(__file__).resolve()
-        for root in [here.parents[2], *here.parents]:
-            pyproject = root / "pyproject.toml"
+        candidates.extend(root / "pyproject.toml" for root in list(here.parents)[:8])
+    except Exception:
+        pass
+
+    for pyproject in candidates:
+        try:
             if not pyproject.exists():
                 continue
             text = pyproject.read_text(encoding="utf-8", errors="ignore")
             match = re.search(r'(?m)^version\\s*=\\s*\"([^\"]+)\"\\s*$', text)
             if match:
                 return match.group(1).strip()
-    except Exception:
-        pass
+        except Exception:
+            continue
 
-    return "unknown"
+    # Keep the string stable for UIs; a commit SHA is still returned separately.
+    return "dev"
 
 
 def _iso_utc(ts: datetime) -> str:
