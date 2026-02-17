@@ -91,12 +91,10 @@ class ShadowTLSSSProvisioner:
 
     def _tcp_port_owner(self, listen_port: int) -> str:
         # Best-effort: parse process name from ss output.
-        # Requires privileges to see pid/program name; root works.
+        # Use ss filter expression to avoid regex quoting pitfalls (grep regex errors were observed in the wild).
+        port = int(listen_port)
         raw = self.ssh.run(
-            "bash -lc "
-            + shlex.quote(
-                f"ss -ltnpH | grep -E ':{int(listen_port)}([^0-9]|$)' | head -n 1 || true"
-            ),
+            f'ss -ltnpH "sport = :{port}" 2>/dev/null | head -n 1 || true',
             check=False,
         )
         match = re.search(r'users:\\(\\(\"([^\"]+)\"', raw or "")
