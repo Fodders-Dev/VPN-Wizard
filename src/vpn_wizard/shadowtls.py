@@ -630,11 +630,12 @@ rm -rf "$tmp"
         if not user_password:
             raise RuntimeError("Client not found.")
         host = self._public_ip()
+        fallback_ports = [int(item) for item in listen_ports[1:] if isinstance(item, int) and 1 <= int(item) <= 65535]
         auto_config = self.build_singbox_client_config(
             host=host,
             port=int(listen_ports[0]),
-            # Keep client profile single-hop via primary port for stability in Hiddify.
-            fallback_ports=[],
+            # Include extra server ports so client can fail over when one port degrades.
+            fallback_ports=fallback_ports,
             handshake_sni=handshake_server,
             server_password=server_password,
             user_password=user_password,
@@ -756,6 +757,28 @@ rm -rf "$tmp"
             )
 
         primary_tag = chain_tags[0] if chain_tags else "direct"
+        final_tag = primary_tag
+        if len(chain_tags) > 1:
+            # Built-in failover: sing-box will pick the healthiest outbound.
+            outbounds.append(
+                {
+                    "type": "selector",
+                    "tag": "proxy",
+                    "outbounds": chain_tags,
+                    "default": primary_tag,
+                }
+            )
+            outbounds.append(
+                {
+                    "type": "urltest",
+                    "tag": "auto",
+                    "outbounds": chain_tags,
+                    "interval": "45s",
+                    "tolerance": 100,
+                }
+            )
+            final_tag = "auto"
+
         outbounds.append({"type": "direct", "tag": "direct", "domain_strategy": "ipv4_only"})
         outbounds.append({"type": "block", "tag": "block"})
 
@@ -763,7 +786,7 @@ rm -rf "$tmp"
             "log": {"level": "warn"},
             "dns": {
                 "servers": [
-                    {"tag": "doh", "address": remote_doh, "detour": primary_tag},
+                    {"tag": "doh", "address": remote_doh, "detour": final_tag},
                     {"tag": "local", "address": direct_dns, "detour": "direct"},
                 ],
                 "strategy": "ipv4_only",
@@ -787,7 +810,7 @@ rm -rf "$tmp"
                     {"inbound": ["tun-in"], "protocol": ["quic"], "outbound": "block"},
                     {"inbound": ["tun-in"], "network": ["udp"], "port": [443], "outbound": "block"},
                 ],
-                "final": primary_tag,
+                "final": final_tag,
             },
             "outbounds": outbounds,
         }
