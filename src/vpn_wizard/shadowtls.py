@@ -108,6 +108,67 @@ class ShadowTLSSSProvisioner:
             return ""
         return rest[:end]
 
+    def _ensure_server_ipv4_only(self, cfg: dict) -> bool:
+        """
+        Our VPSes often have no IPv6 connectivity. ShadowTLS server-side handshake makes outbound
+        connections to the decoy host; if sing-box picks IPv6 first, the handshake fails.
+        Enforce IPv4-only dialing and block IPv6 to avoid long timeouts and random disconnects.
+        """
+        changed = False
+
+        outbounds = cfg.setdefault("outbounds", [])
+        if not isinstance(outbounds, list):
+            outbounds = []
+            cfg["outbounds"] = outbounds
+            changed = True
+
+        def _find(tag: str) -> Optional[dict]:
+            for ob in outbounds:
+                if isinstance(ob, dict) and str(ob.get("tag") or "").strip() == tag:
+                    return ob
+            return None
+
+        direct = _find("direct")
+        if not direct:
+            direct = {"type": "direct", "tag": "direct"}
+            outbounds.append(direct)
+            changed = True
+        if direct.get("type") != "direct":
+            direct["type"] = "direct"
+            changed = True
+        if direct.get("domain_strategy") != "ipv4_only":
+            direct["domain_strategy"] = "ipv4_only"
+            changed = True
+
+        block = _find("block")
+        if not block:
+            outbounds.append({"type": "block", "tag": "block"})
+            changed = True
+        elif block.get("type") != "block":
+            block["type"] = "block"
+            changed = True
+
+        route = cfg.setdefault("route", {})
+        if not isinstance(route, dict):
+            route = {}
+            cfg["route"] = route
+            changed = True
+        if route.get("final") != "direct":
+            route["final"] = "direct"
+            changed = True
+
+        rules = route.setdefault("rules", [])
+        if not isinstance(rules, list):
+            rules = []
+            route["rules"] = rules
+            changed = True
+        ipv6_rule = {"ip_version": 6, "outbound": "block"}
+        if not any(isinstance(r, dict) and r.get("ip_version") == 6 and r.get("outbound") == "block" for r in rules):
+            rules.insert(0, ipv6_rule)
+            changed = True
+
+        return changed
+
     def choose_free_port(self, preferred_port: Optional[int] = None) -> Optional[int]:
         candidates: list[int] = []
         if isinstance(preferred_port, int) and 1 <= preferred_port <= 65535:
@@ -513,6 +574,7 @@ rm -rf "$tmp"
         if cfg:
             _stls_list, ss, _current_ports, server_password, _existing_handshake = self._state(cfg)
             changed = False
+            changed = self._ensure_server_ipv4_only(cfg) or changed
 
             current_method = str(ss.get("method") or "").strip()
             if current_method and current_method != self.SS_METHOD:
@@ -624,10 +686,12 @@ rm -rf "$tmp"
                     "multiplex": {"enabled": False},
                 },
             ],
-            "outbounds": [{"type": "direct", "tag": "direct"}],
-            "route": {"final": "direct"},
+            "outbounds": [{"type": "direct", "tag": "direct", "domain_strategy": "ipv4_only"}, {"type": "block", "tag": "block"}],
+            "route": {"rules": [{"ip_version": 6, "outbound": "block"}], "final": "direct"},
         }
         self.progress("Writing sing-box config (ShadowTLS + Shadowsocks)")
+        # Apply IPv4-only rules even if defaults above drift (or config is merged elsewhere).
+        self._ensure_server_ipv4_only(cfg)
         self._write_config(cfg)
         for selected_port in target_ports:
             self._ensure_firewall_port(selected_port)
