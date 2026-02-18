@@ -685,16 +685,22 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
                 proxy = ProxyProvisioner(ssh, progress=progress)
                 proxy_port = opts.listen_port
                 if not proxy_port:
-                    auto_port = proxy.choose_free_port()
-                    if not auto_port:
-                        JOB_STORE.update(
-                            job_id,
-                            status="error",
-                            error="Could not find a free proxy TCP port automatically. Set it manually.",
-                        )
-                        return
-                    proxy_port = auto_port
-                    progress(f"Proxy port selected automatically: {proxy_port}.")
+                    status = proxy.detect_status()
+                    existing = status.get("listen_port") if isinstance(status, dict) else None
+                    if status.get("configured") and isinstance(existing, int) and 1 <= int(existing) <= 65535:
+                        proxy_port = int(existing)
+                        progress(f"Proxy already configured. Reusing existing port: {proxy_port}.")
+                    else:
+                        auto_port = proxy.choose_free_port()
+                        if not auto_port:
+                            JOB_STORE.update(
+                                job_id,
+                                status="error",
+                                error="Could not find a free proxy TCP port automatically. Set it manually.",
+                            )
+                            return
+                        proxy_port = auto_port
+                        progress(f"Proxy port selected automatically: {proxy_port}.")
                 pre_checks = proxy.pre_check(proxy_port)
                 port_check = next((item for item in pre_checks if item.get("name") == "port_available"), None)
                 if port_check and not port_check.get("ok"):
@@ -727,16 +733,24 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
                 proxy = ShadowTLSSSProvisioner(ssh, progress=progress)
                 proxy_port = opts.listen_port
                 if not proxy_port:
-                    auto_port = proxy.choose_free_port()
-                    if not auto_port:
-                        JOB_STORE.update(
-                            job_id,
-                            status="error",
-                            error="Could not find a free proxy TCP port automatically. Set it manually.",
-                        )
-                        return
-                    proxy_port = auto_port
-                    progress(f"Proxy port selected automatically: {proxy_port}.")
+                    # Reuse the existing listen port when already configured.
+                    # Rotating the public port can noticeably change RU ISP behavior (throttling / filtering).
+                    status = proxy.detect_status()
+                    existing = status.get("listen_port") if isinstance(status, dict) else None
+                    if status.get("configured") and isinstance(existing, int) and 1 <= int(existing) <= 65535:
+                        proxy_port = int(existing)
+                        progress(f"Proxy already configured. Reusing existing port: {proxy_port}.")
+                    else:
+                        auto_port = proxy.choose_free_port()
+                        if not auto_port:
+                            JOB_STORE.update(
+                                job_id,
+                                status="error",
+                                error="Could not find a free proxy TCP port automatically. Set it manually.",
+                            )
+                            return
+                        proxy_port = auto_port
+                        progress(f"Proxy port selected automatically: {proxy_port}.")
                 pre_checks = proxy.pre_check(int(proxy_port))
                 port_check = next((item for item in pre_checks if item.get("name") == "port_available"), None)
                 if port_check and not port_check.get("ok"):
@@ -1279,8 +1293,14 @@ async def server_precheck(payload: ProvisionRequest) -> PrecheckResponse:
                 proxy_port = opts.listen_port
                 auto_selected = False
                 if not proxy_port:
-                    proxy_port = proxy.choose_free_port() or 443
-                    auto_selected = True
+                    status = proxy.detect_status()
+                    existing = status.get("listen_port") if isinstance(status, dict) else None
+                    if status.get("configured") and isinstance(existing, int) and 1 <= int(existing) <= 65535:
+                        proxy_port = int(existing)
+                        auto_selected = True
+                    else:
+                        proxy_port = proxy.choose_free_port() or 10443
+                        auto_selected = True
                 checks = proxy.pre_check(proxy_port)
                 if auto_selected:
                     checks.append(
@@ -1295,8 +1315,14 @@ async def server_precheck(payload: ProvisionRequest) -> PrecheckResponse:
                 proxy_port = opts.listen_port
                 auto_selected = False
                 if not proxy_port:
-                    proxy_port = proxy.choose_free_port() or 443
-                    auto_selected = True
+                    status = proxy.detect_status()
+                    existing = status.get("listen_port") if isinstance(status, dict) else None
+                    if status.get("configured") and isinstance(existing, int) and 1 <= int(existing) <= 65535:
+                        proxy_port = int(existing)
+                        auto_selected = True
+                    else:
+                        proxy_port = proxy.choose_free_port() or 10443
+                        auto_selected = True
                 checks = proxy.pre_check(int(proxy_port))
                 if auto_selected:
                     checks.append(

@@ -39,7 +39,9 @@ class ShadowTLSSSProvisioner:
     # - 443 is the most reliable option;
     # - "CDN-ish" ports (2053/2083/2096/etc) are often filtered by some ISPs.
     # Keep a conservative list to avoid generating profiles that work in NL/US but fail in RU.
-    FALLBACK_PORTS = (443, 8443, 9443, 10443, 4443, 5443, 6443, 7443)
+    # NOTE: 443 is often occupied by existing web services (Caddy/Nginx). Prefer 10443 next because
+    # it tends to behave better than 9443 on many RU ISPs, while still looking like a TLS-ish port.
+    FALLBACK_PORTS = (443, 10443, 8443, 9443, 4443, 5443, 6443, 7443)
     MAX_PUBLIC_PORTS = 1
     HANDSHAKE_CANDIDATES = (
         "www.microsoft.com",
