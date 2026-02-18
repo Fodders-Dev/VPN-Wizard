@@ -268,8 +268,16 @@ class ProxyProvisioner:
             f'ss -ltnpH "sport = :{port}" 2>/dev/null | head -n 1 || true',
             check=False,
         )
-        match = re.search(r'users:\\(\\(\"([^\"]+)\"', raw or "")
-        return match.group(1) if match else ""
+        text = raw or ""
+        marker = 'users:(("'
+        idx = text.find(marker)
+        if idx < 0:
+            return ""
+        rest = text[idx + len(marker) :]
+        end = rest.find('"')
+        if end < 0:
+            return ""
+        return rest[:end]
 
     def choose_free_port(self, preferred_port: Optional[int] = None) -> Optional[int]:
         candidates: list[int] = []
