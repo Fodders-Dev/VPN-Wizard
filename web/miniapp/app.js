@@ -177,23 +177,22 @@ const I18N = {
     step3_title_proxy: "Шаг 3. Доступ",
     download_btn: "Скачать конфиг",
     download_btn_proxy: "Скачать (опционально)",
-    download_btn_auto: "Скачать авто-конфиг",
-    copy_auto_url_btn: "Скопировать ссылку авто-подписки",
+    download_btn_auto: "Скачать файл (.json)",
+    copy_auto_url_btn: "Скопировать ссылку",
     download_qr_btn: "Скачать QR",
     copy_btn: "Скопировать конфиг",
-    copy_done: "Конфиг скопирован.",
-    copy_failed: "Не удалось скопировать конфиг.",
+    copy_done: "Скопировано.",
+    copy_failed: "Не удалось скопировать.",
     copy_empty: "Сначала получите конфиг.",
     copy_title: "Конфиг для ручного копирования",
     copy_title_proxy: "Ссылка (опционально)",
     copy_hint: "Можно выделить и скопировать вручную.",
-    copy_btn_auto_config: "Скопировать авто-конфиг",
+    copy_btn_auto_config: "Скопировать JSON",
     alt_links_title: "Если не работает: альтернативные ссылки",
     alt_links_hint:
       "Импортируйте одну из ссылок в клиент прокси и проверьте. Иногда помогает смена SNI/FP из-за блокировок.",
     step3_hint: "Откройте AmneziaWG и нажмите \"+\", чтобы добавить файл конфигурации.",
-    step3_hint_proxy:
-      "Откройте клиент прокси (Hiddify/sing-box), добавьте профиль по ссылке авто-подписки и подключитесь.",
+    step3_hint_proxy: "Откройте Hiddify/sing-box, добавьте профиль по ссылке или через QR и подключитесь.",
     apps_title: "Скачать приложение AmneziaWG",
     apps_title_proxy: "Рекомендуемые клиенты прокси",
     apps_android: "Android (Google Play)",
@@ -273,7 +272,7 @@ const I18N = {
     status_precheck_done: "Предпросмотр готов. Чтобы установить VPN, отключите предпросмотр.",
     server_use_hint: "Введите пароль или ключ и нажмите \"Подключиться\".",
     download_ready: "Скачайте конфиг и отсканируйте QR.",
-    download_ready_proxy: "Скопируйте ссылку авто-подписки и добавьте профиль в Hiddify/sing-box.",
+    download_ready_proxy: "Готово. Скопируйте ссылку и добавьте профиль в Hiddify/sing-box.",
     check_ok: "ok",
     check_fail: "fail",
     auto_value: "авто",
@@ -353,7 +352,7 @@ const I18N = {
       "1) Подключитесь к серверу.\n2) Нажмите \"Настроить сервер\".\n3) Скачайте конфиг и импортируйте в AmneziaWG.",
     help_proxy_title: "Режим антиблок-прокси (ShadowTLS)",
     help_proxy_body:
-      "1) Подключитесь к серверу и настройте прокси (порт/SNI можно оставить пустыми - авто).\n2) Скопируйте ссылку авто-подписки.\n3) В Hiddify/sing-box добавьте профиль по URL и подключитесь.\n4) Для РФ (особенно Windows): чаще стабильнее режим VPN (экспериментальный/TUN) + Strict Routing = ON + DNS Routing = ON. Если ломаются приложения — переключитесь на System Proxy.\n5) DNS: используйте DoH (например https://dns.quad9.net/dns-query или https://unfiltered.adguard-dns.com/dns-query). Избегайте udp://1.1.1.1.\n6) Не держите одновременно активным другой VPN/прокси и несколько профилей.",
+      "1) Подключитесь к серверу и настройте прокси (порт/SNI можно оставить пустыми - авто).\n2) Скопируйте ссылку профиля.\n3) В Hiddify/sing-box добавьте профиль по URL и подключитесь.\n4) Для РФ (особенно Windows): чаще стабильнее режим VPN (экспериментальный/TUN) + Strict Routing = ON + DNS Routing = ON. Если ломаются приложения — переключитесь на System Proxy.\n5) DNS: используйте DoH (например https://dns.quad9.net/dns-query или https://unfiltered.adguard-dns.com/dns-query). Избегайте udp://1.1.1.1.\n6) Не держите одновременно активным другой VPN/прокси и несколько профилей.",
     help_install_title: "Что установить на устройство",
     help_install_body:
       "VPN: AmneziaWG.\nПрокси: Hiddify (рекомендуется) или v2rayNG/sing-box.",
@@ -442,23 +441,23 @@ const I18N = {
     step3_title_proxy: "Step 3: Access",
     download_btn: "Download config",
     download_btn_proxy: "Download (optional)",
-    download_btn_auto: "Download auto config",
-    copy_auto_url_btn: "Copy auto profile URL",
+    download_btn_auto: "Download .json",
+    copy_auto_url_btn: "Copy link",
     download_qr_btn: "Download QR",
     copy_btn: "Copy config",
-    copy_done: "Config copied.",
-    copy_failed: "Failed to copy config.",
+    copy_done: "Copied.",
+    copy_failed: "Copy failed.",
     copy_empty: "Generate a config first.",
     copy_title: "Config for manual copy",
     copy_title_proxy: "Link (optional)",
     copy_hint: "Select and copy manually if needed.",
-    copy_btn_auto_config: "Copy auto config",
+    copy_btn_auto_config: "Copy JSON",
     alt_links_title: "If it doesn't work: alternative links",
     alt_links_hint:
       "Import one of the links into your proxy client and try again. Sometimes switching SNI/FP helps under blocking.",
     step3_hint: "Open AmneziaWG and press \"+\" to add the configuration file.",
     step3_hint_proxy:
-      "Open your proxy client (Hiddify/sing-box), add a profile using the auto profile URL, then connect.",
+      "Open your proxy client (Hiddify/sing-box), add a profile using the profile link, then connect.",
     apps_title: "Get AmneziaWG",
     apps_title_proxy: "Recommended proxy clients",
     apps_android: "Android (Google Play)",
@@ -538,7 +537,7 @@ const I18N = {
     status_precheck_done: "Preview ready. Disable preview to install the VPN.",
     server_use_hint: "Enter password or key and click \"Connect\".",
     download_ready: "Ready. Download your config and scan the QR.",
-    download_ready_proxy: "Ready. Copy the auto profile URL and add it to Hiddify/sing-box.",
+    download_ready_proxy: "Ready. Copy the link and add it to Hiddify/sing-box.",
     check_ok: "ok",
     check_fail: "fail",
     auto_value: "auto",
@@ -618,7 +617,7 @@ const I18N = {
       "1) Connect to your server.\n2) Click \"Configure server\".\n3) Download config and import it into AmneziaWG.",
     help_proxy_title: "Anti-block proxy mode (ShadowTLS)",
     help_proxy_body:
-      "1) Connect and configure proxy (leave port/SNI empty for auto mode).\n2) Copy the auto profile URL.\n3) In Hiddify/sing-box add a profile by URL and connect.\n4) For RU networks (especially Windows): VPN (experimental/TUN) is often more stable with Strict Routing = ON and DNS Routing = ON. If apps break, switch to System Proxy.\n5) DNS: use DoH (for example https://dns.quad9.net/dns-query or https://unfiltered.adguard-dns.com/dns-query). Avoid udp://1.1.1.1.\n6) Do not keep another VPN/proxy or multiple profiles active at the same time.",
+      "1) Connect and configure proxy (leave port/SNI empty for auto mode).\n2) Copy the profile link.\n3) In Hiddify/sing-box add a profile by URL and connect.\n4) For RU networks (especially Windows): VPN (experimental/TUN) is often more stable with Strict Routing = ON and DNS Routing = ON. If apps break, switch to System Proxy.\n5) DNS: use DoH (for example https://dns.quad9.net/dns-query or https://unfiltered.adguard-dns.com/dns-query). Avoid udp://1.1.1.1.\n6) Do not keep another VPN/proxy or multiple profiles active at the same time.",
     help_install_title: "What to install on device",
     help_install_body:
       "VPN: AmneziaWG.\nProxy: Hiddify (recommended) or v2rayNG/sing-box.",
@@ -1309,8 +1308,9 @@ function setDownload(config, qrBase64, name, options = {}) {
     autoConfigText = null,
   } = options;
   const proxyMode = isProxyMode(STATE.lastAuth);
-  const copyText = config || (proxyMode ? autoConfigText : null);
-  const copyIsAuto = proxyMode && !config && Boolean(autoConfigText);
+  const advancedMode = !Boolean(simpleToggle?.checked);
+  const copyText = config || (proxyMode && advancedMode ? autoConfigText : null);
+  const copyIsAuto = proxyMode && !config && advancedMode && Boolean(autoConfigText);
   const ext = proxyMode ? "txt" : "conf";
 
   if (STATE.downloads.configUrl?.startsWith("blob:")) {
@@ -1334,7 +1334,8 @@ function setDownload(config, qrBase64, name, options = {}) {
     const proxyMode = isProxyMode(STATE.lastAuth);
     const autoUrl = buildDownloadUrl(autoDownloadId, "config");
     downloadAutoLink.textContent = t("download_btn_auto");
-    downloadAutoLink.classList.toggle("hidden", !(proxyMode && autoUrl));
+    // Hide advanced artifacts in novice mode to avoid confusing users.
+    downloadAutoLink.classList.toggle("hidden", !(proxyMode && autoUrl && advancedMode));
     if (proxyMode && autoUrl) {
       downloadAutoLink.download = `${safeName}-auto.json`;
       downloadAutoLink.href = autoUrl;
@@ -1351,7 +1352,8 @@ function setDownload(config, qrBase64, name, options = {}) {
   }
   if (copyConfigBtn) {
     copyConfigBtn.textContent = copyIsAuto ? t("copy_btn_auto_config") : t("copy_btn");
-    copyConfigBtn.classList.toggle("hidden", !copyText);
+    // In proxy mode, copying raw JSON is an advanced path; hide it by default.
+    copyConfigBtn.classList.toggle("hidden", !copyText || copyIsAuto);
   }
   if (configCopy) {
     configCopy.classList.toggle("hidden", !config);

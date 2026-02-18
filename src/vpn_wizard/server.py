@@ -19,7 +19,7 @@ import threading
 import re
 import uuid
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -438,8 +438,16 @@ class DownloadStore:
         self._lock = threading.Lock()
         self._limit = limit
 
-    def create(self, config: str, qr_png: bytes, name: Optional[str], suffix: str = "conf") -> str:
-        download_id = uuid.uuid4().hex
+    def create(
+        self,
+        config: str,
+        qr_png: bytes,
+        name: Optional[str],
+        suffix: str = "conf",
+        *,
+        download_id: Optional[str] = None,
+    ) -> str:
+        download_id = (download_id or uuid.uuid4().hex).strip() or uuid.uuid4().hex
         safe_name = _safe_name(name)
         safe_suffix = (suffix or "conf").strip().lstrip(".") or "conf"
         with self._lock:
@@ -624,6 +632,29 @@ def _download_filename(name: Optional[str], suffix: str) -> str:
     return f"{safe}.{suffix}"
 
 
+def _public_base_url_from_request(request: Optional[Request]) -> Optional[str]:
+    """
+    Build a public-facing base URL for QR codes.
+
+    We prefer an explicit env override because some reverse proxies may mangle request.url.
+    """
+    explicit = (os.getenv("VPNW_PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    if explicit:
+        return explicit
+    if not request:
+        return None
+    proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "https").split(",")[0].strip()
+    host = (
+        request.headers.get("x-forwarded-host")
+        or request.headers.get("host")
+        or request.url.netloc
+        or ""
+    ).split(",")[0].strip()
+    if not host:
+        return None
+    return f"{proto}://{host}".rstrip("/")
+
+
 def _resolve_ssh_payload(
     ssh_payload: Optional[SSHPayload],
     session_id: Optional[str],
@@ -664,7 +695,7 @@ def _ssh_connection(
         temp_key.cleanup()
 
 
-def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
+def _run_provision(job_id: str, payload: ProvisionRequest, public_base_url: Optional[str] = None) -> None:
     try:
         JOB_STORE.update(job_id, status="running")
 
@@ -804,15 +835,33 @@ def _run_provision(job_id: str, payload: ProvisionRequest) -> None:
                 config = prov.export_client_config()
                 checks = prov.post_check() if opts.check else []
 
-        # We store a QR for every downloadable item (store schema requirement), but only show
-        # a meaningful QR to the user when `config` is actually a QR-friendly payload (WG config / vless://).
-        qr_seed = config if config else "VPN Wizard"
-        qr_png = _build_qr_png(qr_seed) if (config or auto_config) else None
-        qr_b64 = base64.b64encode(qr_png).decode("ascii") if (qr_png and config) else None
-        download_id = DOWNLOAD_STORE.create(config, qr_png, opts.client_name, suffix=suffix) if (config and qr_png) else None
+        # QR:
+        # - WG / vless: QR encodes the config payload (small enough, import-friendly).
+        # - ShadowTLS+SS: QR encodes the auto-profile URL (much smaller than JSON; works well for mobile).
+        base_url = (public_base_url or os.getenv("VPNW_PUBLIC_BASE_URL") or "").strip().rstrip("/") or None
+
+        qr_png = None
+        qr_b64 = None
+        download_id = None
         auto_download_id = None
-        if opts.protocol in {"vless_reality", "shadowtls_ss"} and auto_config and qr_png:
-            auto_download_id = DOWNLOAD_STORE.create(auto_config, qr_png, f"{opts.client_name}-auto", suffix="json")
+
+        if opts.protocol == "shadowtls_ss" and auto_config:
+            auto_download_id = uuid.uuid4().hex
+            auto_url = f"{base_url}/api/download/{auto_download_id}/config" if base_url else None
+            qr_seed = auto_url or "VPN Wizard"
+            qr_png = _build_qr_png(qr_seed)
+            qr_b64 = base64.b64encode(qr_png).decode("ascii")
+            DOWNLOAD_STORE.create(auto_config, qr_png, f"{opts.client_name}-auto", suffix="json", download_id=auto_download_id)
+            # For proxy profiles we treat the auto profile as the primary artifact.
+            download_id = auto_download_id
+        else:
+            qr_seed = config if config else "VPN Wizard"
+            qr_png = _build_qr_png(qr_seed) if (config or auto_config) else None
+            qr_b64 = base64.b64encode(qr_png).decode("ascii") if qr_png else None
+            if config and qr_png:
+                download_id = DOWNLOAD_STORE.create(config, qr_png, opts.client_name, suffix=suffix)
+            if opts.protocol in {"vless_reality", "shadowtls_ss"} and auto_config and qr_png:
+                auto_download_id = DOWNLOAD_STORE.create(auto_config, qr_png, f"{opts.client_name}-auto", suffix="json")
         JOB_STORE.update(
             job_id,
             status="done",
@@ -883,9 +932,9 @@ async def session_revoke(payload: SessionRevokeRequest) -> RollbackResponse:
 
 
 @app.post("/api/provision", response_model=JobCreateResponse)
-async def provision(payload: ProvisionRequest, background_tasks: BackgroundTasks) -> JobCreateResponse:
+async def provision(payload: ProvisionRequest, background_tasks: BackgroundTasks, request: Request) -> JobCreateResponse:
     job = JOB_STORE.create()
-    background_tasks.add_task(_run_provision, job.job_id, payload)
+    background_tasks.add_task(_run_provision, job.job_id, payload, _public_base_url_from_request(request))
     return JobCreateResponse(job_id=job.job_id)
 
 
@@ -987,7 +1036,7 @@ async def client_list(payload: RollbackRequest) -> ClientListResponse:
 
 
 @app.post("/api/clients/add", response_model=ClientAddResponse)
-async def client_add(payload: ClientRequest) -> ClientAddResponse:
+async def client_add(payload: ClientRequest, request: Request) -> ClientAddResponse:
     try:
         with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
             if payload.protocol == "vless_reality":
@@ -1023,17 +1072,28 @@ async def client_add(payload: ClientRequest) -> ClientAddResponse:
                 client_ip = result["ip"]
                 iface = result.get("interface")
                 suffix = "conf"
-        qr_seed = config_value if config_value else "VPN Wizard"
-        qr_png = _build_qr_png(qr_seed) if (config_value or auto_config) else None
-        qr_b64 = base64.b64encode(qr_png).decode("ascii") if (qr_png and config_value) else None
-        download_id = (
-            DOWNLOAD_STORE.create(config_value, qr_png, client_name, suffix=suffix)
-            if (config_value and qr_png)
-            else None
-        )
+        base_url = _public_base_url_from_request(request)
+        qr_png = None
+        qr_b64 = None
+        download_id = None
         auto_download_id = None
-        if payload.protocol in {"vless_reality", "shadowtls_ss"} and auto_config and qr_png:
-            auto_download_id = DOWNLOAD_STORE.create(auto_config, qr_png, f"{client_name}-auto", suffix="json")
+
+        if payload.protocol == "shadowtls_ss" and auto_config:
+            auto_download_id = uuid.uuid4().hex
+            auto_url = f"{base_url}/api/download/{auto_download_id}/config" if base_url else None
+            qr_seed = auto_url or "VPN Wizard"
+            qr_png = _build_qr_png(qr_seed)
+            qr_b64 = base64.b64encode(qr_png).decode("ascii")
+            DOWNLOAD_STORE.create(auto_config, qr_png, f"{client_name}-auto", suffix="json", download_id=auto_download_id)
+            download_id = auto_download_id
+        else:
+            qr_seed = config_value if config_value else "VPN Wizard"
+            qr_png = _build_qr_png(qr_seed) if (config_value or auto_config) else None
+            qr_b64 = base64.b64encode(qr_png).decode("ascii") if qr_png else None
+            if config_value and qr_png:
+                download_id = DOWNLOAD_STORE.create(config_value, qr_png, client_name, suffix=suffix)
+            if payload.protocol in {"vless_reality", "shadowtls_ss"} and auto_config and qr_png:
+                auto_download_id = DOWNLOAD_STORE.create(auto_config, qr_png, f"{client_name}-auto", suffix="json")
         return ClientAddResponse(
             ok=True,
             client_name=client_name,
@@ -1098,7 +1158,7 @@ async def client_rotate(payload: ClientRemoveRequest) -> ClientAddResponse:
 
 
 @app.post("/api/clients/export", response_model=ClientExportResponse)
-async def client_export(payload: ClientRemoveRequest) -> ClientExportResponse:
+async def client_export(payload: ClientRemoveRequest, request: Request) -> ClientExportResponse:
     try:
         with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
             if payload.protocol == "vless_reality":
@@ -1131,17 +1191,28 @@ async def client_export(payload: ClientRemoveRequest) -> ClientExportResponse:
                 client_ip = result["ip"]
                 iface = result.get("interface")
                 suffix = "conf"
-        qr_seed = config_value if config_value else "VPN Wizard"
-        qr_png = _build_qr_png(qr_seed) if (config_value or auto_config) else None
-        qr_b64 = base64.b64encode(qr_png).decode("ascii") if (qr_png and config_value) else None
-        download_id = (
-            DOWNLOAD_STORE.create(config_value, qr_png, client_name, suffix=suffix)
-            if (config_value and qr_png)
-            else None
-        )
+        base_url = _public_base_url_from_request(request)
+        qr_png = None
+        qr_b64 = None
+        download_id = None
         auto_download_id = None
-        if payload.protocol in {"vless_reality", "shadowtls_ss"} and auto_config and qr_png:
-            auto_download_id = DOWNLOAD_STORE.create(auto_config, qr_png, f"{client_name}-auto", suffix="json")
+
+        if payload.protocol == "shadowtls_ss" and auto_config:
+            auto_download_id = uuid.uuid4().hex
+            auto_url = f"{base_url}/api/download/{auto_download_id}/config" if base_url else None
+            qr_seed = auto_url or "VPN Wizard"
+            qr_png = _build_qr_png(qr_seed)
+            qr_b64 = base64.b64encode(qr_png).decode("ascii")
+            DOWNLOAD_STORE.create(auto_config, qr_png, f"{client_name}-auto", suffix="json", download_id=auto_download_id)
+            download_id = auto_download_id
+        else:
+            qr_seed = config_value if config_value else "VPN Wizard"
+            qr_png = _build_qr_png(qr_seed) if (config_value or auto_config) else None
+            qr_b64 = base64.b64encode(qr_png).decode("ascii") if qr_png else None
+            if config_value and qr_png:
+                download_id = DOWNLOAD_STORE.create(config_value, qr_png, client_name, suffix=suffix)
+            if payload.protocol in {"vless_reality", "shadowtls_ss"} and auto_config and qr_png:
+                auto_download_id = DOWNLOAD_STORE.create(auto_config, qr_png, f"{client_name}-auto", suffix="json")
         return ClientExportResponse(
             ok=True,
             client_name=client_name,
