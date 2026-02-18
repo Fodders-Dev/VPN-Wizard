@@ -522,6 +522,9 @@ class ProxyProvisioner:
         *,
         primary_link: str,
         alternatives: Optional[list[dict]] = None,
+        # By default generate an outbound-only profile that Hiddify can merge into its own base config.
+        # Full-tunnel configs (TUN) are optional and tend to confuse users in "system proxy" mode.
+        include_tun: bool = False,
         strict_route: bool = True,
         # In RU networks Google endpoints may be unstable/blocked.
         # Quad9 is generally a good default for DoH.
@@ -608,16 +611,21 @@ class ProxyProvisioner:
         outbounds.append({"type": "direct", "tag": "direct"})
         outbounds.append({"type": "block", "tag": "block"})
 
-        config = {
+        config: dict = {
             "log": {"level": "warn"},
-            "dns": {
+            "outbounds": outbounds,
+            "route": {"final": "proxy"},
+        }
+
+        if include_tun:
+            config["dns"] = {
                 "servers": [
                     {"tag": "doh", "address": remote_doh, "detour": "proxy"},
                     {"tag": "local", "address": direct_dns, "detour": "direct"},
                 ],
                 "strategy": "ipv4_only",
-            },
-            "inbounds": [
+            }
+            config["inbounds"] = [
                 {
                     "type": "tun",
                     "tag": "tun-in",
@@ -627,24 +635,16 @@ class ProxyProvisioner:
                     "stack": "mixed",
                     "sniff": True,
                 }
-            ],
-            "route": {
+            ]
+            config["route"] = {
                 "auto_detect_interface": True,
                 "rules": [
-                    # Disable IPv6 inside the tunnel by default. Many RU ISPs have broken/filtered
-                    # IPv6 paths that cause long hangs and "works then degrades" behavior.
                     {"inbound": ["tun-in"], "ip_version": 6, "outbound": "block"},
-                    # QUIC (UDP/443) часто дает "вроде подключено, но страницы грузятся ужасно"
-                    # в TUN-режиме, особенно при DPI/потерях. Блокируем QUIC, чтобы приложения
-                    # падали обратно на HTTP/2 (TCP) и шли через прокси.
                     {"inbound": ["tun-in"], "protocol": ["quic"], "outbound": "block"},
-                    # Some stacks don't classify QUIC reliably; block UDP/443 explicitly.
                     {"inbound": ["tun-in"], "network": ["udp"], "port": [443], "outbound": "block"},
                 ],
                 "final": "proxy",
-            },
-            "outbounds": outbounds,
-        }
+            }
         return json.dumps(config, indent=2, ensure_ascii=False)
 
     def _client_state(self, cfg: dict) -> tuple[dict, list[dict], list[str], str, int]:

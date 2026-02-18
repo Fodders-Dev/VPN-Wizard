@@ -756,6 +756,9 @@ rm -rf "$tmp"
         handshake_sni: str,
         server_password: str,
         user_password: str,
+        # NOTE: Hiddify обычно управляет inbound'ами (mixed/tun) сам и подмешивает только outbounds из профиля.
+        # Чтобы не "включать VPN" неожиданно, по умолчанию генерируем outbound-only конфиг.
+        include_tun: bool = False,
         strict_route: bool = True,
         remote_doh: str = "https://dns.quad9.net/dns-query",
         direct_dns: str = "77.88.8.8",
@@ -826,16 +829,22 @@ rm -rf "$tmp"
         outbounds.append({"type": "direct", "tag": "direct", "domain_strategy": "ipv4_only"})
         outbounds.append({"type": "block", "tag": "block"})
 
-        config = {
+        config: dict = {
             "log": {"level": "warn"},
-            "dns": {
+            "outbounds": outbounds,
+            "route": {"final": "proxy"},
+        }
+
+        # Optional full-tunnel mode for raw sing-box clients (not recommended as default for RU users in Hiddify).
+        if include_tun:
+            config["dns"] = {
                 "servers": [
                     {"tag": "doh", "address": remote_doh, "detour": "proxy"},
                     {"tag": "local", "address": direct_dns, "detour": "direct"},
                 ],
                 "strategy": "ipv4_only",
-            },
-            "inbounds": [
+            }
+            config["inbounds"] = [
                 {
                     "type": "tun",
                     "tag": "tun-in",
@@ -845,8 +854,8 @@ rm -rf "$tmp"
                     "stack": "mixed",
                     "sniff": True,
                 }
-            ],
-            "route": {
+            ]
+            config["route"] = {
                 "auto_detect_interface": True,
                 "rules": [
                     {"ip_version": 6, "outbound": "block"},
@@ -855,7 +864,5 @@ rm -rf "$tmp"
                     {"inbound": ["tun-in"], "network": ["udp"], "port": [443], "outbound": "block"},
                 ],
                 "final": "proxy",
-            },
-            "outbounds": outbounds,
-        }
+            }
         return json.dumps(config, indent=2, ensure_ascii=False)
