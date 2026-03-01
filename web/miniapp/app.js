@@ -256,6 +256,8 @@ const I18N = {
     status_server_needs_setup: "Сервер не настроен",
     status_server_needs_setup_proxy: "Прокси не настроен",
     status_server_error: "Не удалось подключиться к серверу",
+    status_api_not_configured:
+      "API не настроен. Если миниапп открыт отдельно от сервера, укажите `?api=https://ваш-api` или задайте `window.API_BASE` в config.js.",
     status_auto_connect: "Восстанавливаем вход и подключаемся к серверу...",
     status_relogin_required: "Сессия истекла. Введите пароль или ключ снова.",
     status_session_saved: "Вход сохранён на этом устройстве.",
@@ -521,6 +523,8 @@ const I18N = {
     status_server_needs_setup: "Server is not configured",
     status_server_needs_setup_proxy: "Proxy is not configured",
     status_server_error: "Failed to connect to server",
+    status_api_not_configured:
+      "API is not configured. If the miniapp is hosted separately, open it with `?api=https://your-api` or set `window.API_BASE` in config.js.",
     status_auto_connect: "Restoring login and connecting to server...",
     status_relogin_required: "Session expired. Enter password or key again.",
     status_session_saved: "Login saved on this device.",
@@ -1613,29 +1617,26 @@ function updateTourStep() {
 
 function resolveApiBase() {
   const url = new URL(window.location.href);
-  const param = url.searchParams.get("api");
+  const param = normalizeApiBase(url.searchParams.get("api"));
   if (param) {
     localStorage.setItem("vpnw_api_base", param);
+    return param;
+  }
+  const isBundledMiniapp = window.location.pathname.startsWith("/miniapp");
+  if (isBundledMiniapp || window.location.host.endsWith("railway.app")) {
+    return window.location.origin;
   }
   const stored = normalizeApiBase(localStorage.getItem("vpnw_api_base"));
   if (stored) {
-    const isRailway = stored.includes("railway.app");
     const isHttp = stored.startsWith("https://") || stored.startsWith("http://");
-    if (window.location.host.endsWith("vercel.app") && !isRailway) {
-      // Avoid stale override pointing to the miniapp host.
-      localStorage.removeItem("vpnw_api_base");
-    } else if (isHttp) {
+    if (isHttp) {
       return stored;
     }
+    localStorage.removeItem("vpnw_api_base");
   }
-  if (window.API_BASE) {
-    return window.API_BASE;
-  }
-  if (window.location.host.endsWith("railway.app")) {
-    return window.location.origin;
-  }
-  if (window.location.host.endsWith("vercel.app")) {
-    return "https://vpn-wizard-production.up.railway.app";
+  const configured = normalizeApiBase(window.API_BASE);
+  if (configured) {
+    return configured;
   }
   return "";
 }
@@ -2101,10 +2102,26 @@ async function restoreActiveServer() {
 }
 
 async function fetchJson(url, options) {
-  const response = await fetch(`${API_BASE}${url}`, options);
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${url}`, options);
+  } catch (error) {
+    if (!API_BASE && !window.location.pathname.startsWith("/miniapp")) {
+      throw new Error(t("status_api_not_configured"));
+    }
+    throw error;
+  }
+  const contentType = (response.headers.get("content-type") || "").toLowerCase();
+  if (!contentType.includes("application/json")) {
+    const text = await response.text();
+    if (!API_BASE && !window.location.pathname.startsWith("/miniapp")) {
+      throw new Error(t("status_api_not_configured"));
+    }
+    throw new Error(text.trim() || `HTTP ${response.status}`);
+  }
   const payload = await response.json();
   if (!response.ok) {
-    throw new Error(payload.detail || "Request failed");
+    throw new Error(payload.detail || payload.error || "Request failed");
   }
   return payload;
 }
