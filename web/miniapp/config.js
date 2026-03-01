@@ -1,2 +1,3 @@
-// Set this only when the static miniapp is hosted separately from the API server.
-window.API_BASE = window.API_BASE || "";
+// Default Vercel-hosted miniapp traffic to the production Railway API.
+// Bundled /miniapp still uses same-origin because resolveApiBase prefers /miniapp first.
+window.API_BASE = window.API_BASE || "https://vpn-wizard-production.up.railway.app";
