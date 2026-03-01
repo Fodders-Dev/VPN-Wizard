@@ -419,7 +419,7 @@ async def fallback_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await message.reply_text(_t(update, "bot_use_miniapp"), reply_markup=keyboard or ReplyKeyboardRemove())
 
 
-def main() -> None:
+def main(*, in_thread: bool = False) -> None:
     token = os.getenv("VPNW_BOT_TOKEN")
     if not token:
         raise RuntimeError("VPNW_BOT_TOKEN is required.")
@@ -441,7 +441,14 @@ def main() -> None:
     app.add_handler(CommandHandler("miniapp", miniapp))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, fallback_text))
-    app.run_polling()
+    run_kwargs = {}
+    if in_thread:
+        # The combined service runs API in the main thread and the bot in a worker thread.
+        # PTB should not try to register signal handlers there, and we must not close
+        # the process-wide event loop on recoverable polling failures.
+        run_kwargs["stop_signals"] = None
+        run_kwargs["close_loop"] = False
+    app.run_polling(**run_kwargs)
 
 
 if __name__ == "__main__":
