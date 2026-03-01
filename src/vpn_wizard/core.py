@@ -695,7 +695,56 @@ class WireGuardProvisioner:
             f"chmod 600 /etc/amnezia/amneziawg/clients/{client}.conf",
             sudo=True,
         )
+        self._sync_awg0_client_configs(
+            mtu_line=mtu_line_client,
+            awg_params=awg_params,
+            allowed_ips=allowed_ips,
+            port=port,
+        )
         self.rebuild_awg0_from_clients()
+
+    def _sync_awg0_client_configs(
+        self,
+        *,
+        mtu_line: str,
+        awg_params: str,
+        allowed_ips: str,
+        port: int,
+    ) -> None:
+        """Refresh all awg0 client profiles after server reconfigure/port change."""
+        clients_dir = "/etc/amnezia/amneziawg/clients"
+        default_dns = self._resolve_dns(clients_dir)
+        public_ip = self.get_public_ip()
+        self.ssh.run(
+            "set -e\n"
+            "server_pub=$(cat /etc/amnezia/amneziawg/server_public.key)\n"
+            f"public_ip={public_ip}\n"
+            f"default_dns={shlex.quote(default_dns)}\n"
+            f"for conf in {clients_dir}/*.conf; do\n"
+            "  [ -f \"$conf\" ] || continue\n"
+            "  name=$(basename \"$conf\" .conf)\n"
+            "  ip=$(awk -F'= ' '/^Address/ {print $2; exit}' \"$conf\" | tr -d '\\r')\n"
+            "  dns=$(awk -F'= ' '/^DNS/ {print $2; exit}' \"$conf\" | tr -d '\\r')\n"
+            "  [ -n \"$dns\" ] || dns=$default_dns\n"
+            f"  client_priv=$(cat {clients_dir}/$name.key)\n"
+            "  cat > \"$conf\" <<EOF\n"
+            "[Interface]\n"
+            "PrivateKey = $client_priv\n"
+            "Address = $ip\n"
+            "DNS = $dns\n"
+            f"{mtu_line}"
+            f"{awg_params}"
+            "\n"
+            "[Peer]\n"
+            "PublicKey = $server_pub\n"
+            f"Endpoint = $public_ip:{port}\n"
+            f"AllowedIPs = {allowed_ips}\n"
+            "PersistentKeepalive = 15\n"
+            "EOF\n"
+            "  chmod 600 \"$conf\"\n"
+            "done",
+            sudo=True,
+        )
     
     def _ensure_tyumen_interface_exists(self) -> None:
         """Create awg1.conf if it does not exist (Tyumen interface)."""
