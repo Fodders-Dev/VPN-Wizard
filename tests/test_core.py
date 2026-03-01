@@ -77,6 +77,20 @@ def test_setup_wireguard_includes_mtu_and_iptables_wait() -> None:
     assert "iptables -w -I FORWARD" in combined
 
 
+def test_amneziawg_defaults_use_stable_parameters() -> None:
+    ssh = FakeSSH()
+    prov = WireGuardProvisioner(ssh)
+    assert prov.awg_jc == 2
+    assert prov.awg_jmin == 40
+    assert prov.awg_jmax == 70
+    assert prov.awg_s1 == 130
+    assert prov.awg_s2 == 37
+    assert prov.awg_h1 == 1028292012
+    assert prov.awg_h2 == 2027322962
+    assert prov.awg_h3 == 1500253145
+    assert prov.awg_h4 == 836814590
+
+
 def test_detect_mtu_returns_value_from_probe() -> None:
     ssh = MtuSSH(max_payload=1432)
     prov = WireGuardProvisioner(ssh, mtu=None, auto_mtu=True, mtu_fallback=1420)

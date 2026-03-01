@@ -169,27 +169,17 @@ class WireGuardProvisioner:
         self._public_ip_cache: Optional[str] = None
         self.allow_ipv6 = allow_ipv6
         
-        # AmneziaWG obfuscation parameters (optimized for speed)
-        # Lower overhead = higher throughput. Jmax=1000 was too aggressive.
-        import random
-        self.awg_jc = random.randint(1, 3)    # Minimal junk packets (was 3-10)
-        self.awg_jmin = 40                    # Minimum junk size
-        self.awg_jmax = 70                    # Reduced max junk size (was 1000!)
-        self.awg_s1 = random.randint(15, 150)
-        self.awg_s2 = random.randint(15, 150)
-        while self.awg_s1 + 56 == self.awg_s2:
-            self.awg_s2 = random.randint(15, 150)
-        self.awg_h1 = random.randint(100000000, 2147483647)
-        self.awg_h2 = random.randint(100000000, 2147483647)
-        self.awg_h3 = random.randint(100000000, 2147483647)
-        self.awg_h4 = random.randint(100000000, 2147483647)
-        h_vals = {self.awg_h1, self.awg_h2, self.awg_h3, self.awg_h4}
-        while len(h_vals) < 4:
-            self.awg_h1 = random.randint(100000000, 2147483647)
-            self.awg_h2 = random.randint(100000000, 2147483647)
-            self.awg_h3 = random.randint(100000000, 2147483647)
-            self.awg_h4 = random.randint(100000000, 2147483647)
-            h_vals = {self.awg_h1, self.awg_h2, self.awg_h3, self.awg_h4}
+        # Use a stable, field-tested AWG parameter set by default.
+        # Randomized values made reconnect/import behavior unpredictable across devices.
+        self.awg_jc = 2
+        self.awg_jmin = 40
+        self.awg_jmax = 70
+        self.awg_s1 = 130
+        self.awg_s2 = 37
+        self.awg_h1 = 1028292012
+        self.awg_h2 = 2027322962
+        self.awg_h3 = 1500253145
+        self.awg_h4 = 836814590
 
     # ... (omitted) ...
 
