@@ -1805,7 +1805,7 @@ function getFormData() {
     client_name: (data.client_name || "").trim(),
     listen_port: listenPort,
     proxy_sni: proxySni || null,
-    safe_mode: !isProxyMode({ connection_mode: connectionMode }) && Boolean(safeToggle?.checked) && !simpleToggle.checked,
+    safe_mode: false,
     connection_mode: connectionMode,
     remember_login: Boolean(rememberLoginToggle?.checked),
     session_id: STATE.activeSessionId || null,
@@ -2385,30 +2385,24 @@ async function rotateClient(data, clientName) {
 }
 
 function setSafeVisibility() {
-  if (!safeRow || !safeToggle) {
+  if (!safeRow) {
     return;
   }
-  const proxyMode = isProxyMode();
-  const shouldShow = !proxyMode && STATE.checked && !isUiConfigured();
-  safeRow.classList.toggle("hidden", !shouldShow);
-  if (shouldShow && !STATE.safeTouched) {
-    safeToggle.checked = true;
-  }
-  if (!shouldShow) {
+  safeRow.classList.add("hidden");
+  if (safeToggle) {
     safeToggle.checked = false;
-    STATE.safeTouched = false;
   }
+  STATE.safeTouched = false;
   updateInstallGuard();
   updateNextStepMessage();
 }
 
 function updateInstallGuard() {
-  if (!installGuard || !installConfirmToggle || !safeToggle) {
+  if (!installGuard) {
     return;
   }
-  const requiresConfirm = !isProxyMode() && STATE.checked && !isUiConfigured() && !safeToggle.checked;
-  installGuard.classList.toggle("hidden", !requiresConfirm);
-  if (!requiresConfirm) {
+  installGuard.classList.add("hidden");
+  if (installConfirmToggle) {
     installConfirmToggle.checked = false;
   }
 }
@@ -2417,9 +2411,6 @@ function updateNextStepMessage() {
   if (!nextStepEl) {
     return;
   }
-  const serverKey = getServerRuntimeKey();
-  const previewDone = Boolean(serverKey && STATE.previewDoneByServer[serverKey]);
-  const noviceMode = Boolean(simpleToggle?.checked);
   const proxyMode = isProxyMode();
   if (!STATE.checked) {
     nextStepEl.textContent = t("next_step_initial");
@@ -2433,19 +2424,7 @@ function updateNextStepMessage() {
     nextStepEl.textContent = t("next_step_after_check_empty");
     return;
   }
-  if (noviceMode && !previewDone) {
-    nextStepEl.textContent = t("next_step_novice_preview_first");
-    return;
-  }
-  if (safeToggle?.checked) {
-    nextStepEl.textContent = t("next_step_preview_ready");
-    return;
-  }
-  if (installConfirmToggle?.checked) {
-    nextStepEl.textContent = t("next_step_after_check_empty");
-    return;
-  }
-  nextStepEl.textContent = t("next_step_confirm_install");
+  nextStepEl.textContent = t("next_step_after_check_empty");
 }
 
 function setInstallSummary(data) {
@@ -2467,14 +2446,7 @@ function setInstallSummary(data) {
 }
 
 function requestInstallConfirmation(data) {
-  if (!installModal || !installContinueBtn || !installCancelBtn) {
-    return Promise.resolve(true);
-  }
-  setInstallSummary(data);
-  openModal(installModal);
-  return new Promise((resolve) => {
-    STATE.installConfirmResolver = resolve;
-  });
+  return Promise.resolve(true);
 }
 
 function resolveInstallConfirmation(confirmed) {
@@ -2493,9 +2465,6 @@ function setSimpleMode(enabled) {
   });
   if (enabled) {
     STATE.safeTouched = false;
-    if (safeToggle && !isProxyMode()) {
-      safeToggle.checked = true;
-    }
   }
   setSafeVisibility();
   updateNextStepMessage();
@@ -3221,79 +3190,13 @@ async function runProvision() {
     alert(t("alert_check_first"));
     return;
   }
-  const currentServerKey = getServerRuntimeKey(data);
-  const previewDone = Boolean(currentServerKey && STATE.previewDoneByServer[currentServerKey]);
-  const noviceMode = Boolean(simpleToggle?.checked);
   const proxyMode = isProxyMode(data);
-  if (!proxyMode && noviceMode && !data.safe_mode && !isUiConfigured() && !previewDone) {
-    if (safeToggle) {
-      safeToggle.checked = true;
-    }
-    STATE.safeTouched = true;
-    updateInstallGuard();
-    updateNextStepMessage();
-    setStatus(t("status_novice_preview_required"));
-    scrollToCard(safeRow || form.closest(".card"));
-    return;
-  }
-  if (!proxyMode && !data.safe_mode) {
-    if (installConfirmToggle && !installConfirmToggle.checked) {
-      setStatus(t("status_install_requires_confirm"));
-      scrollToCard(installGuard || form.closest(".card"));
-      return;
-    }
+  if (!proxyMode) {
     const confirmed = await requestInstallConfirmation(data);
     if (!confirmed) {
       setStatus(t("status_install_cancelled"));
       return;
     }
-  }
-  if (!proxyMode && data.safe_mode) {
-    if (provisionBtn) {
-      provisionBtn.disabled = true;
-    }
-    setProgressVisible(true);
-    revealProfilesTab();
-    STATE.wizardStep = 2;
-    updateWizardUi();
-    scrollToCard(progressCard);
-    setStatus(t("status_precheck"));
-    setProgressState("running");
-    setLogVisible(true);
-    setProgress([]);
-    if (resultCard) {
-      resultCard.classList.add("hidden");
-    }
-    try {
-      const result = await fetchServerPrecheck(data);
-      if (!result.ok) {
-        setStatus(`${t("status_failed")}: ${result.error || "unknown error"}`);
-        setProgressState("error");
-        return;
-      }
-      const checks = result.checks || [];
-      const lines = checks.map((item) => {
-        const status = item.ok ? t("check_ok") : t("check_fail");
-        const details = item.details ? ` (${item.details})` : "";
-        return `precheck ${item.name}: ${status}${details}`;
-      });
-      setProgress(lines);
-      const previewKey = getServerRuntimeKey(data);
-      if (previewKey) {
-        STATE.previewDoneByServer[previewKey] = true;
-      }
-      setStatus(t("status_precheck_done"));
-      setProgressState("done");
-      updateNextStepMessage();
-    } catch (err) {
-      setStatus(`${t("status_failed")}: ${humanizeError(err, data)}`);
-      setProgressState("error");
-    } finally {
-      if (provisionBtn) {
-        provisionBtn.disabled = false;
-      }
-    }
-    return;
   }
   STATE.checked = true;
   updateStageVisibility();

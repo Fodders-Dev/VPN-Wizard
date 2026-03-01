@@ -156,15 +156,6 @@
             Пусто = авто-подбор оптимального SNI. Заполняйте только если знаете нужный домен.
           </small>
         </label>
-        <div class="advanced safe-row hidden">
-          <label class="toggle">
-            <input type="checkbox" id="safe-toggle" />
-            <span data-i18n="safe_mode_label">Предпросмотр изменений перед установкой</span>
-          </label>
-          <small class="field-hint" data-i18n="safe_mode_hint">
-            Нужен только при установке, если на сервере есть другие сервисы.
-          </small>
-        </div>
         <div class="server-tools">
           <button type="submit" id="check-server-btn" data-i18n="check_server_btn">Подключиться</button>
           <div id="server-status" class="server-status" data-i18n="server_status_idle">Сервер не подключен</div>
@@ -199,17 +190,6 @@
             <span data-i18n="simple_mode_label">Простой режим</span>
           </label>
           <span class="toggle-hint" data-i18n="simple_mode_hint">Скрыть расширенные поля</span>
-        </div>
-        <div class="install-guard hidden" id="install-guard">
-          <label class="toggle">
-            <input type="checkbox" id="install-confirm-toggle" />
-            <span data-i18n="install_confirm_label">
-              Я понимаю, что установка изменит сетевые настройки сервера.
-            </span>
-          </label>
-          <small class="field-hint" data-i18n="install_confirm_hint">
-            Рекомендуем сначала сделать предпросмотр изменений.
-          </small>
         </div>
         <button type="button" id="provision-btn" class="hidden" data-i18n="provision_btn">Настроить сервер и получить первый профиль</button>
       </form>
