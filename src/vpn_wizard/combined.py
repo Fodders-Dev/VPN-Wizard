@@ -4,6 +4,7 @@ import os
 import threading
 import time
 
+from telegram.error import Conflict
 import uvicorn
 
 from vpn_wizard.tg_bot import main as bot_main
@@ -22,6 +23,12 @@ def main() -> None:
         while True:
             try:
                 bot_main()
+            except Conflict as exc:
+                print(
+                    "Bot polling conflict: another process is already using getUpdates "
+                    f"for this token. Waiting before retrying. ({exc})"
+                )
+                time.sleep(30)
             except Exception as exc:
                 print(f"Bot crashed: {exc}")
                 time.sleep(5)
