@@ -91,6 +91,22 @@ def test_resolve_mtu_uses_fallback_when_probe_unavailable() -> None:
     assert prov.resolve_mtu() == 1420
 
 
+def test_get_public_ip_keeps_public_ssh_ip() -> None:
+    ssh = FakeSSH()
+    ssh.config.host = "8.8.8.8"
+    prov = WireGuardProvisioner(ssh)
+    assert prov.get_public_ip() == "8.8.8.8"
+    assert not _has_command(ssh.commands, "api.ipify.org")
+
+
+def test_get_public_ip_replaces_private_ssh_ip_with_detected_public_ip() -> None:
+    ssh = FakeSSH({"api.ipify.org": "1.2.3.4"})
+    ssh.config.host = "10.0.0.5"
+    prov = WireGuardProvisioner(ssh)
+    assert prov.get_public_ip() == "1.2.3.4"
+    assert _has_command(ssh.commands, "api.ipify.org")
+
+
 def test_precheck_passes_on_supported_os() -> None:
     ssh = FakeSSH(
         {

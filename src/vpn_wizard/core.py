@@ -1284,17 +1284,25 @@ class WireGuardProvisioner:
         """Get public IP, cached."""
         if self._public_ip_cache:
             return self._public_ip_cache
-        
-        # Check if host in config is an IP address
-        if self.ssh.config.host.replace(".", "").isdigit():
-            self._public_ip_cache = self.ssh.config.host
+
+        host = (self.ssh.config.host or "").strip()
+
+        # Reuse a literal IP only when it is actually public.
+        # Private/provider-internal addresses make client profiles unusable off-box.
+        try:
+            parsed_ip = ipaddress.ip_address(host)
+        except ValueError:
+            parsed_ip = None
+        if parsed_ip is not None and parsed_ip.is_global:
+            self._public_ip_cache = host
             return self._public_ip_cache
-            
-        # Fetch from remote
-        self._public_ip_cache = self.ssh.run(
+
+        # Otherwise detect the server's real public IP from the server itself.
+        detected = self.ssh.run(
             "curl -s https://api.ipify.org || wget -qO- https://api.ipify.org", 
             check=False
         ).strip()
+        self._public_ip_cache = detected or host
         return self._public_ip_cache
 
     def rebuild_awg0_from_clients(self) -> None:
