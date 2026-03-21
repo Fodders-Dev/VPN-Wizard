@@ -234,6 +234,37 @@ def _is_retryable_ssh_error(exc: Exception) -> bool:
     )
 
 
+def _run_ssh_action_with_retries(
+    *,
+    action_name: str,
+    request_id: str,
+    target: str,
+    operation: Callable[[int], object],
+) -> object:
+    last_exc: Optional[Exception] = None
+    for attempt in range(1, 4):
+        try:
+            result = operation(attempt)
+            last_exc = None
+            return result
+        except Exception as exc:
+            last_exc = exc
+            if attempt >= 3 or not _is_retryable_ssh_error(exc):
+                raise
+            logger.info(
+                "%s.retry req=%s attempt=%s target=%s error=%s",
+                action_name,
+                request_id,
+                attempt,
+                target,
+                _error_message(exc),
+            )
+            time.sleep(1.2 * attempt)
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError(f"{action_name} did not produce a result")
+
+
 class AuthRequest(BaseModel):
     ssh: Optional[SSHPayload] = None
     session_id: Optional[str] = None
@@ -1465,61 +1496,128 @@ async def rollback(payload: RollbackRequest, request: Request) -> RollbackRespon
 
 @app.post("/api/clients/list", response_model=ClientListResponse)
 async def client_list(payload: RollbackRequest, request: Request) -> ClientListResponse:
+    request_id = uuid.uuid4().hex[:8]
+    target = _ssh_target_label(payload.ssh) if payload.ssh else (payload.session_id or payload.saved_server_id or "unknown")
+    logger.info("ssh.clients.list.start req=%s target=%s protocol=%s", request_id, target, payload.protocol or "auto")
     try:
         payload = _materialize_saved_server(payload, request)
-        with _ssh_connection(payload.ssh, payload.session_id, request=request) as (ssh, _resolved):
-            if payload.protocol == "vless_reality":
-                proxy = ProxyProvisioner(ssh)
-                clients = proxy.list_clients()
-            elif payload.protocol == "shadowtls_ss":
-                proxy = ShadowTLSSSProvisioner(ssh)
-                clients = proxy.list_clients()
-            else:
-                prov = WireGuardProvisioner(ssh)
-                clients = prov.list_clients()
+        def _operation(attempt: int) -> list[dict]:
+            with _ssh_connection(
+                payload.ssh,
+                payload.session_id,
+                request=request,
+                logger=lambda message: logger.info(
+                    "ssh.clients.list.trace req=%s attempt=%s %s",
+                    request_id,
+                    attempt,
+                    message,
+                ),
+            ) as (ssh, _resolved):
+                if payload.protocol == "vless_reality":
+                    return ProxyProvisioner(ssh).list_clients()
+                if payload.protocol == "shadowtls_ss":
+                    return ShadowTLSSSProvisioner(ssh).list_clients()
+                return WireGuardProvisioner(ssh).list_clients()
+
+        clients = _run_ssh_action_with_retries(
+            action_name="ssh.clients.list",
+            request_id=request_id,
+            target=target,
+            operation=_operation,
+        )
+        logger.info("ssh.clients.list.ok req=%s target=%s count=%s", request_id, target, len(clients))
         return ClientListResponse(ok=True, clients=clients)
     except Exception as exc:
+        logger.warning(
+            "ssh.clients.list.fail req=%s target=%s error=%s",
+            request_id,
+            target,
+            _error_message(exc),
+            exc_info=True,
+        )
         return ClientListResponse(ok=False, error=_error_message(exc))
 
 
 @app.post("/api/clients/add", response_model=ClientAddResponse)
 async def client_add(payload: ClientRequest, request: Request) -> ClientAddResponse:
+    request_id = uuid.uuid4().hex[:8]
+    target = _ssh_target_label(payload.ssh) if payload.ssh else (payload.session_id or payload.saved_server_id or "unknown")
+    logger.info(
+        "ssh.clients.add.start req=%s target=%s protocol=%s client=%s",
+        request_id,
+        target,
+        payload.protocol or "auto",
+        payload.client_name or "client1",
+    )
     try:
         payload = _materialize_saved_server(payload, request)
-        with _ssh_connection(payload.ssh, payload.session_id, request=request) as (ssh, _resolved):
-            if payload.protocol == "vless_reality":
-                proxy = ProxyProvisioner(ssh)
-                result = proxy.add_client(payload.client_name or "client1")
-                client_name = result["name"]
-                config_value = result["link"]
-                alternatives = result.get("alternatives")
-                auto_config = proxy.build_singbox_auto_config(primary_link=config_value, alternatives=alternatives)
-                client_ip = None
-                iface = result.get("interface")
-                suffix = "txt"
-            elif payload.protocol == "shadowtls_ss":
-                proxy = ShadowTLSSSProvisioner(ssh)
-                result = proxy.add_client(payload.client_name or "client1")
-                client_name = result["name"]
-                config_value = None
-                alternatives = None
-                auto_config = result.get("auto_config")
-                client_ip = None
-                iface = result.get("interface")
-                suffix = "txt"
-            else:
+        def _operation(attempt: int) -> dict:
+            with _ssh_connection(
+                payload.ssh,
+                payload.session_id,
+                request=request,
+                logger=lambda message: logger.info(
+                    "ssh.clients.add.trace req=%s attempt=%s %s",
+                    request_id,
+                    attempt,
+                    message,
+                ),
+            ) as (ssh, _resolved):
+                if payload.protocol == "vless_reality":
+                    proxy = ProxyProvisioner(ssh)
+                    result = proxy.add_client(payload.client_name or "client1")
+                    return {
+                        "client_name": result["name"],
+                        "config_value": result["link"],
+                        "alternatives": result.get("alternatives"),
+                        "auto_config": proxy.build_singbox_auto_config(
+                            primary_link=result["link"],
+                            alternatives=result.get("alternatives"),
+                        ),
+                        "client_ip": None,
+                        "iface": result.get("interface"),
+                        "suffix": "txt",
+                    }
+                if payload.protocol == "shadowtls_ss":
+                    proxy = ShadowTLSSSProvisioner(ssh)
+                    result = proxy.add_client(payload.client_name or "client1")
+                    return {
+                        "client_name": result["name"],
+                        "config_value": None,
+                        "alternatives": None,
+                        "auto_config": result.get("auto_config"),
+                        "client_ip": None,
+                        "iface": result.get("interface"),
+                        "suffix": "txt",
+                    }
                 prov_kwargs = {}
                 if payload.listen_port:
                     prov_kwargs["listen_port"] = payload.listen_port
                 prov = WireGuardProvisioner(ssh, **prov_kwargs)
                 result = prov.add_client(client_name=payload.client_name, client_ip=payload.client_ip)
-                client_name = result["name"]
-                config_value = result["config"]
-                alternatives = None
-                auto_config = None
-                client_ip = result["ip"]
-                iface = result.get("interface")
-                suffix = "conf"
+                return {
+                    "client_name": result["name"],
+                    "config_value": result["config"],
+                    "alternatives": None,
+                    "auto_config": None,
+                    "client_ip": result["ip"],
+                    "iface": result.get("interface"),
+                    "suffix": "conf",
+                }
+
+        result = _run_ssh_action_with_retries(
+            action_name="ssh.clients.add",
+            request_id=request_id,
+            target=target,
+            operation=_operation,
+        )
+        client_name = result["client_name"]
+        config_value = result["config_value"]
+        alternatives = result["alternatives"]
+        auto_config = result["auto_config"]
+        client_ip = result["client_ip"]
+        iface = result["iface"]
+        suffix = result["suffix"]
         base_url = _public_base_url_from_request(request)
         qr_png = None
         qr_b64 = None
@@ -1542,6 +1640,7 @@ async def client_add(payload: ClientRequest, request: Request) -> ClientAddRespo
                 download_id = DOWNLOAD_STORE.create(config_value, qr_png, client_name, suffix=suffix)
             if payload.protocol in {"vless_reality", "shadowtls_ss"} and auto_config and qr_png:
                 auto_download_id = DOWNLOAD_STORE.create(auto_config, qr_png, f"{client_name}-auto", suffix="json")
+        logger.info("ssh.clients.add.ok req=%s target=%s client=%s", request_id, target, client_name)
         return ClientAddResponse(
             ok=True,
             client_name=client_name,
@@ -1555,45 +1654,111 @@ async def client_add(payload: ClientRequest, request: Request) -> ClientAddRespo
             interface=iface,
         )
     except Exception as exc:
+        logger.warning(
+            "ssh.clients.add.fail req=%s target=%s error=%s",
+            request_id,
+            target,
+            _error_message(exc),
+            exc_info=True,
+        )
         return ClientAddResponse(ok=False, error=_error_message(exc))
 
 
 @app.post("/api/clients/remove", response_model=RollbackResponse)
 async def client_remove(payload: ClientRemoveRequest, request: Request) -> RollbackResponse:
+    request_id = uuid.uuid4().hex[:8]
+    target = _ssh_target_label(payload.ssh) if payload.ssh else (payload.session_id or payload.saved_server_id or "unknown")
+    logger.info(
+        "ssh.clients.remove.start req=%s target=%s protocol=%s client=%s",
+        request_id,
+        target,
+        payload.protocol or "auto",
+        payload.client_name,
+    )
     try:
         payload = _materialize_saved_server(payload, request)
-        with _ssh_connection(payload.ssh, payload.session_id, request=request) as (ssh, _resolved):
-            if payload.protocol == "vless_reality":
-                proxy = ProxyProvisioner(ssh)
-                ok = proxy.remove_client(payload.client_name)
-            elif payload.protocol == "shadowtls_ss":
-                proxy = ShadowTLSSSProvisioner(ssh)
-                ok = proxy.remove_client(payload.client_name)
-            else:
-                prov = WireGuardProvisioner(ssh)
-                ok = prov.remove_client(payload.client_name)
+        def _operation(attempt: int) -> bool:
+            with _ssh_connection(
+                payload.ssh,
+                payload.session_id,
+                request=request,
+                logger=lambda message: logger.info(
+                    "ssh.clients.remove.trace req=%s attempt=%s %s",
+                    request_id,
+                    attempt,
+                    message,
+                ),
+            ) as (ssh, _resolved):
+                if payload.protocol == "vless_reality":
+                    return ProxyProvisioner(ssh).remove_client(payload.client_name)
+                if payload.protocol == "shadowtls_ss":
+                    return ShadowTLSSSProvisioner(ssh).remove_client(payload.client_name)
+                return WireGuardProvisioner(ssh).remove_client(payload.client_name)
+
+        ok = _run_ssh_action_with_retries(
+            action_name="ssh.clients.remove",
+            request_id=request_id,
+            target=target,
+            operation=_operation,
+        )
         if not ok:
             return RollbackResponse(ok=False, error="Client not found.")
+        logger.info("ssh.clients.remove.ok req=%s target=%s client=%s", request_id, target, payload.client_name)
         return RollbackResponse(ok=True, backup=None)
     except Exception as exc:
+        logger.warning(
+            "ssh.clients.remove.fail req=%s target=%s error=%s",
+            request_id,
+            target,
+            _error_message(exc),
+            exc_info=True,
+        )
         return RollbackResponse(ok=False, error=_error_message(exc))
 
 
 @app.post("/api/clients/rotate", response_model=ClientAddResponse)
 async def client_rotate(payload: ClientRemoveRequest, request: Request) -> ClientAddResponse:
+    request_id = uuid.uuid4().hex[:8]
+    target = _ssh_target_label(payload.ssh) if payload.ssh else (payload.session_id or payload.saved_server_id or "unknown")
+    logger.info(
+        "ssh.clients.rotate.start req=%s target=%s protocol=%s client=%s",
+        request_id,
+        target,
+        payload.protocol or "auto",
+        payload.client_name,
+    )
     try:
         if payload.protocol in {"vless_reality", "shadowtls_ss"}:
             return ClientAddResponse(ok=False, error="Rotate is not supported for proxy profiles.")
         payload = _materialize_saved_server(payload, request)
-        with _ssh_connection(payload.ssh, payload.session_id, request=request) as (ssh, _resolved):
-            prov_kwargs = {}
-            if payload.listen_port:
-                prov_kwargs["listen_port"] = payload.listen_port
-            prov = WireGuardProvisioner(ssh, **prov_kwargs)
-            result = prov.rotate_client(payload.client_name)
+        def _operation(attempt: int) -> dict:
+            with _ssh_connection(
+                payload.ssh,
+                payload.session_id,
+                request=request,
+                logger=lambda message: logger.info(
+                    "ssh.clients.rotate.trace req=%s attempt=%s %s",
+                    request_id,
+                    attempt,
+                    message,
+                ),
+            ) as (ssh, _resolved):
+                prov_kwargs = {}
+                if payload.listen_port:
+                    prov_kwargs["listen_port"] = payload.listen_port
+                prov = WireGuardProvisioner(ssh, **prov_kwargs)
+                return prov.rotate_client(payload.client_name)
+
+        result = _run_ssh_action_with_retries(
+            action_name="ssh.clients.rotate",
+            request_id=request_id,
+            target=target,
+            operation=_operation,
+        )
         qr_png = _build_qr_png(result["config"])
         qr_b64 = base64.b64encode(qr_png).decode("ascii")
         download_id = DOWNLOAD_STORE.create(result["config"], qr_png, result.get("name"))
+        logger.info("ssh.clients.rotate.ok req=%s target=%s client=%s", request_id, target, result.get("name"))
         return ClientAddResponse(
             ok=True,
             client_name=result["name"],
@@ -1604,44 +1769,93 @@ async def client_rotate(payload: ClientRemoveRequest, request: Request) -> Clien
             interface=result.get("interface"),
         )
     except Exception as exc:
+        logger.warning(
+            "ssh.clients.rotate.fail req=%s target=%s error=%s",
+            request_id,
+            target,
+            _error_message(exc),
+            exc_info=True,
+        )
         return ClientAddResponse(ok=False, error=_error_message(exc))
 
 
 @app.post("/api/clients/export", response_model=ClientExportResponse)
 async def client_export(payload: ClientRemoveRequest, request: Request) -> ClientExportResponse:
+    request_id = uuid.uuid4().hex[:8]
+    target = _ssh_target_label(payload.ssh) if payload.ssh else (payload.session_id or payload.saved_server_id or "unknown")
+    logger.info(
+        "ssh.clients.export.start req=%s target=%s protocol=%s client=%s",
+        request_id,
+        target,
+        payload.protocol or "auto",
+        payload.client_name,
+    )
     try:
         payload = _materialize_saved_server(payload, request)
-        with _ssh_connection(payload.ssh, payload.session_id, request=request) as (ssh, _resolved):
-            if payload.protocol == "vless_reality":
-                proxy = ProxyProvisioner(ssh)
-                result = proxy.export_client(payload.client_name)
-                client_name = result["name"]
-                config_value = result["link"]
-                alternatives = result.get("alternatives")
-                auto_config = proxy.build_singbox_auto_config(primary_link=config_value, alternatives=alternatives)
-                client_ip = None
-                iface = result.get("interface")
-                suffix = "txt"
-            elif payload.protocol == "shadowtls_ss":
-                proxy = ShadowTLSSSProvisioner(ssh)
-                result = proxy.export_client(payload.client_name)
-                client_name = result["name"]
-                config_value = None
-                alternatives = None
-                auto_config = result.get("auto_config")
-                client_ip = None
-                iface = result.get("interface")
-                suffix = "txt"
-            else:
+        def _operation(attempt: int) -> dict:
+            with _ssh_connection(
+                payload.ssh,
+                payload.session_id,
+                request=request,
+                logger=lambda message: logger.info(
+                    "ssh.clients.export.trace req=%s attempt=%s %s",
+                    request_id,
+                    attempt,
+                    message,
+                ),
+            ) as (ssh, _resolved):
+                if payload.protocol == "vless_reality":
+                    proxy = ProxyProvisioner(ssh)
+                    result = proxy.export_client(payload.client_name)
+                    return {
+                        "client_name": result["name"],
+                        "config_value": result["link"],
+                        "alternatives": result.get("alternatives"),
+                        "auto_config": proxy.build_singbox_auto_config(
+                            primary_link=result["link"],
+                            alternatives=result.get("alternatives"),
+                        ),
+                        "client_ip": None,
+                        "iface": result.get("interface"),
+                        "suffix": "txt",
+                    }
+                if payload.protocol == "shadowtls_ss":
+                    proxy = ShadowTLSSSProvisioner(ssh)
+                    result = proxy.export_client(payload.client_name)
+                    return {
+                        "client_name": result["name"],
+                        "config_value": None,
+                        "alternatives": None,
+                        "auto_config": result.get("auto_config"),
+                        "client_ip": None,
+                        "iface": result.get("interface"),
+                        "suffix": "txt",
+                    }
                 prov = WireGuardProvisioner(ssh)
                 result = prov.export_client(payload.client_name)
-                client_name = result["name"]
-                config_value = result["config"]
-                alternatives = None
-                auto_config = None
-                client_ip = result["ip"]
-                iface = result.get("interface")
-                suffix = "conf"
+                return {
+                    "client_name": result["name"],
+                    "config_value": result["config"],
+                    "alternatives": None,
+                    "auto_config": None,
+                    "client_ip": result["ip"],
+                    "iface": result.get("interface"),
+                    "suffix": "conf",
+                }
+
+        result = _run_ssh_action_with_retries(
+            action_name="ssh.clients.export",
+            request_id=request_id,
+            target=target,
+            operation=_operation,
+        )
+        client_name = result["client_name"]
+        config_value = result["config_value"]
+        alternatives = result["alternatives"]
+        auto_config = result["auto_config"]
+        client_ip = result["client_ip"]
+        iface = result["iface"]
+        suffix = result["suffix"]
         base_url = _public_base_url_from_request(request)
         qr_png = None
         qr_b64 = None
@@ -1664,6 +1878,7 @@ async def client_export(payload: ClientRemoveRequest, request: Request) -> Clien
                 download_id = DOWNLOAD_STORE.create(config_value, qr_png, client_name, suffix=suffix)
             if payload.protocol in {"vless_reality", "shadowtls_ss"} and auto_config and qr_png:
                 auto_download_id = DOWNLOAD_STORE.create(auto_config, qr_png, f"{client_name}-auto", suffix="json")
+        logger.info("ssh.clients.export.ok req=%s target=%s client=%s", request_id, target, client_name)
         return ClientExportResponse(
             ok=True,
             client_name=client_name,
@@ -1677,6 +1892,13 @@ async def client_export(payload: ClientRemoveRequest, request: Request) -> Clien
             interface=iface,
         )
     except Exception as exc:
+        logger.warning(
+            "ssh.clients.export.fail req=%s target=%s error=%s",
+            request_id,
+            target,
+            _error_message(exc),
+            exc_info=True,
+        )
         return ClientExportResponse(ok=False, error=_error_message(exc))
 
 

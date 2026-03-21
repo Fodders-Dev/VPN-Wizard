@@ -141,3 +141,52 @@ def test_saved_server_access_requires_pin_unlock(monkeypatch, tmp_path) -> None:
     assert ready_status.json()["ok"] is True
     assert ready_status.json()["configured"] is True
     assert observed == {"host": "1.2.3.4", "user": "root", "password": "secret"}
+
+
+def test_clients_export_retries_after_transient_ssh_failure(monkeypatch) -> None:
+    client = TestClient(server.app)
+    attempts = {"count": 0}
+
+    @contextmanager
+    def flaky_ssh_connection(ssh_payload, session_id=None, saved_server_id=None, request=None, logger=None):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise EOFError()
+        if logger is not None:
+            logger("connected")
+        yield object(), ssh_payload
+
+    class FakeWGProvisioner:
+        def __init__(self, ssh, **kwargs):
+            self.ssh = ssh
+
+        def export_client(self, client_name: str) -> dict[str, str]:
+            assert client_name == "Alina-Iphone"
+            return {
+                "name": client_name,
+                "config": "[Interface]\nPrivateKey = test\n",
+                "ip": "10.11.0.23/32",
+                "interface": "awg1",
+            }
+
+    monkeypatch.setattr(server, "_ssh_connection", flaky_ssh_connection)
+    monkeypatch.setattr(server, "WireGuardProvisioner", FakeWGProvisioner)
+
+    response = client.post(
+        "/api/clients/export",
+        json={
+            "ssh": {"host": "1.2.3.4", "user": "root", "password": "secret", "port": 22},
+            "protocol": "amneziawg",
+            "client_name": "Alina-Iphone",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["client_name"] == "Alina-Iphone"
+    assert payload["client_ip"] == "10.11.0.23/32"
+    assert payload["config"].startswith("[Interface]")
+    assert payload["download_id"]
+    assert payload["qr_png_base64"]
+    assert attempts["count"] == 2
