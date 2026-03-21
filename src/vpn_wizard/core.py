@@ -1007,33 +1007,26 @@ class WireGuardProvisioner:
         clients = []
         for clients_dir, iface in dirs:
             raw = self.ssh.run(
-                f"ls {clients_dir}/*.conf 2>/dev/null || true", sudo=True, check=False
+                "set -e\n"
+                f"for conf in {clients_dir}/*.conf; do\n"
+                "  [ -f \"$conf\" ] || continue\n"
+                "  name=$(basename \"$conf\" .conf)\n"
+                "  ip=$(awk -F'= ' '/^Address/ {print $2; exit}' \"$conf\" | tr -d '\\r')\n"
+                f"  pub=$(cat {clients_dir}/$name.pub 2>/dev/null | tr -d '\\r')\n"
+                "  stamp=$(stat -c '%W|%Y' \"$conf\" 2>/dev/null || echo '0|0')\n"
+                "  printf '%s\\t%s\\t%s\\t%s\\n' \"$name\" \"$ip\" \"$pub\" \"$stamp\"\n"
+                "done",
+                sudo=True,
+                check=False,
+                pty=False,
             )
-            names = []
             for line in raw.splitlines():
                 if not line.strip():
                     continue
-                name = line.strip().split("/")[-1].removesuffix(".conf")
-                names.append(name)
-
-            for name in names:
-                conf = self.ssh.run(
-                    f"cat {clients_dir}/{name}.conf", sudo=True, check=False, pty=False
-                )
-                stamp_raw = self.ssh.run(
-                    f"stat -c '%W|%Y' {clients_dir}/{name}.conf 2>/dev/null || true",
-                    sudo=True,
-                    check=False,
-                    pty=False,
-                ).strip()
-                pub = self.ssh.run(
-                    f"cat {clients_dir}/{name}.pub", sudo=True, check=False, pty=False
-                ).strip()
-                ip = ""
-                for line in conf.splitlines():
-                    if line.startswith("Address"):
-                        ip = line.split("=", 1)[1].strip()
-                        break
+                parts = line.split("\t")
+                if len(parts) < 4:
+                    continue
+                name, ip, pub, stamp_raw = parts[0], parts[1], parts[2], parts[3]
                 created_at = None
                 updated_at = None
                 if stamp_raw:

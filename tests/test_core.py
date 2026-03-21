@@ -140,10 +140,7 @@ def test_precheck_passes_on_supported_os() -> None:
 def test_list_clients_includes_file_timestamps() -> None:
     ssh = FakeSSH(
         {
-            "ls /etc/wireguard/clients/*.conf": "/etc/wireguard/clients/alice.conf\n",
-            "cat /etc/wireguard/clients/alice.conf": "[Interface]\nAddress = 10.10.0.2/32\n",
-            "stat -c '%W|%Y' /etc/wireguard/clients/alice.conf": "1710000000|1710001234",
-            "cat /etc/wireguard/clients/alice.pub": "PUBKEY",
+            "for conf in /etc/wireguard/clients/*.conf": "alice\t10.10.0.2/32\tPUBKEY\t1710000000|1710001234\n",
             "wg show wg0": "",
         }
     )
