@@ -126,6 +126,11 @@ def test_error_message_maps_empty_auth_exception() -> None:
     assert "SSH authentication failed." in _error_message(exc)
 
 
+def test_error_message_maps_eoferror_to_server_closed_text() -> None:
+    exc = EOFError()
+    assert "closed by the server before authentication completed" in _error_message(exc)
+
+
 def test_error_message_preserves_non_empty_text() -> None:
     exc = RuntimeError("custom failure")
     assert _error_message(exc) == "custom failure"

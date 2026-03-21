@@ -183,6 +183,12 @@ def _error_message(exc: Exception) -> str:
     message = str(exc).strip()
     if message:
         return message
+    if isinstance(exc, EOFError):
+        return (
+            "SSH login was closed by the server before authentication completed. "
+            "This usually means root/password login is being rejected for the app backend IP, "
+            "or the server is rate-limiting or filtering this connection."
+        )
     if isinstance(exc, paramiko.AuthenticationException):
         return (
             "SSH authentication failed. Check the password or key and make sure the server allows "
