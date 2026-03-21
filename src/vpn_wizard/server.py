@@ -216,6 +216,24 @@ def _ssh_target_label(payload: Optional[SSHPayload]) -> str:
     return f"{payload.user}@{payload.host}:{payload.port}"
 
 
+def _is_retryable_ssh_error(exc: Exception) -> bool:
+    if isinstance(exc, paramiko.AuthenticationException):
+        return False
+    if isinstance(exc, (EOFError, TimeoutError, paramiko.SSHException, paramiko.ssh_exception.NoValidConnectionsError)):
+        return True
+    message = str(exc).lower()
+    return any(
+        marker in message
+        for marker in (
+            "ssh login was closed by the server before authentication completed",
+            "connection closed by remote host",
+            "connection reset by peer",
+            "the ssh connection timed out",
+            "could not open an ssh connection",
+        )
+    )
+
+
 class AuthRequest(BaseModel):
     ssh: Optional[SSHPayload] = None
     session_id: Optional[str] = None
@@ -1310,12 +1328,25 @@ async def ssh_discover_port(payload: SSHDiscoverRequest) -> SSHDiscoverResponse:
 async def session_login(payload: SessionLoginRequest) -> SessionLoginResponse:
     request_id = uuid.uuid4().hex[:8]
     logger.info("ssh.login.start req=%s target=%s", request_id, _ssh_target_label(payload.ssh))
+    last_exc: Optional[Exception] = None
     try:
-        with _ssh_connection(
-            payload.ssh,
-            logger=lambda message: logger.info("ssh.login.trace req=%s %s", request_id, message),
-        ):
-            pass
+        for attempt in range(1, 4):
+            try:
+                with _ssh_connection(
+                    payload.ssh,
+                    logger=lambda message: logger.info("ssh.login.trace req=%s attempt=%s %s", request_id, attempt, message),
+                ):
+                    pass
+                last_exc = None
+                break
+            except Exception as exc:
+                last_exc = exc
+                if attempt >= 3 or not _is_retryable_ssh_error(exc):
+                    raise
+                logger.info("ssh.login.retry req=%s attempt=%s error=%s", request_id, attempt, _error_message(exc))
+                time.sleep(1.2 * attempt)
+        if last_exc is not None:
+            raise last_exc
         session_id = SESSION_STORE.create(payload.ssh)
         logger.info("ssh.login.ok req=%s target=%s session=%s", request_id, _ssh_target_label(payload.ssh), session_id)
         return SessionLoginResponse(
@@ -1748,24 +1779,38 @@ async def server_status(payload: RollbackRequest, request: Request) -> ServerSta
     logger.info("ssh.status.start req=%s target=%s protocol=%s", request_id, target, payload.protocol or "auto")
     try:
         payload = _materialize_saved_server(payload, request)
-        with _ssh_connection(
-            payload.ssh,
-            payload.session_id,
-            request=request,
-            logger=lambda message: logger.info("ssh.status.trace req=%s %s", request_id, message),
-        ) as (ssh, _resolved):
-            if payload.protocol == "vless_reality":
-                status = ProxyProvisioner(ssh).detect_status()
-            elif payload.protocol == "shadowtls_ss":
-                status = ShadowTLSSSProvisioner(ssh).detect_status()
-            elif payload.protocol:
-                status = _detect_server_status(ssh)
-            else:
-                status = _detect_server_status(ssh)
-                if not status.get("configured"):
-                    status = ShadowTLSSSProvisioner(ssh).detect_status()
-                if not status.get("configured"):
-                    status = ProxyProvisioner(ssh).detect_status()
+        last_exc: Optional[Exception] = None
+        status: dict = {}
+        for attempt in range(1, 4):
+            try:
+                with _ssh_connection(
+                    payload.ssh,
+                    payload.session_id,
+                    request=request,
+                    logger=lambda message: logger.info("ssh.status.trace req=%s attempt=%s %s", request_id, attempt, message),
+                ) as (ssh, _resolved):
+                    if payload.protocol == "vless_reality":
+                        status = ProxyProvisioner(ssh).detect_status()
+                    elif payload.protocol == "shadowtls_ss":
+                        status = ShadowTLSSSProvisioner(ssh).detect_status()
+                    elif payload.protocol:
+                        status = _detect_server_status(ssh)
+                    else:
+                        status = _detect_server_status(ssh)
+                        if not status.get("configured"):
+                            status = ShadowTLSSSProvisioner(ssh).detect_status()
+                        if not status.get("configured"):
+                            status = ProxyProvisioner(ssh).detect_status()
+                last_exc = None
+                break
+            except Exception as exc:
+                last_exc = exc
+                if attempt >= 3 or not _is_retryable_ssh_error(exc):
+                    raise
+                logger.info("ssh.status.retry req=%s attempt=%s error=%s", request_id, attempt, _error_message(exc))
+                time.sleep(1.2 * attempt)
+        if last_exc is not None:
+            raise last_exc
 
         if not status.get("configured"):
             logger.info("ssh.status.ok req=%s configured=false", request_id)

@@ -11,6 +11,7 @@ from vpn_wizard.server import (
     SessionStore,
     _discover_ssh_port,
     _error_message,
+    _is_retryable_ssh_error,
     _split_host_port,
     download_config,
     download_qr,
@@ -134,3 +135,11 @@ def test_error_message_maps_eoferror_to_server_closed_text() -> None:
 def test_error_message_preserves_non_empty_text() -> None:
     exc = RuntimeError("custom failure")
     assert _error_message(exc) == "custom failure"
+
+
+def test_retryable_ssh_error_treats_eof_as_transient() -> None:
+    assert _is_retryable_ssh_error(EOFError()) is True
+
+
+def test_retryable_ssh_error_does_not_retry_auth_failures() -> None:
+    assert _is_retryable_ssh_error(paramiko.AuthenticationException()) is False
