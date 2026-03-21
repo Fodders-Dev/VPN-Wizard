@@ -3,347 +3,329 @@
 
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>VPN Wizard</title>
+  <meta name="theme-color" content="#eef4ff" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="style.css" />
 </head>
 
 <body>
-  <main class="app">
-    <header class="hero">
-      <div class="hero-top">
-        <div class="title-wrap">
-          <div class="title" data-i18n="app_title">VPN Wizard</div>
-          <div class="version-pill hidden" id="version-pill" aria-label="Version"></div>
-        </div>
-        <div class="hero-actions">
-          <button type="button" class="ghost" id="tour-btn" data-i18n="tour_btn">Обучение</button>
-          <button type="button" class="ghost" id="faq-btn" data-i18n="faq_btn">FAQ</button>
-          <div class="lang-toggle" role="group" aria-label="Language">
-            <button type="button" class="lang-btn" data-lang="ru">RU</button>
-            <button type="button" class="lang-btn" data-lang="en">EN</button>
-          </div>
-        </div>
+  <div class="backdrop-orb orb-a" aria-hidden="true"></div>
+  <div class="backdrop-orb orb-b" aria-hidden="true"></div>
+  <div class="backdrop-grid" aria-hidden="true"></div>
+
+  <main class="app-shell">
+    <header class="topbar glass-panel">
+      <div>
+        <div class="eyebrow" id="app-eyebrow">Telegram Mini App</div>
+        <h1 class="topbar-title">VPN Wizard</h1>
+        <p class="topbar-copy" id="topbar-copy">Сервер, профили и все действия на одном экране.</p>
       </div>
-      <div class="subtitle" data-i18n="app_subtitle">Простая настройка AmneziaWG VPN на вашем сервере</div>
+      <div class="topbar-side">
+        <div class="topbar-badge" id="topbar-badge">Гость</div>
+        <div class="version-pill hidden" id="version-pill" aria-label="Version"></div>
+      </div>
     </header>
 
-    <nav class="tabs" role="tablist" aria-label="Sections">
-      <button type="button" class="tab-btn active" data-tab="connect" data-i18n="tab_connect">Подключение</button>
-      <button type="button" class="tab-btn" data-tab="profiles" data-i18n="tab_profiles">Профили</button>
-      <button type="button" class="tab-btn" data-tab="cabinet" data-i18n="tab_cabinet">Личный кабинет</button>
-      <button type="button" class="tab-btn" data-tab="help" data-i18n="tab_help">Помощь</button>
+    <section class="diagnostics glass-panel hidden" id="diagnostics-panel" aria-live="polite">
+      <div class="diagnostics-row">
+        <div>
+          <div class="eyebrow" id="diagnostics-chip">Диагностика</div>
+          <div class="diagnostics-title" id="diagnostics-title"></div>
+        </div>
+        <button type="button" class="mini-btn subtle" id="diagnostics-close-btn">×</button>
+      </div>
+      <div class="diagnostics-body" id="diagnostics-body"></div>
+      <div class="diagnostics-meta hidden" id="diagnostics-meta"></div>
+      <div class="diagnostics-actions">
+        <button type="button" class="mini-btn" id="diagnostics-retry-btn">Повторить</button>
+        <button type="button" class="mini-btn subtle" id="diagnostics-reset-btn">Сбросить API</button>
+        <button type="button" class="mini-btn subtle" id="diagnostics-open-btn">Открыть Railway</button>
+      </div>
+    </section>
+
+    <div class="page-frame">
+      <section class="page active" id="connect-page" data-page="connect">
+        <div class="page-stack">
+          <section class="glass-panel compact-card" id="auth-card">
+            <div class="card-head">
+              <div>
+                <div class="eyebrow" id="auth-eyebrow">Telegram account</div>
+                <h2 class="card-title" id="auth-title">Войти через Telegram</h2>
+              </div>
+              <div class="status-pill" id="auth-state-pill">Не подключен</div>
+            </div>
+            <p class="card-copy" id="auth-copy">
+              Войдите через Telegram, чтобы выбирать свои серверы без повторного ввода IP и пароля.
+            </p>
+            <div class="auth-actions">
+              <button type="button" class="primary-btn hidden" id="miniapp-login-btn">Войти через Telegram</button>
+              <div id="telegram-widget-slot"></div>
+              <button type="button" class="mini-btn subtle hidden" id="logout-btn">Выйти</button>
+            </div>
+          </section>
+
+          <section class="glass-panel connect-card">
+            <div class="card-head">
+              <div>
+                <div class="eyebrow" id="connect-eyebrow">Шаг 1</div>
+                <h2 class="card-title" id="connect-title">Подключение к серверу</h2>
+              </div>
+              <div class="status-pill" id="connect-status-chip">Ожидание</div>
+            </div>
+
+            <form id="connect-form" novalidate>
+              <div class="field-grid two">
+                <label class="field">
+                  <span class="field-label">
+                    <span id="host-label">IP или домен</span>
+                    <button type="button" class="help-btn" data-help="host">?</button>
+                  </span>
+                  <input id="host-input" autocomplete="url" placeholder="1.2.3.4" required />
+                </label>
+
+                <label class="field">
+                  <span class="field-label">
+                    <span id="user-label">SSH пользователь</span>
+                    <button type="button" class="help-btn" data-help="user">?</button>
+                  </span>
+                  <input id="user-input" autocomplete="username" placeholder="root" required />
+                </label>
+              </div>
+
+              <div class="method-switch" role="radiogroup" aria-label="Auth method">
+                <label class="method-pill active">
+                  <input type="radio" name="auth_method" value="password" checked />
+                  <span id="auth-method-password-label">Пароль</span>
+                </label>
+                <label class="method-pill">
+                  <input type="radio" name="auth_method" value="key" />
+                  <span id="auth-method-key-label">Ключ</span>
+                </label>
+              </div>
+
+              <div class="field-grid" id="secret-fields">
+                <label class="field" id="password-field">
+                  <span class="field-label">
+                    <span id="password-label">SSH пароль</span>
+                    <button type="button" class="help-btn" data-help="password">?</button>
+                  </span>
+                  <input id="password-input" type="password" autocomplete="current-password" placeholder="Пароль от сервера" />
+                </label>
+
+                <label class="field hidden" id="key-field">
+                  <span class="field-label">
+                    <span id="key-label">SSH ключ</span>
+                    <button type="button" class="help-btn" data-help="key">?</button>
+                  </span>
+                  <textarea id="key-input" rows="4" placeholder="Вставьте приватный ключ"></textarea>
+                </label>
+              </div>
+
+              <div class="mode-grid" id="mode-grid">
+                <label class="mode-card active">
+                  <input type="radio" name="connection_mode" value="amneziawg" checked />
+                  <span class="mode-title" id="mode-vpn-title">VPN</span>
+                  <span class="mode-copy" id="mode-vpn-copy">Для всего устройства и семьи.</span>
+                </label>
+                <label class="mode-card">
+                  <input type="radio" name="connection_mode" value="shadowtls_ss" />
+                  <span class="mode-title" id="mode-shadowtls-title">Антиблок</span>
+                  <span class="mode-copy" id="mode-shadowtls-copy">Быстрый импорт в Hiddify.</span>
+                </label>
+                <label class="mode-card">
+                  <input type="radio" name="connection_mode" value="vless_reality" />
+                  <span class="mode-title" id="mode-vless-title">Legacy proxy</span>
+                  <span class="mode-copy" id="mode-vless-copy">Для тяжёлых сетей и TCP 443.</span>
+                </label>
+              </div>
+
+              <label class="toggle-row">
+                <span class="toggle">
+                  <input type="checkbox" id="remember-server-toggle" />
+                  <span id="remember-server-label">Запомнить сервер в аккаунте</span>
+                </span>
+                <span class="toggle-hint" id="remember-server-hint">Только после Telegram-входа.</span>
+              </label>
+
+              <section class="status-card" id="connect-status-card" aria-live="polite">
+                <div class="status-title" id="connect-status-title">Подключите сервер и продолжайте без лишних шагов.</div>
+                <div class="status-body" id="connect-status-body">
+                  После проверки вы сразу увидите настройку сервера или список профилей.
+                </div>
+              </section>
+
+              <div class="action-row">
+                <button type="submit" class="primary-btn" id="connect-btn">Подключиться</button>
+                <button type="button" class="mini-btn hidden" id="setup-btn">Настроить сервер</button>
+                <button type="button" class="mini-btn hidden" id="open-profiles-btn">Открыть профили</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      </section>
+
+      <section class="page" id="profiles-page" data-page="profiles">
+        <div class="page-stack">
+          <section class="glass-panel compact-card">
+            <div class="card-head">
+              <div>
+                <div class="eyebrow" id="profiles-eyebrow">Текущий сервер</div>
+                <h2 class="card-title" id="current-server-title">Сначала подключите сервер</h2>
+              </div>
+              <button type="button" class="mini-btn subtle" id="profiles-refresh-btn">Обновить</button>
+            </div>
+            <div class="server-picker" id="server-picker"></div>
+            <div class="empty-card hidden" id="profiles-empty-card">
+              <div class="empty-title" id="profiles-empty-title">Серверов пока нет</div>
+              <div class="empty-copy" id="profiles-empty-copy">Подключитесь вручную или войдите через Telegram, чтобы выбрать сохранённый сервер.</div>
+              <button type="button" class="mini-btn" id="go-connect-btn">Добавить сервер</button>
+            </div>
+            <div class="add-profile-row" id="add-profile-row">
+              <input id="profile-name-input" placeholder="grandma-phone" />
+              <button type="button" class="primary-btn compact" id="add-profile-btn">Добавить</button>
+            </div>
+          </section>
+
+          <section class="glass-panel list-card">
+            <div class="card-head">
+              <div>
+                <div class="eyebrow" id="clients-eyebrow">Профили</div>
+                <h2 class="card-title" id="clients-title">Все под рукой</h2>
+              </div>
+              <div class="list-meta" id="profiles-meta"></div>
+            </div>
+            <div class="list-scroll" id="clients-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="page" id="settings-page" data-page="settings">
+        <div class="page-stack">
+          <section class="glass-panel compact-card settings-card">
+            <div class="card-head">
+              <div>
+                <div class="eyebrow" id="settings-eyebrow">Настройки</div>
+                <h2 class="card-title" id="settings-title">Язык, PIN и порты</h2>
+              </div>
+            </div>
+
+            <div class="settings-block">
+              <div class="settings-label" id="lang-label">Язык</div>
+              <div class="method-switch" role="group" aria-label="Language">
+                <button type="button" class="method-pill active static-pill" data-lang="ru">RU</button>
+                <button type="button" class="method-pill static-pill" data-lang="en">EN</button>
+              </div>
+            </div>
+
+            <div class="settings-block">
+              <div class="settings-label" id="advanced-label">Расширенные параметры</div>
+              <div class="field-grid two">
+                <label class="field">
+                  <span class="field-label">
+                    <span id="ssh-port-label">SSH порт</span>
+                    <button type="button" class="help-btn" data-help="ssh_port">?</button>
+                  </span>
+                  <input id="ssh-port-input" type="number" min="1" max="65535" placeholder="22" />
+                </label>
+                <label class="field">
+                  <span class="field-label">
+                    <span id="listen-port-label">Порт сервиса</span>
+                    <button type="button" class="help-btn" data-help="listen_port">?</button>
+                  </span>
+                  <input id="listen-port-input" type="number" min="1" max="65535" placeholder="Авто" />
+                </label>
+              </div>
+              <label class="field">
+                <span class="field-label">
+                  <span id="proxy-sni-label">SNI домен</span>
+                  <button type="button" class="help-btn" data-help="proxy_sni">?</button>
+                </span>
+                <input id="proxy-sni-input" placeholder="Авто" />
+              </label>
+            </div>
+
+            <div class="settings-block">
+              <div class="settings-label" id="pin-label">Дополнительный PIN</div>
+              <label class="toggle-row">
+                <span class="toggle">
+                  <input type="checkbox" id="pin-enabled-toggle" />
+                  <span id="pin-enabled-copy">Запрашивать PIN перед доступом к сохранённым серверам</span>
+                </span>
+              </label>
+              <div class="pin-row">
+                <input id="pin-input" type="password" inputmode="numeric" placeholder="4+ цифры" />
+                <button type="button" class="mini-btn" id="save-pin-btn">Сохранить PIN</button>
+              </div>
+              <div class="pin-row hidden" id="pin-unlock-row">
+                <input id="pin-unlock-input" type="password" inputmode="numeric" placeholder="Введите PIN" />
+                <button type="button" class="mini-btn" id="unlock-pin-btn">Открыть серверы</button>
+              </div>
+              <div class="inline-note" id="pin-note"></div>
+            </div>
+          </section>
+
+          <section class="glass-panel list-card">
+            <div class="card-head">
+              <div>
+                <div class="eyebrow" id="saved-servers-eyebrow">Сохранённые серверы</div>
+                <h2 class="card-title" id="saved-servers-title">Выбор в один тап</h2>
+              </div>
+              <button type="button" class="mini-btn subtle hidden" id="logout-settings-btn">Выйти</button>
+            </div>
+            <div class="list-scroll" id="saved-servers-list"></div>
+          </section>
+        </div>
+      </section>
+    </div>
+
+    <nav class="bottom-nav glass-panel" aria-label="Navigation">
+      <button type="button" class="nav-btn active" data-page-target="connect">
+        <span class="nav-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M4 10.5 12 4l8 6.5" />
+            <path d="M6.5 9.5V20h11V9.5" />
+          </svg>
+        </span>
+        <span class="nav-label" id="nav-connect-label">Подключение</span>
+      </button>
+      <button type="button" class="nav-btn" data-page-target="profiles">
+        <span class="nav-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M4 7h16" />
+            <path d="M4 12h16" />
+            <path d="M4 17h10" />
+          </svg>
+        </span>
+        <span class="nav-label" id="nav-profiles-label">Профили</span>
+      </button>
+      <button type="button" class="nav-btn" data-page-target="settings">
+        <span class="nav-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="m12 3 1.7 2.5 3-.2.8 2.9 2.8 1.2-1.2 2.8 1.2 2.8-2.8 1.2-.8 2.9-3-.2L12 21l-1.7-2.5-3 .2-.8-2.9-2.8-1.2 1.2-2.8-1.2-2.8 2.8-1.2.8-2.9 3 .2L12 3Z" />
+            <circle cx="12" cy="12" r="3.2" />
+          </svg>
+        </span>
+        <span class="nav-label" id="nav-settings-label">Настройки</span>
+      </button>
     </nav>
-
-    <section class="wizard-shell" id="wizard-shell" aria-label="Novice wizard">
-      <div class="wizard-steps" role="group" aria-label="Wizard steps">
-        <button type="button" class="wizard-step-btn active" data-wizard-step="1" data-i18n="wizard_step_connect">
-          1. Подключение
-        </button>
-        <button type="button" class="wizard-step-btn" data-wizard-step="2" data-i18n="wizard_step_setup">
-          2. Настройка
-        </button>
-        <button type="button" class="wizard-step-btn" data-wizard-step="3" data-i18n="wizard_step_result">
-          3. Профиль
-        </button>
-      </div>
-      <div class="wizard-hint" id="wizard-hint" data-i18n="wizard_hint_step1">
-        Введите доступ к серверу и нажмите "Подключиться".
-      </div>
-      <div class="wizard-controls">
-        <button type="button" class="secondary" id="wizard-prev-btn" data-i18n="wizard_prev_btn">Назад</button>
-        <button type="button" id="wizard-next-btn" data-i18n="wizard_action_connect">Подключиться</button>
-      </div>
-    </section>
-
-    <section class="card" id="connection-card" data-tab-panel="connect">
-      <h2 data-i18n="step1_title">Шаг 1. Доступ к серверу</h2>
-      <form id="provision-form">
-        <label>
-          <span data-i18n="server_host_label">IP или хост сервера</span>
-          <input name="host" placeholder="1.2.3.4" data-i18n-placeholder="server_host_placeholder" required />
-        </label>
-        <label>
-          <span data-i18n="ssh_user_label">SSH пользователь</span>
-          <input name="user" placeholder="root" data-i18n-placeholder="ssh_user_placeholder" required />
-        </label>
-        <label>
-          <span data-i18n="ssh_password_label">SSH пароль</span>
-          <input name="password" type="password" placeholder="optional if key" data-i18n-placeholder="ssh_password_placeholder" />
-        </label>
-        <label>
-          <span data-i18n="connection_mode_label">Режим подключения</span>
-          <select name="connection_mode" id="connection-mode">
-            <option value="amneziawg" data-i18n="mode_vpn">VPN (AmneziaWG)</option>
-            <option value="shadowtls_ss" data-i18n="mode_proxy">Антиблок прокси (ShadowTLS)</option>
-            <option value="vless_reality" data-i18n="mode_proxy_legacy">Legacy прокси (VLESS Reality)</option>
-          </select>
-          <small class="field-hint" data-i18n="connection_mode_hint">
-            VPN быстрее для всего устройства. Прокси лучше при жестких блокировках.
-          </small>
-          <small class="field-hint" data-i18n="connection_mode_switch_hint">
-            Режим можно менять в любой момент: после смены нажмите "Подключиться".
-          </small>
-        </label>
-        <div class="remember-row stage-unchecked-only">
-          <label class="toggle">
-            <input type="checkbox" id="remember-login-toggle" checked />
-            <span data-i18n="remember_login_label">Запомнить вход на этом устройстве</span>
-          </label>
-          <small class="field-hint" data-i18n="remember_login_hint">
-            Сохраняем защищенную сессию для авто-проверки после обновления страницы.
-          </small>
-        </div>
-        <div class="advanced-shortcut">
-          <button type="button" class="secondary" id="advanced-toggle-btn">Расширенные настройки</button>
-          <small class="field-hint" data-i18n="advanced_toggle_hint">
-            Если нужно изменить SSH порт, ключ или порт сервера - откройте расширенные настройки.
-          </small>
-        </div>
-        <div class="onboarding-panel stage-unchecked-only">
-          <div class="onboarding-title" data-i18n="onboarding_title">Быстрый старт</div>
-          <div class="onboarding-item" data-i18n="onboarding_step1">
-            1) Введите IP/хост, SSH пользователя и пароль или ключ.
-          </div>
-          <div class="onboarding-item" data-i18n="onboarding_step2">
-            2) Нажмите "Подключиться" — это безопасно, без установки.
-          </div>
-          <div class="onboarding-item" data-i18n="onboarding_step3">
-            3) Если сервер пустой — запустите установку и скачайте конфиг.
-          </div>
-          <div class="onboarding-item" data-i18n="onboarding_step4">
-            4) При блокировках попробуйте другой UDP порт.
-          </div>
-        </div>
-        <div class="profile-only profile-block hidden">
-          <label>
-            <span data-i18n="client_name_label">Имя профиля (необязательно)</span>
-            <input name="client_name" placeholder="grandma-phone" data-i18n-placeholder="client_name_placeholder" />
-            <small class="field-hint" data-i18n="profile_name_hint">
-              Нужно, чтобы разные устройства получали разные названия конфигов.
-            </small>
-          </label>
-          <div class="profile-callout" data-i18n="profile_name_callout">
-            Перед добавлением профиля укажите имя (например: grandma-phone).
-          </div>
-          <div class="profile-actions">
-            <button type="button" id="add-client-btn" class="hidden" data-i18n="add_client_btn">Добавить профиль</button>
-          </div>
-        </div>
-        <label class="advanced">
-          <span data-i18n="ssh_key_label">SSH ключ (необязательно)</span>
-          <textarea name="key_content" placeholder="paste private key" data-i18n-placeholder="ssh_key_placeholder"></textarea>
-        </label>
-        <label class="advanced">
-          <span data-i18n="ssh_port_label">SSH порт (вручную)</span>
-          <input name="ssh_port" type="number" min="1" max="65535" placeholder="auto" data-i18n-placeholder="ssh_port_placeholder" />
-          <small class="field-hint" data-i18n="ssh_port_hint">
-            По умолчанию порт SSH ищется автоматически.
-          </small>
-        </label>
-        <label class="advanced">
-          <span data-i18n="udp_port_label">UDP порт сервера</span>
-          <input name="listen_port" type="number" min="1" max="65535" placeholder="auto" data-i18n-placeholder="listen_port_placeholder" />
-          <small class="field-hint" data-i18n="listen_port_hint">
-            Для прокси можно оставить пустым: порт подберется автоматически.
-          </small>
-        </label>
-        <label class="advanced">
-          <span data-i18n="proxy_sni_label">SNI домен для прокси (опционально)</span>
-          <input name="proxy_sni" placeholder="auto" data-i18n-placeholder="proxy_sni_placeholder" />
-          <small class="field-hint" data-i18n="proxy_sni_hint">
-            Пусто = авто-подбор оптимального SNI. Заполняйте только если знаете нужный домен.
-          </small>
-        </label>
-        <div class="server-tools">
-          <button type="submit" id="check-server-btn" data-i18n="check_server_btn">Подключиться</button>
-          <div id="server-status" class="server-status" data-i18n="server_status_idle">Сервер не подключен</div>
-          <div id="next-step" class="next-step stage-before-config" data-i18n="next_step_initial">
-            Сначала заполните доступ к серверу и нажмите "Подключиться".
-          </div>
-          <div id="check-hint" class="check-hint stage-unchecked-only" data-i18n="check_safe_hint">
-            Подключение безопасно: ничего не устанавливается. Установка — отдельной кнопкой.
-          </div>
-          <div id="server-meta" class="server-meta"></div>
-          <div id="server-advice" class="server-advice stage-before-config" data-i18n="server_advice">
-            Если сервер пустой - можно смело настраивать. Если нет - прочитайте FAQ и включите расширенные настройки.
-          </div>
-          <a
-            class="server-link external-link stage-unchecked-only"
-            data-url="https://telegra.ph/Kak-arendovat-minimalnyj-server-VPS-na-HostKey-dlya-VPN-12-28"
-            href="https://telegra.ph/Kak-arendovat-minimalnyj-server-VPS-na-HostKey-dlya-VPN-12-28"
-            target="_blank"
-            rel="noopener"
-            data-i18n="server_rent_link"
-          >
-            Как арендовать сервер: пошаговый гайд
-          </a>
-          <label class="toggle hidden" id="reconfigure-toggle">
-            <input type="checkbox" id="reconfigure-checkbox" />
-            <span data-i18n="reconfigure_label">Изменить порт / перенастроить сервер</span>
-          </label>
-        </div>
-        <div class="toggle-row">
-          <label class="toggle">
-            <input type="checkbox" id="simple-toggle" checked />
-            <span data-i18n="simple_mode_label">Простой режим</span>
-          </label>
-          <span class="toggle-hint" data-i18n="simple_mode_hint">Скрыть расширенные поля</span>
-        </div>
-        <button type="button" id="provision-btn" class="hidden" data-i18n="provision_btn">Настроить сервер и получить первый профиль</button>
-      </form>
-    </section>
-
-    <section class="card hidden" id="profiles-intro-card" data-tab-panel="profiles">
-      <h2 data-i18n="profiles_intro_title">Управление профилями</h2>
-      <div data-i18n="profiles_intro_body">
-        Сначала подключитесь к серверу. После этого здесь появятся профили, QR и ссылки/конфиги.
-      </div>
-    </section>
-
-    <section class="card hidden" id="servers-card" data-tab-panel="cabinet">
-      <h2 data-i18n="servers_title">Личный кабинет: серверы</h2>
-      <div id="servers-empty" data-i18n="servers_empty">Пока нет сохранённых серверов.</div>
-      <div id="servers-list" class="servers-list"></div>
-    </section>
-
-    <section class="card hidden" id="progress-card" data-tab-panel="profiles">
-      <h2 data-i18n="step2_title">Шаг 2. Прогресс</h2>
-      <div class="progress-bar" aria-hidden="true">
-        <div id="progress-fill" class="progress-fill"></div>
-      </div>
-      <div class="spinner" aria-hidden="true"></div>
-      <div id="status" data-i18n="status_waiting">Ожидание...</div>
-      <button type="button" id="toggle-log-btn" class="secondary" data-i18n="toggle_log_btn">Показать лог</button>
-      <div id="progress-log" class="log hidden"></div>
-    </section>
-
-    <section class="card hidden" id="clients-card" data-tab-panel="profiles">
-      <h2 data-i18n="clients_title">Профили</h2>
-      <div id="clients-empty" data-i18n="clients_empty">Профили не найдены.</div>
-      <div id="clients-list" class="clients-list"></div>
-    </section>
-
-    <section class="card hidden" id="result-card" data-tab-panel="profiles">
-      <h2 data-i18n="step3_title">Шаг 3. Скачать</h2>
-      <div class="download-row">
-        <a id="download-link" class="download" href="#" download="client1.conf" data-i18n="download_btn">Скачать конфиг</a>
-        <a id="download-auto-link" class="download secondary hidden" href="#" download="client1-auto.json" data-i18n="download_btn_auto">Скачать файл (.json)</a>
-        <button type="button" id="copy-auto-url-btn" class="secondary hidden" data-i18n="copy_auto_url_btn">Скопировать ссылку</button>
-        <button type="button" id="copy-config-btn" class="secondary hidden" data-i18n="copy_btn">Скопировать конфиг</button>
-        <a id="qr-download" class="secondary qr-download hidden" href="#" download="client1.png" data-i18n="download_qr_btn">Скачать QR</a>
-      </div>
-      <img id="qr-image" alt="QR code" />
-      <div id="config-copy" class="config-copy hidden">
-        <div class="config-title" data-i18n="copy_title">Конфиг для ручного копирования</div>
-        <textarea id="config-text" readonly></textarea>
-        <div class="config-hint" data-i18n="copy_hint">Можно выделить и скопировать вручную.</div>
-      </div>
-      <div id="alt-links" class="alt-links hidden">
-        <div class="alt-links-title" data-i18n="alt_links_title">Если не работает: альтернативные ссылки</div>
-        <div id="alt-links-list" class="alt-links-list"></div>
-        <div class="alt-links-hint" data-i18n="alt_links_hint">
-          Импортируйте одну из ссылок в клиент прокси и проверьте. Иногда помогает смена SNI/FP из-за блокировок.
-        </div>
-      </div>
-      <p class="step3-hint" data-i18n="step3_hint">
-        Откройте AmneziaWG и нажмите "+", чтобы добавить файл конфигурации.
-      </p>
-      <div class="app-links">
-        <div class="app-links-title" data-i18n="apps_title">Скачать приложение AmneziaWG</div>
-        <a class="secondary external-link" data-url="https://play.google.com/store/apps/details?id=org.amnezia.awg" href="https://play.google.com/store/apps/details?id=org.amnezia.awg" target="_blank" rel="noopener" data-i18n="apps_android">
-          Android (Google Play)
-        </a>
-        <a class="secondary external-link" data-url="https://apps.apple.com/us/app/amneziawg/id6478942365" href="https://apps.apple.com/us/app/amneziawg/id6478942365" target="_blank" rel="noopener" data-i18n="apps_ios">
-          iOS (App Store)
-        </a>
-        <a class="secondary external-link" data-url="https://github.com/amnezia-vpn/amneziawg-windows-client/releases" href="https://github.com/amnezia-vpn/amneziawg-windows-client/releases" target="_blank" rel="noopener" data-i18n="apps_windows">
-          Windows
-        </a>
-        <a class="secondary external-link" data-url="https://github.com/amnezia-vpn/amneziawg-linux-kernel-module" href="https://github.com/amnezia-vpn/amneziawg-linux-kernel-module" target="_blank" rel="noopener" data-i18n="apps_linux">
-          Linux
-        </a>
-        <div class="app-note" data-i18n="apps_macos_missing">macOS: пока нет приложения</div>
-      </div>
-    </section>
-
-    <section class="card hidden" id="help-card" data-tab-panel="help">
-      <h2 data-i18n="help_title">Как пользоваться</h2>
-      <div class="help-grid">
-        <div class="help-block">
-          <div class="help-block-title" data-i18n="help_vpn_title">Режим VPN (AmneziaWG)</div>
-          <div class="help-block-body" data-i18n="help_vpn_body">
-            1) Подключитесь к серверу.
-            2) Нажмите "Настроить сервер".
-            3) Скачайте конфиг и импортируйте в AmneziaWG.
-          </div>
-        </div>
-        <div class="help-block">
-          <div class="help-block-title" data-i18n="help_proxy_title">Режим антиблок-прокси (ShadowTLS)</div>
-          <div class="help-block-body" data-i18n="help_proxy_body">
-            1) Подключитесь к серверу и настройте прокси.
-            2) Скопируйте ссылку.
-            3) Добавьте профиль по URL в Hiddify/sing-box и подключитесь.
-          </div>
-        </div>
-        <div class="help-block">
-          <div class="help-block-title" data-i18n="help_install_title">Что установить на устройство</div>
-          <div class="help-block-body" data-i18n="help_install_body">
-            VPN: AmneziaWG.
-            Прокси: Hiddify (рекомендуется) или v2rayNG/sing-box.
-          </div>
-        </div>
-      </div>
-    </section>
-
   </main>
 
-  <div class="modal hidden" id="faq-modal" aria-hidden="true">
-    <div class="modal-backdrop" data-modal-close></div>
-    <div class="modal-card" role="dialog" aria-modal="true">
-      <div class="modal-header">
-        <h3 data-i18n="faq_title">FAQ</h3>
-        <button type="button" class="ghost" data-modal-close>✕</button>
-      </div>
-      <div id="faq-content" class="modal-body"></div>
-    </div>
-  </div>
+  <div class="popover hidden" id="help-popover" role="status"></div>
 
-  <div class="modal hidden tour-modal" id="tour-modal" aria-hidden="true">
+  <div class="modal hidden" id="confirm-modal" aria-hidden="true">
     <div class="modal-backdrop" data-modal-close></div>
-    <div class="modal-card" role="dialog" aria-modal="true">
-      <div class="modal-header">
-        <h3 data-i18n="tour_title">Обучение</h3>
-        <button type="button" class="ghost" data-modal-close>✕</button>
+    <div class="modal-card glass-panel">
+      <div class="card-head">
+        <h3 class="card-title" id="confirm-title"></h3>
+        <button type="button" class="mini-btn subtle" data-modal-close>×</button>
       </div>
-      <div class="modal-body">
-        <div class="tour-step-title" id="tour-step-title"></div>
-        <div class="tour-step-body" id="tour-step-body"></div>
-      </div>
+      <div class="modal-copy" id="confirm-body"></div>
       <div class="modal-actions">
-        <button type="button" class="secondary" id="tour-prev" data-i18n="tour_prev">Назад</button>
-        <button type="button" id="tour-next" data-i18n="tour_next">Далее</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal hidden" id="install-modal" aria-hidden="true">
-    <div class="modal-backdrop" data-modal-close></div>
-    <div class="modal-card" role="dialog" aria-modal="true">
-      <div class="modal-header">
-        <h3 data-i18n="install_modal_title">Подтвердить установку</h3>
-        <button type="button" class="ghost" data-modal-close>✕</button>
-      </div>
-      <div class="modal-body">
-        <div data-i18n="install_modal_body">
-          Будут изменены сетевые настройки и установлен VPN на вашем сервере.
-        </div>
-        <div id="install-summary" class="install-summary"></div>
-      </div>
-      <div class="modal-actions">
-        <button type="button" class="secondary" id="install-cancel" data-i18n="install_modal_cancel">Отмена</button>
-        <button type="button" id="install-continue" data-i18n="install_modal_continue">Продолжить установку</button>
+        <button type="button" class="mini-btn subtle" id="confirm-cancel-btn">Отмена</button>
+        <button type="button" class="mini-btn" id="confirm-continue-btn">Продолжить</button>
       </div>
     </div>
   </div>

@@ -27,9 +27,15 @@ from pydantic import BaseModel, Field, model_validator
 import qrcode
 import uvicorn
 
+from vpn_wizard.account import (
+    build_account_store,
+    verify_telegram_login,
+    verify_telegram_webapp_init_data,
+)
 from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
 from vpn_wizard.proxy import ProxyProvisioner
 from vpn_wizard.shadowtls import ShadowTLSSSProvisioner
+from vpn_wizard.urls import CANONICAL_MINIAPP_URL
 
 
 app = FastAPI(title="VPN Wizard API")
@@ -175,6 +181,7 @@ def _discover_ssh_port(host: str, preferred_port: Optional[int] = None) -> tuple
 class AuthRequest(BaseModel):
     ssh: Optional[SSHPayload] = None
     session_id: Optional[str] = None
+    saved_server_id: Optional[str] = None
     protocol: Optional[str] = None
 
 
@@ -215,6 +222,7 @@ class ProvisionOptions(BaseModel):
 class ProvisionRequest(BaseModel):
     ssh: Optional[SSHPayload] = None
     session_id: Optional[str] = None
+    saved_server_id: Optional[str] = None
     options: ProvisionOptions = Field(default_factory=ProvisionOptions)
 
 
@@ -320,6 +328,75 @@ class SessionLoginResponse(BaseModel):
     host: Optional[str] = None
     user: Optional[str] = None
     port: Optional[int] = None
+    error: Optional[str] = None
+
+
+class TelegramMiniAppAuthRequest(BaseModel):
+    init_data: str
+
+
+class TelegramWebAuthRequest(BaseModel):
+    id: int
+    auth_date: int
+    hash: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    username: Optional[str] = None
+    photo_url: Optional[str] = None
+    language_code: Optional[str] = None
+
+
+class AuthConfigResponse(BaseModel):
+    ok: bool
+    browser_login_enabled: bool
+    miniapp_login_enabled: bool
+    telegram_bot_username: Optional[str] = None
+    canonical_miniapp_url: str
+
+
+class CurrentUserResponse(BaseModel):
+    ok: bool
+    authenticated: bool
+    user: Optional[dict] = None
+    pin_enabled: bool = False
+    pin_required: bool = False
+    error: Optional[str] = None
+
+
+class SavedServerRequest(BaseModel):
+    label: Optional[str] = None
+    server_id: Optional[str] = None
+    ssh: SSHPayload
+    protocol: Optional[str] = None
+    listen_port: Optional[int] = None
+    proxy_sni: Optional[str] = None
+
+
+class SavedServerListResponse(BaseModel):
+    ok: bool
+    servers: list[dict] = Field(default_factory=list)
+    error: Optional[str] = None
+
+
+class SavedServerResponse(BaseModel):
+    ok: bool
+    server: Optional[dict] = None
+    error: Optional[str] = None
+
+
+class PinConfigureRequest(BaseModel):
+    enabled: bool
+    pin: Optional[str] = None
+
+
+class PinUnlockRequest(BaseModel):
+    pin: str
+
+
+class PinResponse(BaseModel):
+    ok: bool
+    pin_enabled: bool = False
+    pin_required: bool = False
     error: Optional[str] = None
 
 
@@ -527,6 +604,64 @@ SESSION_STORE = SessionStore(
     limit=int(os.getenv("VPNW_SESSION_LIMIT", "512")),
 )
 
+APP_SESSION_COOKIE = "vpnw_app_session"
+
+
+def _account_store():
+    return build_account_store()
+
+
+def _browser_login_enabled() -> bool:
+    return bool((os.getenv("VPNW_BOT_TOKEN") or "").strip() and (os.getenv("VPNW_BOT_USERNAME") or "").strip())
+
+
+def _miniapp_login_enabled() -> bool:
+    return bool((os.getenv("VPNW_BOT_TOKEN") or "").strip())
+
+
+def _telegram_bot_username() -> Optional[str]:
+    value = (os.getenv("VPNW_BOT_USERNAME") or "").strip()
+    return value or None
+
+
+def _app_session_token(request: Request) -> Optional[str]:
+    return (request.cookies.get(APP_SESSION_COOKIE) or "").strip() or None
+
+
+def _current_account(request: Request, *, required: bool = False) -> Optional[dict]:
+    session_id = _app_session_token(request)
+    if not session_id:
+        if required:
+            raise HTTPException(status_code=401, detail="Telegram login required.")
+        return None
+    session = _account_store().get_auth_session(session_id)
+    if session is None:
+        if required:
+            raise HTTPException(status_code=401, detail="Account session expired.")
+        return None
+    return session
+
+
+def _cookie_secure(request: Request) -> bool:
+    proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "").split(",")[0].strip().lower()
+    return proto == "https"
+
+
+def _set_auth_cookie(response: Response, request: Request, session_id: str) -> None:
+    response.set_cookie(
+        APP_SESSION_COOKIE,
+        session_id,
+        httponly=True,
+        max_age=int(os.getenv("VPNW_APP_SESSION_TTL_SECONDS", str(60 * 60 * 24 * 30))),
+        samesite="lax",
+        secure=_cookie_secure(request),
+        path="/",
+    )
+
+
+def _clear_auth_cookie(response: Response) -> None:
+    response.delete_cookie(APP_SESSION_COOKIE, path="/")
+
 def _safe_subprocess(args: list[str], timeout_s: float = 0.35) -> str:
     try:
         out = subprocess.check_output(args, stderr=subprocess.DEVNULL, timeout=timeout_s)
@@ -620,6 +755,175 @@ def api_version() -> Response:
     return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
 
+def _telegram_bot_token() -> str:
+    token = (os.getenv("VPNW_BOT_TOKEN") or "").strip()
+    if not token:
+        raise HTTPException(status_code=503, detail="Telegram auth is not configured.")
+    return token
+
+
+def _current_user_payload(request: Request) -> CurrentUserResponse:
+    account = _current_account(request, required=False)
+    if account is None:
+        return CurrentUserResponse(ok=True, authenticated=False)
+    return CurrentUserResponse(
+        ok=True,
+        authenticated=True,
+        user=account["user"],
+        pin_enabled=bool(account["user"].get("pin_enabled")),
+        pin_required=bool(account["user"].get("pin_enabled")) and not bool(account["pin_unlocked"]),
+    )
+
+
+@app.get("/api/auth/config", response_model=AuthConfigResponse)
+def auth_config() -> AuthConfigResponse:
+    return AuthConfigResponse(
+        ok=True,
+        browser_login_enabled=_browser_login_enabled(),
+        miniapp_login_enabled=_miniapp_login_enabled(),
+        telegram_bot_username=_telegram_bot_username(),
+        canonical_miniapp_url=CANONICAL_MINIAPP_URL,
+    )
+
+
+@app.get("/api/auth/me", response_model=CurrentUserResponse)
+def auth_me(request: Request) -> CurrentUserResponse:
+    return _current_user_payload(request)
+
+
+@app.post("/api/auth/telegram/web", response_model=CurrentUserResponse)
+def auth_telegram_web(payload: TelegramWebAuthRequest, request: Request, response: Response) -> CurrentUserResponse:
+    try:
+        user_payload = verify_telegram_login(payload.model_dump(exclude_none=True), _telegram_bot_token())
+        store = _account_store()
+        user = store.upsert_user_from_telegram(user_payload)
+        session_id = store.create_auth_session(user["id"])
+        _set_auth_cookie(response, request, session_id)
+        session = store.get_auth_session(session_id)
+        assert session is not None
+        return CurrentUserResponse(
+            ok=True,
+            authenticated=True,
+            user=session["user"],
+            pin_enabled=bool(session["user"].get("pin_enabled")),
+            pin_required=bool(session["user"].get("pin_enabled")) and not bool(session["pin_unlocked"]),
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _clear_auth_cookie(response)
+        return CurrentUserResponse(ok=False, authenticated=False, error=str(exc))
+
+
+@app.post("/api/auth/telegram/miniapp", response_model=CurrentUserResponse)
+def auth_telegram_miniapp(payload: TelegramMiniAppAuthRequest, request: Request, response: Response) -> CurrentUserResponse:
+    try:
+        user_payload = verify_telegram_webapp_init_data(payload.init_data, _telegram_bot_token())
+        store = _account_store()
+        user = store.upsert_user_from_telegram(user_payload)
+        session_id = store.create_auth_session(user["id"])
+        _set_auth_cookie(response, request, session_id)
+        session = store.get_auth_session(session_id)
+        assert session is not None
+        return CurrentUserResponse(
+            ok=True,
+            authenticated=True,
+            user=session["user"],
+            pin_enabled=bool(session["user"].get("pin_enabled")),
+            pin_required=bool(session["user"].get("pin_enabled")) and not bool(session["pin_unlocked"]),
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _clear_auth_cookie(response)
+        return CurrentUserResponse(ok=False, authenticated=False, error=str(exc))
+
+
+@app.post("/api/auth/logout", response_model=CurrentUserResponse)
+def auth_logout(request: Request, response: Response) -> CurrentUserResponse:
+    session_id = _app_session_token(request)
+    if session_id:
+        _account_store().revoke_auth_session(session_id)
+    _clear_auth_cookie(response)
+    return CurrentUserResponse(ok=True, authenticated=False)
+
+
+@app.get("/api/account/servers", response_model=SavedServerListResponse)
+def account_servers(request: Request) -> SavedServerListResponse:
+    account = _current_account(request, required=True)
+    assert account is not None
+    servers = _account_store().list_servers(account["user"]["id"])
+    return SavedServerListResponse(ok=True, servers=servers)
+
+
+@app.post("/api/account/servers", response_model=SavedServerResponse)
+def account_save_server(payload: SavedServerRequest, request: Request) -> SavedServerResponse:
+    try:
+        account = _current_account(request, required=True)
+        assert account is not None
+        server = _account_store().save_server(
+            user_id=account["user"]["id"],
+            host=payload.ssh.host,
+            ssh_user=payload.ssh.user,
+            ssh_port=payload.ssh.port,
+            password=payload.ssh.password,
+            key_content=payload.ssh.key_content,
+            mode=payload.protocol,
+            listen_port=payload.listen_port,
+            proxy_sni=payload.proxy_sni,
+            label=payload.label,
+            server_id=payload.server_id,
+        )
+        return SavedServerResponse(ok=True, server=server)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        return SavedServerResponse(ok=False, error=str(exc))
+
+
+@app.delete("/api/account/servers/{server_id}", response_model=RollbackResponse)
+def account_delete_server(server_id: str, request: Request) -> RollbackResponse:
+    account = _current_account(request, required=True)
+    assert account is not None
+    removed = _account_store().delete_server(account["user"]["id"], server_id)
+    if not removed:
+        return RollbackResponse(ok=False, error="Saved server not found.")
+    return RollbackResponse(ok=True)
+
+
+@app.post("/api/account/pin", response_model=PinResponse)
+def account_configure_pin(payload: PinConfigureRequest, request: Request) -> PinResponse:
+    try:
+        account = _current_account(request, required=True)
+        assert account is not None
+        user = _account_store().configure_pin(account["user"]["id"], payload.pin, payload.enabled)
+        refreshed = _account_store().get_auth_session(account["session_id"])
+        pin_required = bool(refreshed and refreshed["user"].get("pin_enabled") and not refreshed["pin_unlocked"])
+        return PinResponse(ok=True, pin_enabled=bool(user.get("pin_enabled")), pin_required=pin_required)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        return PinResponse(ok=False, error=str(exc))
+
+
+@app.post("/api/account/pin/unlock", response_model=PinResponse)
+def account_unlock_pin(payload: PinUnlockRequest, request: Request) -> PinResponse:
+    try:
+        account = _current_account(request, required=True)
+        assert account is not None
+        ok = _account_store().unlock_pin(account["session_id"], payload.pin)
+        if not ok:
+            return PinResponse(ok=False, pin_enabled=True, pin_required=True, error="Wrong PIN.")
+        refreshed = _account_store().get_auth_session(account["session_id"])
+        pin_enabled = bool(refreshed and refreshed["user"].get("pin_enabled"))
+        pin_required = bool(refreshed and refreshed["user"].get("pin_enabled") and not refreshed["pin_unlocked"])
+        return PinResponse(ok=True, pin_enabled=pin_enabled, pin_required=pin_required)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        return PinResponse(ok=False, error=str(exc))
+
+
 def _safe_name(name: Optional[str]) -> str:
     if not name:
         return "client1"
@@ -658,6 +962,8 @@ def _public_base_url_from_request(request: Optional[Request]) -> Optional[str]:
 def _resolve_ssh_payload(
     ssh_payload: Optional[SSHPayload],
     session_id: Optional[str],
+    saved_server_id: Optional[str] = None,
+    request: Optional[Request] = None,
 ) -> SSHPayload:
     if ssh_payload is not None:
         return ssh_payload
@@ -666,6 +972,24 @@ def _resolve_ssh_payload(
         if session_ssh is not None:
             return session_ssh
         raise RuntimeError("Session expired. Please log in again.")
+    if saved_server_id:
+        if request is None:
+            raise RuntimeError("Saved server access requires an authenticated request.")
+        account = _current_account(request, required=True)
+        assert account is not None
+        creds = _account_store().resolve_server_credentials(
+            user_id=account["user"]["id"],
+            server_id=saved_server_id,
+            require_pin_unlocked=True,
+            auth_session_id=account["session_id"],
+        )
+        return SSHPayload(
+            host=creds["host"],
+            user=creds["user"],
+            port=creds["port"],
+            password=creds.get("password"),
+            key_content=creds.get("key_content"),
+        )
     raise RuntimeError("SSH credentials are required.")
 
 
@@ -673,9 +997,11 @@ def _resolve_ssh_payload(
 def _ssh_connection(
     ssh_payload: Optional[SSHPayload],
     session_id: Optional[str] = None,
+    saved_server_id: Optional[str] = None,
+    request: Optional[Request] = None,
     logger: Optional[Callable[[str], None]] = None,
 ):
-    resolved = _resolve_ssh_payload(ssh_payload, session_id)
+    resolved = _resolve_ssh_payload(ssh_payload, session_id, saved_server_id, request)
     temp_key = TempKey()
     key_path = resolved.key_path
     if resolved.key_content:
@@ -693,6 +1019,42 @@ def _ssh_connection(
             yield ssh, resolved
     finally:
         temp_key.cleanup()
+
+
+def _materialize_saved_server(payload: BaseModel, request: Request) -> BaseModel:
+    saved_server_id = getattr(payload, "saved_server_id", None)
+    if not saved_server_id:
+        return payload
+    account = _current_account(request, required=True)
+    assert account is not None
+    creds = _account_store().resolve_server_credentials(
+        user_id=account["user"]["id"],
+        server_id=saved_server_id,
+        require_pin_unlocked=True,
+        auth_session_id=account["session_id"],
+    )
+    _account_store().touch_server(account["user"]["id"], saved_server_id)
+    updated = payload.model_dump()
+    updated["ssh"] = {
+        "host": creds["host"],
+        "user": creds["user"],
+        "port": creds["port"],
+        "password": creds.get("password"),
+        "key_content": creds.get("key_content"),
+    }
+    updated["saved_server_id"] = None
+    if "protocol" in updated and not updated.get("protocol") and creds.get("mode"):
+        updated["protocol"] = creds["mode"]
+    if "listen_port" in updated and not updated.get("listen_port") and creds.get("listen_port"):
+        updated["listen_port"] = creds["listen_port"]
+    if "options" in updated and isinstance(updated["options"], dict):
+        if not updated["options"].get("protocol") and creds.get("mode"):
+            updated["options"]["protocol"] = creds["mode"]
+        if not updated["options"].get("listen_port") and creds.get("listen_port"):
+            updated["options"]["listen_port"] = creds["listen_port"]
+        if not updated["options"].get("proxy_sni") and creds.get("proxy_sni"):
+            updated["options"]["proxy_sni"] = creds["proxy_sni"]
+    return payload.__class__(**updated)
 
 
 def _run_provision(job_id: str, payload: ProvisionRequest, public_base_url: Optional[str] = None) -> None:
@@ -933,6 +1295,7 @@ async def session_revoke(payload: SessionRevokeRequest) -> RollbackResponse:
 
 @app.post("/api/provision", response_model=JobCreateResponse)
 async def provision(payload: ProvisionRequest, background_tasks: BackgroundTasks, request: Request) -> JobCreateResponse:
+    payload = _materialize_saved_server(payload, request)
     job = JOB_STORE.create()
     background_tasks.add_task(_run_provision, job.job_id, payload, _public_base_url_from_request(request))
     return JobCreateResponse(job_id=job.job_id)
@@ -1005,9 +1368,10 @@ def download_qr(download_id: str) -> Response:
 
 
 @app.post("/api/rollback", response_model=RollbackResponse)
-async def rollback(payload: RollbackRequest) -> RollbackResponse:
+async def rollback(payload: RollbackRequest, request: Request) -> RollbackResponse:
     try:
-        with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
+        payload = _materialize_saved_server(payload, request)
+        with _ssh_connection(payload.ssh, payload.session_id, request=request) as (ssh, _resolved):
             prov = WireGuardProvisioner(ssh)
             backup = prov.rollback_last_backup()
         if not backup:
@@ -1018,9 +1382,10 @@ async def rollback(payload: RollbackRequest) -> RollbackResponse:
 
 
 @app.post("/api/clients/list", response_model=ClientListResponse)
-async def client_list(payload: RollbackRequest) -> ClientListResponse:
+async def client_list(payload: RollbackRequest, request: Request) -> ClientListResponse:
     try:
-        with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
+        payload = _materialize_saved_server(payload, request)
+        with _ssh_connection(payload.ssh, payload.session_id, request=request) as (ssh, _resolved):
             if payload.protocol == "vless_reality":
                 proxy = ProxyProvisioner(ssh)
                 clients = proxy.list_clients()
@@ -1038,7 +1403,8 @@ async def client_list(payload: RollbackRequest) -> ClientListResponse:
 @app.post("/api/clients/add", response_model=ClientAddResponse)
 async def client_add(payload: ClientRequest, request: Request) -> ClientAddResponse:
     try:
-        with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
+        payload = _materialize_saved_server(payload, request)
+        with _ssh_connection(payload.ssh, payload.session_id, request=request) as (ssh, _resolved):
             if payload.protocol == "vless_reality":
                 proxy = ProxyProvisioner(ssh)
                 result = proxy.add_client(payload.client_name or "client1")
@@ -1111,9 +1477,10 @@ async def client_add(payload: ClientRequest, request: Request) -> ClientAddRespo
 
 
 @app.post("/api/clients/remove", response_model=RollbackResponse)
-async def client_remove(payload: ClientRemoveRequest) -> RollbackResponse:
+async def client_remove(payload: ClientRemoveRequest, request: Request) -> RollbackResponse:
     try:
-        with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
+        payload = _materialize_saved_server(payload, request)
+        with _ssh_connection(payload.ssh, payload.session_id, request=request) as (ssh, _resolved):
             if payload.protocol == "vless_reality":
                 proxy = ProxyProvisioner(ssh)
                 ok = proxy.remove_client(payload.client_name)
@@ -1131,11 +1498,12 @@ async def client_remove(payload: ClientRemoveRequest) -> RollbackResponse:
 
 
 @app.post("/api/clients/rotate", response_model=ClientAddResponse)
-async def client_rotate(payload: ClientRemoveRequest) -> ClientAddResponse:
+async def client_rotate(payload: ClientRemoveRequest, request: Request) -> ClientAddResponse:
     try:
         if payload.protocol in {"vless_reality", "shadowtls_ss"}:
             return ClientAddResponse(ok=False, error="Rotate is not supported for proxy profiles.")
-        with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
+        payload = _materialize_saved_server(payload, request)
+        with _ssh_connection(payload.ssh, payload.session_id, request=request) as (ssh, _resolved):
             prov_kwargs = {}
             if payload.listen_port:
                 prov_kwargs["listen_port"] = payload.listen_port
@@ -1160,7 +1528,8 @@ async def client_rotate(payload: ClientRemoveRequest) -> ClientAddResponse:
 @app.post("/api/clients/export", response_model=ClientExportResponse)
 async def client_export(payload: ClientRemoveRequest, request: Request) -> ClientExportResponse:
     try:
-        with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
+        payload = _materialize_saved_server(payload, request)
+        with _ssh_connection(payload.ssh, payload.session_id, request=request) as (ssh, _resolved):
             if payload.protocol == "vless_reality":
                 proxy = ProxyProvisioner(ssh)
                 result = proxy.export_client(payload.client_name)
@@ -1310,9 +1679,10 @@ def _detect_server_status(ssh: SSHRunner) -> dict:
     }
 
 @app.post("/api/logs", response_model=LogsResponse)
-async def get_logs(payload: RollbackRequest) -> LogsResponse:
+async def get_logs(payload: RollbackRequest, request: Request) -> LogsResponse:
     try:
-        with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
+        payload = _materialize_saved_server(payload, request)
+        with _ssh_connection(payload.ssh, payload.session_id, request=request) as (ssh, _resolved):
             prov = WireGuardProvisioner(ssh)
             report = prov.get_system_report()
         return LogsResponse(ok=True, logs=report)
@@ -1321,9 +1691,10 @@ async def get_logs(payload: RollbackRequest) -> LogsResponse:
 
 
 @app.post("/api/server/status", response_model=ServerStatusResponse)
-async def server_status(payload: RollbackRequest) -> ServerStatusResponse:
+async def server_status(payload: RollbackRequest, request: Request) -> ServerStatusResponse:
     try:
-        with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
+        payload = _materialize_saved_server(payload, request)
+        with _ssh_connection(payload.ssh, payload.session_id, request=request) as (ssh, _resolved):
             if payload.protocol == "vless_reality":
                 status = ProxyProvisioner(ssh).detect_status()
             elif payload.protocol == "shadowtls_ss":
@@ -1355,9 +1726,10 @@ async def server_status(payload: RollbackRequest) -> ServerStatusResponse:
 
 
 @app.post("/api/server/precheck", response_model=PrecheckResponse)
-async def server_precheck(payload: ProvisionRequest) -> PrecheckResponse:
+async def server_precheck(payload: ProvisionRequest, request: Request) -> PrecheckResponse:
     try:
-        with _ssh_connection(payload.ssh, payload.session_id) as (ssh, _resolved):
+        payload = _materialize_saved_server(payload, request)
+        with _ssh_connection(payload.ssh, payload.session_id, request=request) as (ssh, _resolved):
             opts = payload.options
             if opts.protocol == "vless_reality":
                 proxy = ProxyProvisioner(ssh)
@@ -1423,7 +1795,8 @@ async def server_precheck(payload: ProvisionRequest) -> PrecheckResponse:
 
 
 @app.post("/api/repair", response_model=JobCreateResponse)
-async def run_repair(payload: RollbackRequest, background_tasks: BackgroundTasks) -> JobCreateResponse:
+async def run_repair(payload: RollbackRequest, background_tasks: BackgroundTasks, request: Request) -> JobCreateResponse:
+    payload = _materialize_saved_server(payload, request)
     job = JOB_STORE.create()
 
     def _do_repair(job_id: str, payload: RollbackRequest):

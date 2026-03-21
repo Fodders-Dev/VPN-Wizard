@@ -8,7 +8,7 @@
 ## Run
 ```
 $env:VPNW_BOT_TOKEN="YOUR_TOKEN"
-$env:VPNW_MINIAPP_URL="https://your-domain/miniapp"
+$env:VPNW_MINIAPP_URL="https://vpn-wizard-production.up.railway.app/miniapp/"
 python -m vpn_wizard.server
 python -m vpn_wizard.tg_bot
 ```
@@ -16,6 +16,7 @@ python -m vpn_wizard.tg_bot
 ## Notes
 - The miniapp is just a web UI, it calls the API server to do SSH provisioning.
 - If you only want the bot wizard, you can skip the server.
+- Telegram production path should point to the Railway-hosted miniapp so UI and API stay on the same origin.
 - If miniapp is hosted separately (Vercel), set `window.API_BASE` in `web/miniapp/config.js`.
 - Enable CORS with `VPNW_CORS_ORIGINS="https://your-miniapp-domain"`.
 - You can also set the API on the fly via `?api=https://your-api-domain` in the miniapp URL.

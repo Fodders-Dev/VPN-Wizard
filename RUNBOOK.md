@@ -79,14 +79,14 @@ $env:VPNW_SSH_DISCOVERY_TIMEOUT="1.8"
 ## Single Railway service (API + bot in one)
 ```
 $env:VPNW_BOT_TOKEN="YOUR_TOKEN"
-$env:VPNW_MINIAPP_URL="https://your-miniapp/?api=https://your-api"
+$env:VPNW_MINIAPP_URL="https://vpn-wizard-production.up.railway.app/miniapp/"
 python -m vpn_wizard.combined
 ```
 
 ## Telegram bot
 ```
 $env:VPNW_BOT_TOKEN="YOUR_TOKEN"
-$env:VPNW_MINIAPP_URL="https://your-domain/miniapp"
+$env:VPNW_MINIAPP_URL="https://vpn-wizard-production.up.railway.app/miniapp/"
 python -m vpn_wizard.tg_bot
 ```
 Commands: `/start`, `/help`, `/miniapp`, `/cancel`.
@@ -125,6 +125,7 @@ Client config expectations:
 - Telegram miniapp requires a public HTTPS URL configured in BotFather.
 - В Telegram WebApp скачивание конфигов/QR идет через data: ссылки (если загрузка не стартует, нажмите еще раз или используйте десктоп).
 - В расширенных полях миниаппа есть безопасный режим (только проверка/precheck) — он не меняет сервер.
+- Prefer the Railway-hosted miniapp in production so the Telegram WebApp and API share one origin.
 - For cross-origin miniapp, set `VPNW_CORS_ORIGINS="https://your-miniapp-domain"` before running the API server.
 - For miniapp "remember login", backend keeps temporary SSH sessions in memory (`VPNW_SESSION_TTL_SECONDS`, `VPNW_SESSION_LIMIT`).
 - Set `window.API_BASE` in `web/miniapp/config.js` to your API server URL when hosting separately.

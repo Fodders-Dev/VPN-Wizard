@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 import tempfile
 from typing import Optional, Tuple
-from urllib.parse import urlparse
 
 from telegram import KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, Update, WebAppInfo
 from telegram.ext import (
@@ -20,16 +19,12 @@ from telegram.ext import (
 import qrcode
 
 from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
+from vpn_wizard.urls import CANONICAL_MINIAPP_URL, resolve_public_miniapp_url
 
 
 STATE_HOST, STATE_USER, STATE_AUTH, STATE_PASSWORD, STATE_KEY, STATE_PORT = range(6)
 DEFAULT_PORT = 3478
 REQUIRED_CHANNEL = os.getenv("VPNW_REQUIRED_CHANNEL", "@fodders_dev")
-DEFAULT_API_BASE = os.getenv("VPNW_PUBLIC_API_URL", "https://vpn-wizard-production.up.railway.app")
-DEFAULT_MINIAPP_URL = os.getenv(
-    "VPNW_DEFAULT_MINIAPP_URL",
-    f"https://vpn-wizard-xh4p.vercel.app/?api={DEFAULT_API_BASE}",
-)
 
 I18N = {
     "ru": {
@@ -162,19 +157,6 @@ def _channel_link() -> str:
         return f"https://t.me/{channel}"
     return ""
 
-def _resolve_miniapp_url() -> Optional[str]:
-    preferred = (os.getenv("VPNW_PUBLIC_MINIAPP_URL") or "").strip()
-    if preferred:
-        return preferred
-    configured = (os.getenv("VPNW_MINIAPP_URL") or "").strip()
-    if configured:
-        parsed = urlparse(configured)
-        path = (parsed.path or "").rstrip("/")
-        if configured.startswith("/miniapp") or path == "/miniapp":
-            return DEFAULT_MINIAPP_URL
-        return configured
-    return DEFAULT_MINIAPP_URL
-
 def _build_miniapp_keyboard(url: Optional[str], update: Update) -> Optional[ReplyKeyboardMarkup]:
     if not url:
         return None
@@ -183,11 +165,15 @@ def _build_miniapp_keyboard(url: Optional[str], update: Update) -> Optional[Repl
         resize_keyboard=True,
     )
 
+
+def _miniapp_url() -> str:
+    return resolve_public_miniapp_url(os.getenv("VPNW_MINIAPP_URL") or CANONICAL_MINIAPP_URL)
+
 async def _send_miniapp_intro(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
     if not message:
         return
-    url = _resolve_miniapp_url()
+    url = _miniapp_url()
     keyboard = _build_miniapp_keyboard(url, update)
     await message.reply_text(
         _t(update, "start"),
@@ -413,7 +399,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def miniapp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _require_subscription(update, context):
         return
-    url = _resolve_miniapp_url()
+    url = _miniapp_url()
     if not url:
         await update.message.reply_text(_t(update, "miniapp_missing"))
         return
@@ -424,7 +410,7 @@ async def miniapp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _require_subscription(update, context):
         return
-    keyboard = _build_miniapp_keyboard(_resolve_miniapp_url(), update)
+    keyboard = _build_miniapp_keyboard(_miniapp_url(), update)
     await update.message.reply_text(_t(update, "help"), reply_markup=keyboard or ReplyKeyboardRemove())
 
 
@@ -434,7 +420,7 @@ async def fallback_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     message = update.effective_message
     if not message:
         return
-    keyboard = _build_miniapp_keyboard(_resolve_miniapp_url(), update)
+    keyboard = _build_miniapp_keyboard(_miniapp_url(), update)
     await message.reply_text(_t(update, "bot_use_miniapp"), reply_markup=keyboard or ReplyKeyboardRemove())
 
 
