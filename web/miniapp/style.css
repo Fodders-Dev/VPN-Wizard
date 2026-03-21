@@ -714,20 +714,37 @@ textarea {
   gap: 10px;
 }
 
+.inline-result-head {
+  display: flex;
+  align-items: center;
+}
+
+.inline-result-title {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(19, 104, 255, 0.12);
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .result-layout {
   display: grid;
-  grid-template-columns: 112px 1fr;
-  gap: 12px;
+  grid-template-columns: 152px 1fr;
+  gap: 14px;
   align-items: start;
 }
 
 .inline-qr {
-  width: 112px;
-  height: 112px;
-  border-radius: 20px;
+  width: 152px;
+  height: 152px;
+  border-radius: 22px;
   background: white;
   object-fit: contain;
-  padding: 10px;
+  padding: 12px;
+  box-shadow: 0 12px 24px rgba(77, 101, 143, 0.14);
 }
 
 .inline-actions {
@@ -741,6 +758,14 @@ textarea {
   font-family: "JetBrains Mono", monospace;
   font-size: 12px;
   line-height: 1.4;
+}
+
+.client-card.result-emphasis {
+  border-color: rgba(19, 104, 255, 0.34);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 0 0 3px rgba(19, 104, 255, 0.1),
+    0 18px 32px rgba(19, 104, 255, 0.16);
 }
 
 .settings-card {

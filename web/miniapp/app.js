@@ -139,10 +139,12 @@ const COPY = {
     clientNone: "Пока профилей нет.",
     clientOpen: "Открыть",
     clientHide: "Скрыть",
-    clientCopy: "Скопировать",
-    clientDownload: "Скачать",
-    clientRotate: "Перевыпустить",
-    clientRemove: "Удалить",
+  clientCopy: "Скопировать",
+  clientDownload: "Скачать",
+  clientDownloadQr: "Скачать QR",
+  clientRotate: "Перевыпустить",
+  clientRemove: "Удалить",
+  clientReady: "Профиль готов",
     savedServerUse: "Открыть",
     savedServerDelete: "Удалить",
     savedServerSaved: "Сохранён",
@@ -224,10 +226,12 @@ const COPY = {
     clientNone: "No profiles yet.",
     clientOpen: "Open",
     clientHide: "Hide",
-    clientCopy: "Copy",
-    clientDownload: "Download",
-    clientRotate: "Rotate",
-    clientRemove: "Delete",
+  clientCopy: "Copy",
+  clientDownload: "Download",
+  clientDownloadQr: "Download QR",
+  clientRotate: "Rotate",
+  clientRemove: "Delete",
+  clientReady: "Profile ready",
     savedServerUse: "Open",
     savedServerDelete: "Delete",
     savedServerSaved: "Saved",
@@ -276,6 +280,7 @@ const STATE = {
   helpTimer: null,
   confirmResolver: null,
   debugLog: [],
+  pendingClientFocus: null,
   settings: loadSettings(),
 };
 
@@ -458,6 +463,33 @@ function makeQrDataUrl(base64Value) {
 
 function makeDownloadUrl(downloadId) {
   return downloadId ? `${STATE.apiBase}/api/download/${downloadId}/config` : null;
+}
+
+function makeQrDownloadUrl(downloadId) {
+  return downloadId ? `${STATE.apiBase}/api/download/${downloadId}/qr` : null;
+}
+
+function applyClientResult(name, result) {
+  const downloadId = result.download_id || result.auto_download_id || null;
+  STATE.clientResults[name] = {
+    primaryText: result.config || "",
+    autoText: result.auto_config || "",
+    qrUrl: makeQrDataUrl(result.qr_png_base64),
+    downloadUrl: makeDownloadUrl(downloadId),
+    qrDownloadUrl: makeQrDownloadUrl(downloadId),
+  };
+  STATE.pendingClientFocus = name;
+}
+
+function focusClientResultIfNeeded() {
+  const clientName = STATE.pendingClientFocus;
+  if (!clientName) return;
+  const card = Array.from(refs.clientsList.querySelectorAll("[data-client-card]")).find((node) => node.dataset.clientCard === clientName);
+  if (!card) return;
+  STATE.pendingClientFocus = null;
+  card.classList.add("result-emphasis");
+  card.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  setTimeout(() => card.classList.remove("result-emphasis"), 1800);
 }
 
 function classifyError(error) {
@@ -663,10 +695,14 @@ function renderClients() {
     if (client.transfer) meta.push(`<span class="meta-pill">${escapeHtml(client.transfer)}</span>`);
     const inline = result ? `
       <div class="client-inline">
+        <div class="inline-result-head">
+          <div class="inline-result-title">${t("clientReady")}</div>
+        </div>
         <div class="result-layout">
           ${result.qrUrl ? `<img class="inline-qr" src="${result.qrUrl}" alt="QR" />` : '<div class="meta-pill">QR</div>'}
           <div class="inline-actions">
             ${result.downloadUrl ? `<button type="button" class="tiny-btn" data-download="${result.downloadUrl}">${t("clientDownload")}</button>` : ""}
+            ${result.qrDownloadUrl ? `<button type="button" class="tiny-btn" data-download-qr="${result.qrDownloadUrl}">${t("clientDownloadQr")}</button>` : ""}
             <button type="button" class="tiny-btn" data-copy-client="${client.name}">${t("clientCopy")}</button>
           </div>
         </div>
@@ -676,6 +712,7 @@ function renderClients() {
     const rotate = isProxyMode() ? "" : `<button type="button" class="tiny-btn" data-client-rotate="${client.name}">${t("clientRotate")}</button>`;
     const card = document.createElement("article");
     card.className = "client-card";
+    card.dataset.clientCard = client.name;
     card.innerHTML = `
       <div class="client-top">
         <div>
@@ -776,6 +813,7 @@ function renderAll() {
   refs.navButtons.forEach((node) => node.classList.toggle("active", node.dataset.pageTarget === STATE.page));
   refs.pageNodes.forEach((node) => node.classList.toggle("active", node.dataset.page === STATE.page));
   renderDebugLog();
+  focusClientResultIfNeeded();
 }
 
 function setupTelegramChrome() {
@@ -956,12 +994,7 @@ async function pollJob(jobId, fallbackName) {
     if (job.status === "done") {
       const result = await fetchJson(`/api/jobs/${jobId}/result`);
       const name = result.client_name || fallbackName || "client1";
-      STATE.clientResults[name] = {
-        primaryText: result.config || "",
-        autoText: result.auto_config || "",
-        qrUrl: makeQrDataUrl(result.qr_png_base64),
-        downloadUrl: makeDownloadUrl(result.download_id || result.auto_download_id),
-      };
+      applyClientResult(name, result);
       return;
     }
     renderConnectStatus("busy", t("setupBusy"), (job.progress || []).slice(-1)[0] || t("connectBusyBody"));
@@ -1020,14 +1053,10 @@ async function addProfile() {
       }),
     });
     if (!result.ok) throw new Error(result.error || "Could not add profile");
-    STATE.clientResults[result.client_name || clientName] = {
-      primaryText: result.config || "",
-      autoText: result.auto_config || "",
-      qrUrl: makeQrDataUrl(result.qr_png_base64),
-      downloadUrl: makeDownloadUrl(result.download_id || result.auto_download_id),
-    };
+    applyClientResult(result.client_name || clientName, result);
     refs.profileName.value = "";
     await refreshClients();
+    setPage("profiles");
   } catch (error) {
     const info = classifyError(error);
     if (info.type === "api") showTransportDiagnostics(STATE.apiBase);
@@ -1054,12 +1083,7 @@ async function toggleClientInline(clientName) {
       }),
     });
     if (!result.ok) throw new Error(result.error || "Export failed");
-    STATE.clientResults[clientName] = {
-      primaryText: result.config || "",
-      autoText: result.auto_config || "",
-      qrUrl: makeQrDataUrl(result.qr_png_base64),
-      downloadUrl: makeDownloadUrl(result.download_id || result.auto_download_id),
-    };
+    applyClientResult(clientName, result);
   } catch (error) {
     const info = classifyError(error);
     if (info.type === "api") showTransportDiagnostics(STATE.apiBase);
@@ -1097,12 +1121,7 @@ async function rotateClient(clientName) {
       }),
     });
     if (!result.ok) throw new Error(result.error || "Rotate failed");
-    STATE.clientResults[clientName] = {
-      primaryText: result.config || "",
-      autoText: result.auto_config || "",
-      qrUrl: makeQrDataUrl(result.qr_png_base64),
-      downloadUrl: makeDownloadUrl(result.download_id || result.auto_download_id),
-    };
+    applyClientResult(clientName, result);
     await refreshClients();
   } catch (error) {
     const info = classifyError(error);
@@ -1418,6 +1437,8 @@ function bindEvents() {
     if (copyBtn) return copyText((STATE.clientResults[copyBtn.dataset.copyClient]?.primaryText || STATE.clientResults[copyBtn.dataset.copyClient]?.autoText || ""));
     const downloadBtn = event.target.closest("[data-download]");
     if (downloadBtn) openExternal(downloadBtn.dataset.download);
+    const downloadQrBtn = event.target.closest("[data-download-qr]");
+    if (downloadQrBtn) openExternal(downloadQrBtn.dataset.downloadQr);
   });
 }
 
