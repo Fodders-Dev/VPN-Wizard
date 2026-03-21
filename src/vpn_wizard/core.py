@@ -70,14 +70,28 @@ class SSHRunner:
                     client.close()
                 except Exception:
                     pass
-                message = str(exc).lower()
-                banner_issue = "ssh protocol banner" in message or "banner timeout" in message
-                if attempt >= attempts or not banner_issue:
+                if attempt >= attempts or not self._is_retryable_connect_error(exc):
                     raise
-                self.log(f"SSH banner read failed, retrying ({attempt}/{attempts})...")
+                self.log(f"SSH handshake failed, retrying ({attempt}/{attempts})...")
                 time.sleep(max(0.0, self.config.connect_retry_delay))
         if last_error is not None:
             raise last_error
+
+    def _is_retryable_connect_error(self, exc: Exception) -> bool:
+        if isinstance(exc, EOFError):
+            return True
+        message = str(exc).lower()
+        return any(
+            marker in message
+            for marker in (
+                "ssh protocol banner",
+                "banner timeout",
+                "connection closed by remote host",
+                "connection reset by peer",
+                "connection reset",
+                "error reading ssh protocol banner",
+            )
+        )
 
     def close(self) -> None:
         if self.client:
