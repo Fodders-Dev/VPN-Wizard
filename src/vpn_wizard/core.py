@@ -1020,6 +1020,12 @@ class WireGuardProvisioner:
                 conf = self.ssh.run(
                     f"cat {clients_dir}/{name}.conf", sudo=True, check=False, pty=False
                 )
+                stamp_raw = self.ssh.run(
+                    f"stat -c '%W|%Y' {clients_dir}/{name}.conf 2>/dev/null || true",
+                    sudo=True,
+                    check=False,
+                    pty=False,
+                ).strip()
                 pub = self.ssh.run(
                     f"cat {clients_dir}/{name}.pub", sudo=True, check=False, pty=False
                 ).strip()
@@ -1028,6 +1034,18 @@ class WireGuardProvisioner:
                     if line.startswith("Address"):
                         ip = line.split("=", 1)[1].strip()
                         break
+                created_at = None
+                updated_at = None
+                if stamp_raw:
+                    created_raw, _, updated_raw = stamp_raw.partition("|")
+                    if created_raw.lstrip("-").isdigit():
+                        created_value = int(created_raw)
+                        created_at = created_value if created_value > 0 else None
+                    if updated_raw.lstrip("-").isdigit():
+                        updated_value = int(updated_raw)
+                        updated_at = updated_value if updated_value > 0 else None
+                    if created_at is None:
+                        created_at = updated_at
                 stats = stats_by_iface.get(iface, {}).get(pub, {})
                 clients.append(
                     {
@@ -1039,6 +1057,8 @@ class WireGuardProvisioner:
                         "transfer_rx": stats.get("transfer_rx"),
                         "transfer_tx": stats.get("transfer_tx"),
                         "interface": iface,
+                        "created_at": created_at,
+                        "updated_at": updated_at,
                     }
                 )
         return clients

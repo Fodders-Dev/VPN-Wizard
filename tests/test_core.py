@@ -9,7 +9,7 @@ class FakeSSH:
         self.commands: list[tuple[str, bool, bool]] = []
         self.config = SSHConfig(host="example.com", user="root", password=password)
 
-    def run(self, command: str, sudo: bool = False, check: bool = True) -> str:
+    def run(self, command: str, sudo: bool = False, check: bool = True, pty: bool = True) -> str:
         self.commands.append((command, sudo, check))
         for key, value in self.responses.items():
             if key in command:
@@ -22,7 +22,7 @@ class MtuSSH(FakeSSH):
         super().__init__()
         self.max_payload = max_payload
 
-    def run(self, command: str, sudo: bool = False, check: bool = True) -> str:
+    def run(self, command: str, sudo: bool = False, check: bool = True, pty: bool = True) -> str:
         self.commands.append((command, sudo, check))
         if "command -v ping" in command:
             return "ok"
@@ -135,3 +135,20 @@ def test_precheck_passes_on_supported_os() -> None:
     checks = prov.pre_check()
     assert any(item.get("name") == "os_supported" and item.get("ok") for item in checks)
     assert any(item.get("name") == "port_available" and item.get("ok") for item in checks)
+
+
+def test_list_clients_includes_file_timestamps() -> None:
+    ssh = FakeSSH(
+        {
+            "ls /etc/wireguard/clients/*.conf": "/etc/wireguard/clients/alice.conf\n",
+            "cat /etc/wireguard/clients/alice.conf": "[Interface]\nAddress = 10.10.0.2/32\n",
+            "stat -c '%W|%Y' /etc/wireguard/clients/alice.conf": "1710000000|1710001234",
+            "cat /etc/wireguard/clients/alice.pub": "PUBKEY",
+            "wg show wg0": "",
+        }
+    )
+    prov = WireGuardProvisioner(ssh, protocol="wireguard")
+    clients = prov.list_clients()
+    assert clients[0]["name"] == "alice"
+    assert clients[0]["created_at"] == 1710000000
+    assert clients[0]["updated_at"] == 1710001234

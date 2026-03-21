@@ -195,7 +195,14 @@
                 <div class="eyebrow" id="clients-eyebrow">Профили</div>
                 <h2 class="card-title" id="clients-title">Все под рукой</h2>
               </div>
-              <div class="list-meta" id="profiles-meta"></div>
+              <div class="list-side">
+                <div class="method-switch compact-switch" role="group" aria-label="Profile sort">
+                  <button type="button" class="method-pill static-pill" data-client-sort="updated">Новые</button>
+                  <button type="button" class="method-pill static-pill" data-client-sort="created">Создан</button>
+                  <button type="button" class="method-pill static-pill" data-client-sort="alpha">A-Z</button>
+                </div>
+                <div class="list-meta" id="profiles-meta"></div>
+              </div>
             </div>
             <div class="list-scroll" id="clients-list"></div>
           </section>

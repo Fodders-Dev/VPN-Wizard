@@ -4,6 +4,7 @@ const API_OVERRIDE_KEY = "vpnw_api_base";
 const LANG_KEY = "vpnw_lang";
 const SETTINGS_KEY = "vpnw_settings_v3";
 const PAGE_KEY = "vpnw_page_v3";
+const CLIENT_SORT_KEY = "vpnw_client_sort_v1";
 const tg = window.Telegram?.WebApp || null;
 const PROXY_MODES = new Set(["shadowtls_ss", "vless_reality"]);
 const DEBUG_LOG_LIMIT = 60;
@@ -76,6 +77,7 @@ const refs = {
   helpPopover: document.getElementById("help-popover"),
   pageNodes: Array.from(document.querySelectorAll(".page")),
   navButtons: Array.from(document.querySelectorAll(".nav-btn")),
+  clientSortButtons: Array.from(document.querySelectorAll("[data-client-sort]")),
   confirmModal: document.getElementById("confirm-modal"),
   confirmTitle: document.getElementById("confirm-title"),
   confirmBody: document.getElementById("confirm-body"),
@@ -140,11 +142,14 @@ const COPY = {
     clientOpen: "Открыть",
     clientHide: "Скрыть",
   clientCopy: "Скопировать",
-  clientDownload: "Скачать",
-  clientDownloadQr: "Скачать QR",
-  clientRotate: "Перевыпустить",
-  clientRemove: "Удалить",
-  clientReady: "Профиль готов",
+    clientDownload: "Скачать",
+    clientDownloadQr: "Скачать QR",
+    clientRotate: "Перевыпустить",
+    clientRemove: "Удалить",
+    clientReady: "Профиль готов",
+    sortUpdated: "Новые",
+    sortCreated: "Создан",
+    sortAlpha: "A-Z",
     savedServerUse: "Открыть",
     savedServerDelete: "Удалить",
     savedServerSaved: "Сохранён",
@@ -227,11 +232,14 @@ const COPY = {
     clientOpen: "Open",
     clientHide: "Hide",
   clientCopy: "Copy",
-  clientDownload: "Download",
-  clientDownloadQr: "Download QR",
-  clientRotate: "Rotate",
-  clientRemove: "Delete",
-  clientReady: "Profile ready",
+    clientDownload: "Download",
+    clientDownloadQr: "Download QR",
+    clientRotate: "Rotate",
+    clientRemove: "Delete",
+    clientReady: "Profile ready",
+    sortUpdated: "Updated",
+    sortCreated: "Created",
+    sortAlpha: "A-Z",
     savedServerUse: "Open",
     savedServerDelete: "Delete",
     savedServerSaved: "Saved",
@@ -275,6 +283,7 @@ const STATE = {
   serverInfo: null,
   clients: [],
   clientsLoading: false,
+  clientSort: localStorage.getItem(CLIENT_SORT_KEY) || "updated",
   clientResults: {},
   retryAction: null,
   helpTimer: null,
@@ -622,6 +631,29 @@ function activeServerLabel() {
   return t("profilesNoServer");
 }
 
+function sortClients(clients) {
+  const list = [...clients];
+  if (STATE.clientSort === "alpha") {
+    list.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), STATE.lang === "ru" ? "ru" : "en", { sensitivity: "base" }));
+    return list;
+  }
+  if (STATE.clientSort === "created") {
+    list.sort((a, b) => (Number(b.created_at || 0) - Number(a.created_at || 0)) || String(a.name || "").localeCompare(String(b.name || ""), "en", { sensitivity: "base" }));
+    return list;
+  }
+  list.sort((a, b) => (Number(b.updated_at || b.created_at || 0) - Number(a.updated_at || a.created_at || 0)) || String(a.name || "").localeCompare(String(b.name || ""), "en", { sensitivity: "base" }));
+  return list;
+}
+
+function upsertClientLocal(nextClient) {
+  const existingIndex = STATE.clients.findIndex((item) => item.name === nextClient.name);
+  if (existingIndex >= 0) {
+    STATE.clients[existingIndex] = { ...STATE.clients[existingIndex], ...nextClient };
+    return;
+  }
+  STATE.clients = [...STATE.clients, nextClient];
+}
+
 function renderServerPicker() {
   refs.serverPicker.innerHTML = "";
   STATE.savedServers.forEach((server) => {
@@ -686,7 +718,7 @@ function renderClients() {
     refs.clientsList.innerHTML = `<div class="empty-card"><div class="empty-copy">${t("clientNone")}</div></div>`;
     return;
   }
-  STATE.clients.forEach((client) => {
+  sortClients(STATE.clients).forEach((client) => {
     const result = STATE.clientResults[client.name];
     const meta = [];
     if (client.interface) meta.push(`<span class="meta-pill">${escapeHtml(client.interface)}</span>`);
@@ -774,6 +806,13 @@ function renderAll() {
   document.getElementById("pin-enabled-copy").textContent = STATE.lang === "ru" ? "Запрашивать PIN перед доступом к сохранённым серверам" : "Require a PIN before opening saved servers";
   document.getElementById("saved-servers-eyebrow").textContent = STATE.lang === "ru" ? "Сохранённые серверы" : "Saved servers";
   document.getElementById("saved-servers-title").textContent = STATE.lang === "ru" ? "Выбор в один тап" : "One-tap picker";
+  refs.clientSortButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.clientSort === STATE.clientSort);
+    button.textContent =
+      button.dataset.clientSort === "alpha" ? t("sortAlpha") :
+      button.dataset.clientSort === "created" ? t("sortCreated") :
+      t("sortUpdated");
+  });
   document.getElementById("debug-label").textContent = t("debugLabel");
   document.getElementById("debug-copy").textContent = t("debugCopy");
   document.getElementById("nav-connect-label").textContent = STATE.lang === "ru" ? "Подключение" : "Connect";
@@ -961,13 +1000,14 @@ async function activateSavedServer(serverId) {
   }
 }
 
-async function refreshClients() {
+async function refreshClients(options = {}) {
+  const silent = Boolean(options.silent);
   if (!STATE.activeTarget || !STATE.serverConfigured) {
     STATE.clients = [];
     renderAll();
     return;
   }
-  STATE.clientsLoading = true;
+  STATE.clientsLoading = !silent;
   renderAll();
   try {
     const result = await fetchJson("/api/clients/list", {
@@ -1054,9 +1094,17 @@ async function addProfile() {
     });
     if (!result.ok) throw new Error(result.error || "Could not add profile");
     applyClientResult(result.client_name || clientName, result);
+    upsertClientLocal({
+      name: result.client_name || clientName,
+      ip: result.client_ip || "",
+      interface: result.interface || (selectedMode() === "amneziawg" ? "awg0" : selectedMode()),
+      created_at: Math.floor(Date.now() / 1000),
+      updated_at: Math.floor(Date.now() / 1000),
+    });
     refs.profileName.value = "";
-    await refreshClients();
     setPage("profiles");
+    renderAll();
+    refreshClients({ silent: true }).catch((error) => console.warn(error));
   } catch (error) {
     const info = classifyError(error);
     if (info.type === "api") showTransportDiagnostics(STATE.apiBase);
@@ -1122,7 +1170,15 @@ async function rotateClient(clientName) {
     });
     if (!result.ok) throw new Error(result.error || "Rotate failed");
     applyClientResult(clientName, result);
-    await refreshClients();
+    upsertClientLocal({
+      name: clientName,
+      ip: result.client_ip || STATE.clients.find((item) => item.name === clientName)?.ip || "",
+      interface: result.interface || STATE.clients.find((item) => item.name === clientName)?.interface || "awg0",
+      created_at: STATE.clients.find((item) => item.name === clientName)?.created_at || Math.floor(Date.now() / 1000),
+      updated_at: Math.floor(Date.now() / 1000),
+    });
+    renderAll();
+    refreshClients({ silent: true }).catch((error) => console.warn(error));
   } catch (error) {
     const info = classifyError(error);
     if (info.type === "api") showTransportDiagnostics(STATE.apiBase);
@@ -1403,6 +1459,11 @@ function bindEvents() {
     STATE.lang = button.dataset.lang || "ru";
     localStorage.setItem(LANG_KEY, STATE.lang);
     renderTelegramWidget();
+    renderAll();
+  }));
+  refs.clientSortButtons.forEach((button) => button.addEventListener("click", () => {
+    STATE.clientSort = button.dataset.clientSort || "updated";
+    localStorage.setItem(CLIENT_SORT_KEY, STATE.clientSort);
     renderAll();
   }));
   refs.sshPort.addEventListener("input", () => { STATE.settings.ssh_port = refs.sshPort.value.trim(); saveSettings(); });

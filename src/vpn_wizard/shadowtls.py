@@ -719,7 +719,7 @@ rm -rf "$tmp"
             if not isinstance(item, dict):
                 continue
             name = str(item.get("name") or "").strip() or f"client{idx + 1}"
-            result.append({"name": name, "interface": "shadowtls-ss"})
+            result.append({"name": name, "interface": "shadowtls-ss", "created_at": None, "updated_at": None})
         return result
 
     def export_client(self, client_name: str) -> dict:
