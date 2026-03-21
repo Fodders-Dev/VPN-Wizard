@@ -1109,6 +1109,258 @@ textarea {
   }
 }
 
+body.compact-height.compact-width .app-shell {
+  gap: 6px;
+  padding: 8px 8px calc(var(--nav-height) + env(safe-area-inset-bottom, 0px) + 6px);
+}
+
+body.compact-height.compact-width .page-stack {
+  gap: 6px;
+}
+
+body.compact-height.compact-width .topbar {
+  min-height: 54px;
+  padding: 10px 12px;
+}
+
+body.compact-height.compact-width #app-eyebrow,
+body.compact-height.compact-width .topbar-badge,
+body.compact-height.compact-width .version-pill {
+  display: none !important;
+}
+
+body.compact-height.compact-width .topbar-title {
+  font-size: clamp(1.28rem, 5.2vw, 1.7rem);
+}
+
+body.compact-height.compact-width .compact-card,
+body.compact-height.compact-width .connect-card,
+body.compact-height.compact-width .list-card,
+body.compact-height.compact-width .diagnostics,
+body.compact-height.compact-width .modal-card {
+  padding: 12px;
+}
+
+body.compact-height.compact-width .card-head {
+  margin-bottom: 8px;
+}
+
+body.compact-height.compact-width .card-title {
+  font-size: 1.06rem;
+}
+
+body.compact-height.compact-width .field,
+body.compact-height.compact-width .settings-block {
+  gap: 6px;
+}
+
+body.compact-height.compact-width .field-label {
+  gap: 6px;
+  font-size: 0.95rem;
+}
+
+body.compact-height.compact-width .help-btn {
+  width: 20px;
+  height: 20px;
+}
+
+body.compact-height.compact-width input,
+body.compact-height.compact-width textarea {
+  padding: 10px 12px;
+}
+
+body.compact-height.compact-width .method-switch {
+  margin: 8px 0 6px;
+  padding: 4px;
+  gap: 5px;
+}
+
+body.compact-height.compact-width .method-pill {
+  padding: 7px 11px;
+}
+
+body.compact-height.compact-width .mode-grid {
+  gap: 6px;
+  margin: 8px 0;
+}
+
+body.compact-height.compact-width .mode-card {
+  padding: 8px 10px;
+  gap: 2px;
+  border-radius: 18px;
+}
+
+body.compact-height.compact-width .mode-title {
+  font-size: 0.9rem;
+}
+
+body.compact-height.compact-width .toggle-row {
+  gap: 4px;
+  margin-top: 6px;
+}
+
+body.compact-height.compact-width .toggle {
+  gap: 8px;
+  font-size: 0.94rem;
+}
+
+body.compact-height.compact-width .toggle input {
+  width: 16px;
+  height: 16px;
+}
+
+body.compact-height.compact-width .toggle-hint {
+  display: none;
+}
+
+body.compact-height.compact-width .status-card {
+  margin-top: 8px;
+  min-height: 0;
+  padding: 8px 10px;
+}
+
+body.compact-height.compact-width .status-title {
+  font-size: 0.88rem;
+}
+
+body.compact-height.compact-width .action-row {
+  padding-top: 8px;
+}
+
+body.compact-height.compact-width .primary-btn,
+body.compact-height.compact-width .mini-btn {
+  padding: 12px 14px;
+}
+
+body.compact-height.compact-width #auth-card {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+body.compact-height.compact-width #auth-card.is-condensed .eyebrow,
+body.compact-height.compact-width #auth-card.is-condensed .auth-actions {
+  display: none;
+}
+
+body.compact-height.compact-width #auth-card.is-condensed .card-head {
+  margin-bottom: 0;
+  align-items: center;
+}
+
+body.compact-height.compact-width #auth-card.is-condensed .card-title {
+  font-size: 0.98rem;
+}
+
+body.compact-height.compact-width .bottom-nav {
+  left: 8px;
+  right: 8px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 6px);
+  padding: 6px;
+}
+
+body.compact-height.compact-width .nav-label {
+  font-size: 10px;
+}
+
+body.ultra-compact-height.compact-width {
+  --nav-height: 68px;
+}
+
+body.ultra-compact-height.compact-width .topbar {
+  min-height: 48px;
+  padding: 8px 10px;
+}
+
+body.ultra-compact-height.compact-width .topbar-title {
+  font-size: 1.16rem;
+}
+
+body.ultra-compact-height.compact-width .compact-card,
+body.ultra-compact-height.compact-width .connect-card,
+body.ultra-compact-height.compact-width .list-card,
+body.ultra-compact-height.compact-width .diagnostics {
+  padding: 10px;
+}
+
+body.ultra-compact-height.compact-width .card-head {
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+body.ultra-compact-height.compact-width .card-title {
+  font-size: 1rem;
+}
+
+body.ultra-compact-height.compact-width .field-grid,
+body.ultra-compact-height.compact-width .mode-grid {
+  gap: 5px;
+}
+
+body.ultra-compact-height.compact-width .field {
+  gap: 4px;
+}
+
+body.ultra-compact-height.compact-width .field-label {
+  font-size: 0.9rem;
+}
+
+body.ultra-compact-height.compact-width input,
+body.ultra-compact-height.compact-width textarea {
+  padding: 9px 11px;
+}
+
+body.ultra-compact-height.compact-width .method-switch {
+  margin: 6px 0 5px;
+}
+
+body.ultra-compact-height.compact-width .mode-card {
+  padding: 7px 8px;
+}
+
+body.ultra-compact-height.compact-width .mode-title {
+  font-size: 0.86rem;
+}
+
+body.ultra-compact-height.compact-width .toggle {
+  font-size: 0.9rem;
+}
+
+body.ultra-compact-height.compact-width .status-card {
+  margin-top: 6px;
+  padding: 7px 9px;
+}
+
+body.ultra-compact-height.compact-width .status-title {
+  font-size: 0.82rem;
+}
+
+body.ultra-compact-height.compact-width .primary-btn,
+body.ultra-compact-height.compact-width .mini-btn {
+  padding: 11px 13px;
+}
+
+body.ultra-compact-height.compact-width .bottom-nav {
+  padding: 5px;
+}
+
+body.ultra-compact-height.compact-width .nav-btn {
+  gap: 4px;
+}
+
+body.ultra-compact-height.compact-width .nav-icon,
+body.ultra-compact-height.compact-width .nav-icon svg {
+  width: 19px;
+  height: 19px;
+}
+
+body.micro-compact-height.compact-width .topbar {
+  display: none;
+}
+
+body.micro-compact-height.compact-width .status-card {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

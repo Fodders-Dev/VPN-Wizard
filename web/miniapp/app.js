@@ -457,8 +457,9 @@ function hideHelp() {
 function updateViewportState() {
   const height = window.innerHeight || 0;
   const width = window.innerWidth || 0;
-  document.body.classList.toggle("compact-height", height <= 820);
-  document.body.classList.toggle("ultra-compact-height", height <= 720);
+  document.body.classList.toggle("compact-height", height <= 860);
+  document.body.classList.toggle("ultra-compact-height", height <= 760);
+  document.body.classList.toggle("micro-compact-height", height <= 700);
   document.body.classList.toggle("compact-width", width <= 420);
 }
 
