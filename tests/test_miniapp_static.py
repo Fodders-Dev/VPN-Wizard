@@ -18,4 +18,5 @@ def test_miniapp_shell_is_single_flow_and_has_diagnostics_panel() -> None:
     assert 'id="diagnostics-panel"' in html
     assert 'class="bottom-nav glass-panel"' in html
     assert 'data-page="connect"' in html
+    assert 'id="user-input" autocomplete="username" placeholder="root" value="root" required' in html
     assert 'id="faq-sheet"' not in html

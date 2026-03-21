@@ -23,6 +23,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+import paramiko
 from pydantic import BaseModel, Field, model_validator
 import qrcode
 import uvicorn
@@ -176,6 +177,29 @@ def _discover_ssh_port(host: str, preferred_port: Optional[int] = None) -> tuple
         if _probe_ssh_port(clean_host, port):
             return port, checked
     return None, checked
+
+
+def _error_message(exc: Exception) -> str:
+    message = str(exc).strip()
+    if message:
+        return message
+    if isinstance(exc, paramiko.AuthenticationException):
+        return (
+            "SSH authentication failed. Check the password or key and make sure the server allows "
+            "password login for this user from the app backend."
+        )
+    if isinstance(exc, paramiko.BadHostKeyException):
+        return "SSH host key verification failed."
+    if isinstance(exc, paramiko.ssh_exception.NoValidConnectionsError):
+        return "Could not open an SSH connection to the server on the selected port."
+    if isinstance(exc, paramiko.SSHException):
+        return (
+            "SSH session could not be established. The server may be rejecting this connection, "
+            "rate-limiting the backend IP, or requiring a different auth method."
+        )
+    if isinstance(exc, TimeoutError):
+        return "The SSH connection timed out."
+    return exc.__class__.__name__.replace("_", " ")
 
 
 class AuthRequest(BaseModel):
@@ -812,7 +836,7 @@ def auth_telegram_web(payload: TelegramWebAuthRequest, request: Request, respons
         raise
     except Exception as exc:
         _clear_auth_cookie(response)
-        return CurrentUserResponse(ok=False, authenticated=False, error=str(exc))
+        return CurrentUserResponse(ok=False, authenticated=False, error=_error_message(exc))
 
 
 @app.post("/api/auth/telegram/miniapp", response_model=CurrentUserResponse)
@@ -836,7 +860,7 @@ def auth_telegram_miniapp(payload: TelegramMiniAppAuthRequest, request: Request,
         raise
     except Exception as exc:
         _clear_auth_cookie(response)
-        return CurrentUserResponse(ok=False, authenticated=False, error=str(exc))
+        return CurrentUserResponse(ok=False, authenticated=False, error=_error_message(exc))
 
 
 @app.post("/api/auth/logout", response_model=CurrentUserResponse)
@@ -878,7 +902,7 @@ def account_save_server(payload: SavedServerRequest, request: Request) -> SavedS
     except HTTPException:
         raise
     except Exception as exc:
-        return SavedServerResponse(ok=False, error=str(exc))
+        return SavedServerResponse(ok=False, error=_error_message(exc))
 
 
 @app.delete("/api/account/servers/{server_id}", response_model=RollbackResponse)
@@ -903,7 +927,7 @@ def account_configure_pin(payload: PinConfigureRequest, request: Request) -> Pin
     except HTTPException:
         raise
     except Exception as exc:
-        return PinResponse(ok=False, error=str(exc))
+        return PinResponse(ok=False, error=_error_message(exc))
 
 
 @app.post("/api/account/pin/unlock", response_model=PinResponse)
@@ -921,7 +945,7 @@ def account_unlock_pin(payload: PinUnlockRequest, request: Request) -> PinRespon
     except HTTPException:
         raise
     except Exception as exc:
-        return PinResponse(ok=False, error=str(exc))
+        return PinResponse(ok=False, error=_error_message(exc))
 
 
 def _safe_name(name: Optional[str]) -> str:
@@ -1237,7 +1261,7 @@ def _run_provision(job_id: str, payload: ProvisionRequest, public_base_url: Opti
             error=None,
         )
     except Exception as exc:
-        JOB_STORE.update(job_id, status="error", error=str(exc))
+        JOB_STORE.update(job_id, status="error", error=_error_message(exc))
 
 
 @app.get("/health")
@@ -1265,7 +1289,7 @@ async def ssh_discover_port(payload: SSHDiscoverRequest) -> SSHDiscoverResponse:
             checked_ports=checked,
         )
     except Exception as exc:
-        return SSHDiscoverResponse(ok=False, error=str(exc))
+        return SSHDiscoverResponse(ok=False, error=_error_message(exc))
 
 
 @app.post("/api/sessions/login", response_model=SessionLoginResponse)
@@ -1282,7 +1306,7 @@ async def session_login(payload: SessionLoginRequest) -> SessionLoginResponse:
             port=payload.ssh.port,
         )
     except Exception as exc:
-        return SessionLoginResponse(ok=False, error=str(exc))
+        return SessionLoginResponse(ok=False, error=_error_message(exc))
 
 
 @app.post("/api/sessions/revoke", response_model=RollbackResponse)
@@ -1378,7 +1402,7 @@ async def rollback(payload: RollbackRequest, request: Request) -> RollbackRespon
             return RollbackResponse(ok=False, error="No backup found.")
         return RollbackResponse(ok=True, backup=backup)
     except Exception as exc:
-        return RollbackResponse(ok=False, error=str(exc))
+        return RollbackResponse(ok=False, error=_error_message(exc))
 
 
 @app.post("/api/clients/list", response_model=ClientListResponse)
@@ -1397,7 +1421,7 @@ async def client_list(payload: RollbackRequest, request: Request) -> ClientListR
                 clients = prov.list_clients()
         return ClientListResponse(ok=True, clients=clients)
     except Exception as exc:
-        return ClientListResponse(ok=False, error=str(exc))
+        return ClientListResponse(ok=False, error=_error_message(exc))
 
 
 @app.post("/api/clients/add", response_model=ClientAddResponse)
@@ -1473,7 +1497,7 @@ async def client_add(payload: ClientRequest, request: Request) -> ClientAddRespo
             interface=iface,
         )
     except Exception as exc:
-        return ClientAddResponse(ok=False, error=str(exc))
+        return ClientAddResponse(ok=False, error=_error_message(exc))
 
 
 @app.post("/api/clients/remove", response_model=RollbackResponse)
@@ -1494,7 +1518,7 @@ async def client_remove(payload: ClientRemoveRequest, request: Request) -> Rollb
             return RollbackResponse(ok=False, error="Client not found.")
         return RollbackResponse(ok=True, backup=None)
     except Exception as exc:
-        return RollbackResponse(ok=False, error=str(exc))
+        return RollbackResponse(ok=False, error=_error_message(exc))
 
 
 @app.post("/api/clients/rotate", response_model=ClientAddResponse)
@@ -1522,7 +1546,7 @@ async def client_rotate(payload: ClientRemoveRequest, request: Request) -> Clien
             interface=result.get("interface"),
         )
     except Exception as exc:
-        return ClientAddResponse(ok=False, error=str(exc))
+        return ClientAddResponse(ok=False, error=_error_message(exc))
 
 
 @app.post("/api/clients/export", response_model=ClientExportResponse)
@@ -1595,7 +1619,7 @@ async def client_export(payload: ClientRemoveRequest, request: Request) -> Clien
             interface=iface,
         )
     except Exception as exc:
-        return ClientExportResponse(ok=False, error=str(exc))
+        return ClientExportResponse(ok=False, error=_error_message(exc))
 
 
 class LogsResponse(BaseModel):
@@ -1687,7 +1711,7 @@ async def get_logs(payload: RollbackRequest, request: Request) -> LogsResponse:
             report = prov.get_system_report()
         return LogsResponse(ok=True, logs=report)
     except Exception as exc:
-        return LogsResponse(ok=False, error=str(exc))
+        return LogsResponse(ok=False, error=_error_message(exc))
 
 
 @app.post("/api/server/status", response_model=ServerStatusResponse)
@@ -1722,7 +1746,7 @@ async def server_status(payload: RollbackRequest, request: Request) -> ServerSta
             proxy_sni=status.get("sni"),
         )
     except Exception as exc:
-        return ServerStatusResponse(ok=False, configured=False, error=str(exc))
+        return ServerStatusResponse(ok=False, configured=False, error=_error_message(exc))
 
 
 @app.post("/api/server/precheck", response_model=PrecheckResponse)
@@ -1791,7 +1815,7 @@ async def server_precheck(payload: ProvisionRequest, request: Request) -> Preche
                 checks = prov.pre_check()
         return PrecheckResponse(ok=True, checks=checks)
     except Exception as exc:
-        return PrecheckResponse(ok=False, error=str(exc))
+        return PrecheckResponse(ok=False, error=_error_message(exc))
 
 
 @app.post("/api/repair", response_model=JobCreateResponse)
@@ -1812,7 +1836,7 @@ async def run_repair(payload: RollbackRequest, background_tasks: BackgroundTasks
 
             JOB_STORE.update(job_id, status="done", progress=logs, error=None)
         except Exception as exc:
-            JOB_STORE.update(job_id, status="error", error=str(exc))
+            JOB_STORE.update(job_id, status="error", error=_error_message(exc))
 
     background_tasks.add_task(_do_repair, job.job_id, payload)
     return JobCreateResponse(job_id=job.job_id)

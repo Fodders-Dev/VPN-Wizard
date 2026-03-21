@@ -1,18 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+import paramiko
 
 from vpn_wizard.server import (
     DOWNLOAD_STORE,
     JobStore,
     SSHPayload,
     SSHDiscoverRequest,
-    ssh_discover_port,
-    _discover_ssh_port,
     SessionStore,
+    _discover_ssh_port,
+    _error_message,
     _split_host_port,
     download_config,
     download_qr,
+    ssh_discover_port,
 )
 
 
@@ -117,3 +119,13 @@ def test_ssh_discover_endpoint_returns_error_when_not_found(monkeypatch) -> None
     assert response.ok is False
     assert response.checked_ports == [22, 2222]
     assert response.error is not None
+
+
+def test_error_message_maps_empty_auth_exception() -> None:
+    exc = paramiko.AuthenticationException()
+    assert "SSH authentication failed." in _error_message(exc)
+
+
+def test_error_message_preserves_non_empty_text() -> None:
+    exc = RuntimeError("custom failure")
+    assert _error_message(exc) == "custom failure"

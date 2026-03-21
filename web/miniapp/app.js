@@ -406,6 +406,13 @@ function classifyError(error) {
   return { type: "server", text: message || t("connectServerError") };
 }
 
+function connectErrorBody(info, error) {
+  if (info.type === "api") return t("diagnosticsBody");
+  const detail = String(error?.message || error || "").trim();
+  if (detail && detail !== info.text) return detail;
+  return t("connectIdleBody");
+}
+
 function setDiagnostics({ title, body, extra } = {}) {
   if (!title) {
     refs.diagnosticsPanel.classList.add("hidden");
@@ -793,7 +800,7 @@ async function connectManual() {
   } catch (error) {
     const info = classifyError(error);
     if (info.type === "api") showTransportDiagnostics(STATE.apiBase);
-    renderConnectStatus("error", info.text, info.type === "api" ? t("diagnosticsBody") : t("connectIdleBody"));
+    renderConnectStatus("error", info.text, connectErrorBody(info, error));
   } finally {
     renderAll();
   }
@@ -833,7 +840,7 @@ async function activateSavedServer(serverId) {
   } catch (error) {
     const info = classifyError(error);
     if (info.type === "api") showTransportDiagnostics(STATE.apiBase);
-    renderConnectStatus("error", info.text, t("connectIdleBody"));
+    renderConnectStatus("error", info.text, connectErrorBody(info, error));
     if (info.type === "session") setPage("settings");
   } finally {
     renderAll();
@@ -916,7 +923,7 @@ async function setupServer() {
   } catch (error) {
     const info = classifyError(error);
     if (info.type === "api") showTransportDiagnostics(STATE.apiBase);
-    renderConnectStatus("error", info.text, t("connectIdleBody"));
+    renderConnectStatus("error", info.text, connectErrorBody(info, error));
   } finally {
     renderAll();
   }
