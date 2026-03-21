@@ -263,6 +263,18 @@ textarea {
   gap: 12px;
 }
 
+#auth-card.is-condensed .card-copy {
+  display: none;
+}
+
+#auth-card.is-condensed .card-head {
+  margin-bottom: 8px;
+}
+
+#auth-card.is-condensed .auth-actions {
+  justify-content: flex-end;
+}
+
 .compact-card,
 .connect-card,
 .list-card {
@@ -884,6 +896,216 @@ textarea {
   .toggle-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+@media (max-height: 820px) {
+  :root {
+    --nav-height: 78px;
+  }
+
+  .app-shell {
+    gap: 8px;
+    padding: 10px 10px calc(var(--nav-height) + env(safe-area-inset-bottom, 0px) + 8px);
+  }
+
+  .topbar {
+    min-height: 64px;
+    padding: 12px 14px;
+  }
+
+  .topbar-title {
+    font-size: clamp(1.45rem, 4.8vw, 1.95rem);
+  }
+
+  .topbar-copy,
+  .version-pill {
+    display: none !important;
+  }
+
+  .topbar-side {
+    gap: 0;
+  }
+
+  .compact-card,
+  .connect-card,
+  .list-card,
+  .diagnostics,
+  .modal-card {
+    padding: 14px;
+  }
+
+  .page-stack {
+    gap: 8px;
+  }
+
+  .card-head {
+    margin-bottom: 10px;
+  }
+
+  .card-title {
+    font-size: clamp(1rem, 3.7vw, 1.28rem);
+  }
+
+  .card-copy,
+  .status-body,
+  .mode-copy,
+  .empty-copy,
+  .inline-note,
+  .list-meta,
+  .toggle-hint {
+    font-size: 13px;
+    line-height: 1.28;
+  }
+
+  #remember-server-hint {
+    display: none;
+  }
+
+  .field-grid,
+  .mode-grid,
+  .auth-actions,
+  .diagnostics-actions,
+  .modal-actions,
+  .pin-row,
+  .add-profile-row {
+    gap: 8px;
+  }
+
+  input,
+  textarea {
+    padding: 11px 13px;
+  }
+
+  .method-switch {
+    margin: 10px 0 8px;
+    padding: 4px;
+    gap: 6px;
+  }
+
+  .method-pill {
+    padding: 8px 12px;
+  }
+
+  .mode-card {
+    padding: 10px;
+    gap: 4px;
+  }
+
+  .mode-title {
+    font-size: 0.94rem;
+  }
+
+  .mode-copy {
+    display: none;
+  }
+
+  .toggle-row {
+    gap: 6px;
+  }
+
+  .status-card {
+    margin-top: 10px;
+    min-height: auto;
+    padding: 10px 12px;
+  }
+
+  .status-title {
+    font-size: 0.95rem;
+    margin-bottom: 0;
+  }
+
+  .status-body {
+    display: none;
+  }
+
+  .action-row {
+    padding-top: 10px;
+  }
+
+  #auth-card.is-condensed {
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  #auth-card.is-condensed .card-head {
+    margin-bottom: 0;
+    align-items: center;
+  }
+
+  #auth-card.is-condensed .eyebrow {
+    margin-bottom: 2px;
+  }
+
+  #auth-card.is-condensed .card-title {
+    font-size: 1.02rem;
+  }
+
+  #auth-card.is-condensed .auth-actions {
+    margin-top: 6px;
+  }
+
+  #auth-card.is-condensed .mini-btn,
+  #auth-card.is-condensed .primary-btn {
+    width: auto;
+    padding: 10px 14px;
+  }
+
+  .bottom-nav {
+    left: 10px;
+    right: 10px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+    padding: 8px;
+  }
+
+  .nav-label {
+    font-size: 11px;
+  }
+}
+
+@media (max-height: 820px) and (max-width: 720px) {
+  .field-grid.two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mode-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-height: 720px) {
+  .topbar {
+    min-height: 58px;
+    padding: 10px 12px;
+  }
+
+  #app-eyebrow {
+    display: none;
+  }
+
+  .compact-card,
+  .connect-card,
+  .list-card,
+  .diagnostics {
+    padding: 12px;
+  }
+
+  .field {
+    gap: 6px;
+  }
+
+  .help-btn {
+    width: 20px;
+    height: 20px;
+  }
+
+  .status-card {
+    min-height: 74px;
+    padding: 10px 11px;
+  }
+
+  .status-body {
+    font-size: 12px;
   }
 }
 

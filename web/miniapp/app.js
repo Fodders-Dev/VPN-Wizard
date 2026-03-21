@@ -8,6 +8,7 @@ const tg = window.Telegram?.WebApp || null;
 const PROXY_MODES = new Set(["shadowtls_ss", "vless_reality"]);
 
 const refs = {
+  authCard: document.getElementById("auth-card"),
   versionPill: document.getElementById("version-pill"),
   topbarBadge: document.getElementById("topbar-badge"),
   topbarCopy: document.getElementById("topbar-copy"),
@@ -446,6 +447,14 @@ function hideHelp() {
   clearTimeout(STATE.helpTimer);
 }
 
+function updateViewportState() {
+  const height = window.innerHeight || 0;
+  const width = window.innerWidth || 0;
+  document.body.classList.toggle("compact-height", height <= 820);
+  document.body.classList.toggle("ultra-compact-height", height <= 720);
+  document.body.classList.toggle("compact-width", width <= 420);
+}
+
 function renderMethodSwitch() {
   const current = authMethod();
   refs.methodPills.forEach((pill) => {
@@ -496,6 +505,7 @@ function renderAuth() {
   refs.pinEnabledToggle.checked = Boolean(account.pin_enabled);
   refs.pinUnlockRow.classList.toggle("hidden", !account.pin_required);
   refs.pinNote.textContent = account.pin_required ? t("pinNoteLocked") : account.pin_enabled ? t("pinNoteReady") : t("pinNoteDisabled");
+  refs.authCard.classList.toggle("is-condensed", Boolean(account.authenticated && !account.pin_required));
 }
 
 function activeServerLabel() {
@@ -1253,6 +1263,10 @@ async function retryLastAction() {
 }
 
 function bindEvents() {
+  window.addEventListener("resize", () => {
+    updateViewportState();
+    renderAll();
+  });
   refs.connectForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     await connectManual();
@@ -1322,6 +1336,7 @@ function bindEvents() {
 async function bootstrap() {
   bootstrapApiBase();
   setupTelegramChrome();
+  updateViewportState();
   bindEvents();
   renderConnectStatus("idle", t("connectIdleTitle"), t("connectIdleBody"));
   renderAll();
