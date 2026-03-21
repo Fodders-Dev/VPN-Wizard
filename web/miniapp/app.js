@@ -6,6 +6,7 @@ const SETTINGS_KEY = "vpnw_settings_v3";
 const PAGE_KEY = "vpnw_page_v3";
 const tg = window.Telegram?.WebApp || null;
 const PROXY_MODES = new Set(["shadowtls_ss", "vless_reality"]);
+const DEBUG_LOG_LIMIT = 60;
 
 const refs = {
   authCard: document.getElementById("auth-card"),
@@ -68,6 +69,9 @@ const refs = {
   pinUnlockInput: document.getElementById("pin-unlock-input"),
   unlockPinBtn: document.getElementById("unlock-pin-btn"),
   pinNote: document.getElementById("pin-note"),
+  debugLog: document.getElementById("debug-log"),
+  debugCopyBtn: document.getElementById("debug-copy-btn"),
+  debugClearBtn: document.getElementById("debug-clear-btn"),
   helpButtons: Array.from(document.querySelectorAll(".help-btn")),
   helpPopover: document.getElementById("help-popover"),
   pageNodes: Array.from(document.querySelectorAll(".page")),
@@ -159,6 +163,11 @@ const COPY = {
     help_ssh_port: "Нужен только если SSH у вас не на 22. Иначе оставьте пустым.",
     help_listen_port: "Порт VPN или прокси. Если не знаете, оставьте пустым.",
     help_proxy_sni: "Нужен только для proxy-режимов и нестандартных сценариев.",
+    debugEmpty: "Debug log is empty.",
+    debugLabel: "Debug",
+    debugCopy: "Последние шаги miniapp и API без секретов.",
+    debugCopyBtn: "Скопировать",
+    debugClearBtn: "Очистить",
   },
   en: {
     topbarCopy: "Server, profiles, and useful actions on a single screen.",
@@ -239,6 +248,11 @@ const COPY = {
     help_ssh_port: "Only needed if SSH is not on 22. Otherwise leave empty.",
     help_listen_port: "VPN or proxy port. Leave empty if you are not sure.",
     help_proxy_sni: "Only needed for proxy modes and uncommon setups.",
+    debugEmpty: "Debug log is empty.",
+    debugLabel: "Debug",
+    debugCopy: "Recent miniapp and API steps without secrets.",
+    debugCopyBtn: "Copy",
+    debugClearBtn: "Clear",
   },
 };
 
@@ -261,6 +275,7 @@ const STATE = {
   retryAction: null,
   helpTimer: null,
   confirmResolver: null,
+  debugLog: [],
   settings: loadSettings(),
 };
 
@@ -335,19 +350,71 @@ function isSameOriginApi() {
 }
 
 async function fetchJson(path, init = {}) {
-  const response = await fetch(`${STATE.apiBase}${path}`, {
-    ...init,
-    headers: { Accept: "application/json", ...(init.body ? { "Content-Type": "application/json" } : {}), ...(init.headers || {}) },
-    credentials: isSameOriginApi() ? "same-origin" : "omit",
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    const error = new Error(payload?.detail || payload?.error || response.statusText || "Request failed");
-    error.kind = "http";
-    error.status = response.status;
+  const method = String(init.method || "GET").toUpperCase();
+  logDebug("api.start", { method, path, body: sanitizeDebugValue(init.body) });
+  try {
+    const response = await fetch(`${STATE.apiBase}${path}`, {
+      ...init,
+      headers: { Accept: "application/json", ...(init.body ? { "Content-Type": "application/json" } : {}), ...(init.headers || {}) },
+      credentials: isSameOriginApi() ? "same-origin" : "omit",
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      logDebug("api.http_error", { method, path, status: response.status, payload: sanitizeDebugValue(payload) });
+      const error = new Error(payload?.detail || payload?.error || response.statusText || "Request failed");
+      error.kind = "http";
+      error.status = response.status;
+      throw error;
+    }
+    logDebug("api.ok", { method, path, payload: sanitizeDebugValue(payload) });
+    return payload;
+  } catch (error) {
+    logDebug("api.fail", { method, path, error: String(error?.message || error || "") });
     throw error;
   }
-  return payload;
+}
+
+function sanitizeDebugValue(value) {
+  if (value == null || value === "") return null;
+  let parsed = value;
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      parsed = value;
+    }
+  }
+  return redactSecrets(parsed);
+}
+
+function redactSecrets(value) {
+  if (Array.isArray(value)) return value.map(redactSecrets);
+  if (value && typeof value === "object") {
+    const output = {};
+    Object.entries(value).forEach(([key, val]) => {
+      const normalized = key.toLowerCase();
+      if (["password", "key_content", "key", "init_data", "pin"].includes(normalized)) {
+        output[key] = "***";
+      } else {
+        output[key] = redactSecrets(val);
+      }
+    });
+    return output;
+  }
+  if (typeof value === "string" && value.length > 220) return `${value.slice(0, 220)}...`;
+  return value;
+}
+
+function logDebug(event, details = null) {
+  const stamp = new Date().toISOString().slice(11, 19);
+  const line = details ? `[${stamp}] ${event} ${JSON.stringify(details)}` : `[${stamp}] ${event}`;
+  STATE.debugLog = [...STATE.debugLog.slice(-(DEBUG_LOG_LIMIT - 1)), line];
+  renderDebugLog();
+}
+
+function renderDebugLog() {
+  if (!refs.debugLog) return;
+  refs.debugLog.textContent = STATE.debugLog.length ? STATE.debugLog.join("\n") : t("debugEmpty");
 }
 
 function openExternal(url) {
@@ -670,6 +737,8 @@ function renderAll() {
   document.getElementById("pin-enabled-copy").textContent = STATE.lang === "ru" ? "Запрашивать PIN перед доступом к сохранённым серверам" : "Require a PIN before opening saved servers";
   document.getElementById("saved-servers-eyebrow").textContent = STATE.lang === "ru" ? "Сохранённые серверы" : "Saved servers";
   document.getElementById("saved-servers-title").textContent = STATE.lang === "ru" ? "Выбор в один тап" : "One-tap picker";
+  document.getElementById("debug-label").textContent = t("debugLabel");
+  document.getElementById("debug-copy").textContent = t("debugCopy");
   document.getElementById("nav-connect-label").textContent = STATE.lang === "ru" ? "Подключение" : "Connect";
   document.getElementById("nav-profiles-label").textContent = STATE.lang === "ru" ? "Профили" : "Profiles";
   document.getElementById("nav-settings-label").textContent = STATE.lang === "ru" ? "Настройки" : "Settings";
@@ -688,6 +757,8 @@ function renderAll() {
   refs.openProfilesBtn.textContent = STATE.lang === "ru" ? "Открыть профили" : "Open profiles";
   refs.savePinBtn.textContent = STATE.lang === "ru" ? "Сохранить PIN" : "Save PIN";
   refs.unlockPinBtn.textContent = STATE.lang === "ru" ? "Открыть серверы" : "Unlock servers";
+  refs.debugCopyBtn.textContent = t("debugCopyBtn");
+  refs.debugClearBtn.textContent = t("debugClearBtn");
   refs.confirmCancelBtn.textContent = t("confirmCancel");
   refs.confirmContinueBtn.textContent = t("confirmContinue");
   renderMethodSwitch();
@@ -704,6 +775,7 @@ function renderAll() {
   refs.proxySni.value = STATE.settings.proxy_sni || "";
   refs.navButtons.forEach((node) => node.classList.toggle("active", node.dataset.pageTarget === STATE.page));
   refs.pageNodes.forEach((node) => node.classList.toggle("active", node.dataset.page === STATE.page));
+  renderDebugLog();
 }
 
 function setupTelegramChrome() {
@@ -772,6 +844,7 @@ async function maybeSaveServer(ssh) {
 }
 
 async function connectManual() {
+  logDebug("connect.manual.start", { host: refs.host.value.trim(), user: refs.user.value.trim(), mode: selectedMode() });
   renderConnectStatus("busy", t("connectBusyTitle"), t("connectBusyBody"));
   setRetryAction("connect-manual");
   setDiagnostics();
@@ -779,6 +852,7 @@ async function connectManual() {
   try {
     const ssh = buildSshPayloadFromForm();
     const sessionId = await loginTransientSession(ssh);
+    logDebug("connect.manual.session_ok", { sessionId });
     const status = await fetchJson("/api/server/status", {
       method: "POST",
       body: JSON.stringify({ session_id: sessionId, protocol: selectedMode() }),
@@ -800,6 +874,7 @@ async function connectManual() {
     }
   } catch (error) {
     const info = classifyError(error);
+    logDebug("connect.manual.fail", { type: info.type, error: String(error?.message || error || "") });
     if (info.type === "api") showTransportDiagnostics(STATE.apiBase);
     renderConnectStatus("error", info.text, connectErrorBody(info, error));
   } finally {
@@ -1300,6 +1375,11 @@ function bindEvents() {
   refs.addProfileBtn.addEventListener("click", async () => addProfile());
   refs.savePinBtn.addEventListener("click", async () => configurePin());
   refs.unlockPinBtn.addEventListener("click", async () => unlockPin());
+  refs.debugCopyBtn.addEventListener("click", async () => copyText(STATE.debugLog.join("\n") || t("debugEmpty")));
+  refs.debugClearBtn.addEventListener("click", () => {
+    STATE.debugLog = [];
+    renderDebugLog();
+  });
   refs.langButtons.forEach((button) => button.addEventListener("click", () => {
     STATE.lang = button.dataset.lang || "ru";
     localStorage.setItem(LANG_KEY, STATE.lang);
@@ -1364,6 +1444,7 @@ window.__VPNW_TEST__ = {
   resolveApiBaseFrom,
   CANONICAL_API_BASE,
   CANONICAL_MINIAPP_URL,
+  getDebugLog: () => STATE.debugLog.slice(),
 };
 
 bootstrap().catch((error) => {

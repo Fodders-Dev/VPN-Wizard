@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from io import BytesIO
 import importlib.metadata
+import logging
 import os
 from pathlib import Path
 import socket
@@ -40,6 +41,7 @@ from vpn_wizard.urls import CANONICAL_MINIAPP_URL
 
 
 app = FastAPI(title="VPN Wizard API")
+logger = logging.getLogger("vpn_wizard.server")
 APP_STARTED_AT = datetime.now(timezone.utc)
 raw_origins = os.getenv("VPNW_CORS_ORIGINS", "")
 cors_origins: list[str] = []
@@ -206,6 +208,12 @@ def _error_message(exc: Exception) -> str:
     if isinstance(exc, TimeoutError):
         return "The SSH connection timed out."
     return exc.__class__.__name__.replace("_", " ")
+
+
+def _ssh_target_label(payload: Optional[SSHPayload]) -> str:
+    if payload is None:
+        return "session-or-saved-server"
+    return f"{payload.user}@{payload.host}:{payload.port}"
 
 
 class AuthRequest(BaseModel):
@@ -1300,10 +1308,16 @@ async def ssh_discover_port(payload: SSHDiscoverRequest) -> SSHDiscoverResponse:
 
 @app.post("/api/sessions/login", response_model=SessionLoginResponse)
 async def session_login(payload: SessionLoginRequest) -> SessionLoginResponse:
+    request_id = uuid.uuid4().hex[:8]
+    logger.info("ssh.login.start req=%s target=%s", request_id, _ssh_target_label(payload.ssh))
     try:
-        with _ssh_connection(payload.ssh):
+        with _ssh_connection(
+            payload.ssh,
+            logger=lambda message: logger.info("ssh.login.trace req=%s %s", request_id, message),
+        ):
             pass
         session_id = SESSION_STORE.create(payload.ssh)
+        logger.info("ssh.login.ok req=%s target=%s session=%s", request_id, _ssh_target_label(payload.ssh), session_id)
         return SessionLoginResponse(
             ok=True,
             session_id=session_id,
@@ -1312,6 +1326,13 @@ async def session_login(payload: SessionLoginRequest) -> SessionLoginResponse:
             port=payload.ssh.port,
         )
     except Exception as exc:
+        logger.warning(
+            "ssh.login.fail req=%s target=%s error=%s",
+            request_id,
+            _ssh_target_label(payload.ssh),
+            _error_message(exc),
+            exc_info=True,
+        )
         return SessionLoginResponse(ok=False, error=_error_message(exc))
 
 
@@ -1722,9 +1743,17 @@ async def get_logs(payload: RollbackRequest, request: Request) -> LogsResponse:
 
 @app.post("/api/server/status", response_model=ServerStatusResponse)
 async def server_status(payload: RollbackRequest, request: Request) -> ServerStatusResponse:
+    request_id = uuid.uuid4().hex[:8]
+    target = _ssh_target_label(payload.ssh) if payload.ssh else (payload.session_id or payload.saved_server_id or "unknown")
+    logger.info("ssh.status.start req=%s target=%s protocol=%s", request_id, target, payload.protocol or "auto")
     try:
         payload = _materialize_saved_server(payload, request)
-        with _ssh_connection(payload.ssh, payload.session_id, request=request) as (ssh, _resolved):
+        with _ssh_connection(
+            payload.ssh,
+            payload.session_id,
+            request=request,
+            logger=lambda message: logger.info("ssh.status.trace req=%s %s", request_id, message),
+        ) as (ssh, _resolved):
             if payload.protocol == "vless_reality":
                 status = ProxyProvisioner(ssh).detect_status()
             elif payload.protocol == "shadowtls_ss":
@@ -1739,8 +1768,15 @@ async def server_status(payload: RollbackRequest, request: Request) -> ServerSta
                     status = ProxyProvisioner(ssh).detect_status()
 
         if not status.get("configured"):
+            logger.info("ssh.status.ok req=%s configured=false", request_id)
             return ServerStatusResponse(ok=True, configured=False)
 
+        logger.info(
+            "ssh.status.ok req=%s configured=true protocol=%s clients=%s",
+            request_id,
+            status.get("protocol"),
+            status.get("clients_count", 0),
+        )
         return ServerStatusResponse(
             ok=True,
             configured=True,
@@ -1752,6 +1788,13 @@ async def server_status(payload: RollbackRequest, request: Request) -> ServerSta
             proxy_sni=status.get("sni"),
         )
     except Exception as exc:
+        logger.warning(
+            "ssh.status.fail req=%s target=%s error=%s",
+            request_id,
+            target,
+            _error_message(exc),
+            exc_info=True,
+        )
         return ServerStatusResponse(ok=False, configured=False, error=_error_message(exc))
 
 
