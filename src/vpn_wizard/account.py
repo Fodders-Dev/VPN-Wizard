@@ -373,6 +373,25 @@ class AccountStore:
             )
             return cursor.rowcount > 0
 
+    def rename_server(self, user_id: int, server_id: str, label: Optional[str]) -> dict[str, Any]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM saved_servers WHERE id = ? AND user_id = ?",
+                (server_id, user_id),
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("Saved server not found.")
+            clean_label = (label or "").strip() or f"{row['ssh_user']}@{row['host']}"
+            conn.execute(
+                "UPDATE saved_servers SET label = ?, updated_at = ? WHERE id = ? AND user_id = ?",
+                (clean_label, _now(), server_id, user_id),
+            )
+            updated = conn.execute(
+                "SELECT * FROM saved_servers WHERE id = ? AND user_id = ?",
+                (server_id, user_id),
+            ).fetchone()
+            return self._serialize_saved_server(updated)
+
     def touch_server(self, user_id: int, server_id: str) -> None:
         with self._connect() as conn:
             conn.execute(

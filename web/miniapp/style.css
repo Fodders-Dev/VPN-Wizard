@@ -763,24 +763,55 @@ textarea {
   -webkit-overflow-scrolling: touch;
 }
 
+.server-alias-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  align-items: center;
+}
+
+.server-alias-row input {
+  flex: 1;
+}
+
+.server-alias-hint {
+  margin-top: 8px;
+  color: var(--ink-faint);
+  font-size: 12px;
+}
+
 .server-picker::-webkit-scrollbar {
   display: none;
 }
 
 .server-chip {
   border: 0;
-  border-radius: 999px;
-  padding: 10px 14px;
+  border-radius: 18px;
+  padding: 10px 14px 11px;
   flex: 0 0 auto;
   background: rgba(255, 255, 255, 0.56);
   border: 1px solid rgba(255, 255, 255, 0.62);
-  white-space: nowrap;
-  font-weight: 600;
+  min-width: 138px;
+  text-align: left;
 }
 
 .server-chip.active {
   background: rgba(19, 104, 255, 0.14);
   color: var(--accent-strong);
+}
+
+.server-chip-name {
+  display: block;
+  font-weight: 700;
+  line-height: 1.18;
+}
+
+.server-chip-meta {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-faint);
+  font-size: 12px;
+  line-height: 1.2;
 }
 
 .empty-card {

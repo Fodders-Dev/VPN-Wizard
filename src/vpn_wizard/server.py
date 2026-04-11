@@ -459,6 +459,10 @@ class SavedServerRequest(BaseModel):
     proxy_sni: Optional[str] = None
 
 
+class SavedServerRenameRequest(BaseModel):
+    label: Optional[str] = None
+
+
 class SavedServerListResponse(BaseModel):
     ok: bool
     servers: list[dict] = Field(default_factory=list)
@@ -980,6 +984,19 @@ def account_delete_server(server_id: str, request: Request) -> RollbackResponse:
     if not removed:
         return RollbackResponse(ok=False, error="Saved server not found.")
     return RollbackResponse(ok=True)
+
+
+@app.patch("/api/account/servers/{server_id}", response_model=SavedServerResponse)
+def account_rename_server(server_id: str, payload: SavedServerRenameRequest, request: Request) -> SavedServerResponse:
+    try:
+        account = _current_account(request, required=True)
+        assert account is not None
+        server = _account_store().rename_server(account["user"]["id"], server_id, payload.label)
+        return SavedServerResponse(ok=True, server=server)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        return SavedServerResponse(ok=False, error=_error_message(exc))
 
 
 @app.post("/api/account/pin", response_model=PinResponse)

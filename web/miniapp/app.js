@@ -65,6 +65,10 @@ const refs = {
   profilesRefreshBtn: document.getElementById("profiles-refresh-btn"),
   currentServerTitle: document.getElementById("current-server-title"),
   serverPicker: document.getElementById("server-picker"),
+  serverAliasRow: document.getElementById("server-alias-row"),
+  serverAliasInput: document.getElementById("server-alias-input"),
+  serverAliasSaveBtn: document.getElementById("server-alias-save-btn"),
+  serverAliasHint: document.getElementById("server-alias-hint"),
   profilesMeta: document.getElementById("profiles-meta"),
   profilesEmptyCard: document.getElementById("profiles-empty-card"),
   goConnectBtn: document.getElementById("go-connect-btn"),
@@ -167,6 +171,11 @@ const COPY = {
     savedServerUse: "Открыть",
     savedServerDelete: "Удалить",
     savedServerSaved: "Сохранён",
+    serverAliasPlaceholder: "Имя сервера",
+    serverAliasSave: "Сохранить имя",
+    serverAliasHint: "Можно дать серверу понятное имя, а IP останется рядом.",
+    serverAliasSaved: "Имя сервера сохранено.",
+    profilePlaceholder: "Add profile...",
     confirmRemoveTitle: "Удалить профиль?",
     confirmRemoveBody: "Профиль исчезнет с сервера. Потом придётся создать новый.",
     confirmRotateTitle: "Перевыпустить профиль?",
@@ -282,6 +291,11 @@ const COPY = {
     savedServerUse: "Open",
     savedServerDelete: "Delete",
     savedServerSaved: "Saved",
+    serverAliasPlaceholder: "Server name",
+    serverAliasSave: "Save name",
+    serverAliasHint: "Give the server a clear name while keeping the IP nearby.",
+    serverAliasSaved: "Server name saved.",
+    profilePlaceholder: "Add profile...",
     confirmRemoveTitle: "Delete profile?",
     confirmRemoveBody: "This profile will disappear from the server. You will have to create a new one later.",
     confirmRotateTitle: "Rotate profile?",
@@ -355,6 +369,7 @@ const STATE = {
   debugLog: [],
   pendingClientFocus: null,
   settings: loadSettings(),
+  serverAliasDraft: { serverId: null, value: "" },
 };
 
 function loadSettings() {
@@ -796,9 +811,29 @@ function renderAuth() {
   refs.authCard.classList.toggle("is-condensed", Boolean(account.authenticated && !account.pin_required));
 }
 
+function serverIdentity(server) {
+  return `${server.ssh_user}@${server.host}`;
+}
+
+function hasCustomServerLabel(server) {
+  const label = String(server?.label || "").trim();
+  return Boolean(label) && label !== serverIdentity(server);
+}
+
+function serverDisplayName(server) {
+  return hasCustomServerLabel(server) ? String(server.label).trim() : serverIdentity(server);
+}
+
+function activeSavedServer() {
+  return STATE.savedServers.find((item) => item.id === STATE.activeSavedServerId) || null;
+}
+
 function activeServerLabel() {
-  const activeSaved = STATE.savedServers.find((item) => item.id === STATE.activeSavedServerId);
-  if (activeSaved) return activeSaved.label || `${activeSaved.ssh_user}@${activeSaved.host}`;
+  const activeSaved = activeSavedServer();
+  if (activeSaved) {
+    const identity = serverIdentity(activeSaved);
+    return hasCustomServerLabel(activeSaved) ? `${serverDisplayName(activeSaved)} · ${identity}` : identity;
+  }
   if (STATE.activeTarget?.manualSnapshot) return `${STATE.activeTarget.manualSnapshot.user}@${STATE.activeTarget.manualSnapshot.host}`;
   return t("profilesNoServer");
 }
@@ -834,9 +869,34 @@ function renderServerPicker() {
     button.className = "server-chip";
     button.dataset.serverId = server.id;
     button.classList.toggle("active", server.id === STATE.activeSavedServerId);
-    button.textContent = server.label || `${server.ssh_user}@${server.host}`;
+    const identity = serverIdentity(server);
+    const displayName = serverDisplayName(server);
+    button.title = hasCustomServerLabel(server) ? `${displayName} (${identity})` : identity;
+    button.innerHTML = hasCustomServerLabel(server)
+      ? `<span class="server-chip-name">${escapeHtml(displayName)}</span><span class="server-chip-meta">${escapeHtml(identity)}</span>`
+      : `<span class="server-chip-name">${escapeHtml(identity)}</span>`;
     refs.serverPicker.appendChild(button);
   });
+}
+
+function renderServerAliasEditor() {
+  const server = activeSavedServer();
+  const shouldShow = Boolean(server && STATE.account.authenticated);
+  refs.serverAliasRow.classList.toggle("hidden", !shouldShow);
+  refs.serverAliasHint.classList.toggle("hidden", !shouldShow);
+  if (!shouldShow) {
+    refs.serverAliasInput.value = "";
+    STATE.serverAliasDraft = { serverId: null, value: "" };
+    return;
+  }
+  const customLabel = hasCustomServerLabel(server) ? String(server.label).trim() : "";
+  if (STATE.serverAliasDraft.serverId !== server.id) {
+    STATE.serverAliasDraft = { serverId: server.id, value: customLabel };
+  }
+  refs.serverAliasInput.value = STATE.serverAliasDraft.value;
+  refs.serverAliasInput.placeholder = t("serverAliasPlaceholder");
+  refs.serverAliasSaveBtn.textContent = t("serverAliasSave");
+  refs.serverAliasHint.textContent = t("serverAliasHint");
 }
 
 function enableHorizontalWheelScroll(node) {
@@ -971,6 +1031,7 @@ function renderProfilesHeader() {
         ? t("profilesMetaPending")
         : interpolate("profilesMetaReady", { count: STATE.clients.length });
   renderServerPicker();
+  renderServerAliasEditor();
 }
 
 function renderAll() {
@@ -1023,7 +1084,7 @@ function renderAll() {
   refs.goConnectBtn.textContent = t("goConnect");
   refs.profilesRefreshBtn.textContent = STATE.lang === "ru" ? "Обновить" : "Refresh";
   refs.addProfileBtn.textContent = STATE.lang === "ru" ? "Добавить" : "Add";
-  refs.profileName.placeholder = STATE.lang === "ru" ? "grandma-phone" : "grandma-phone";
+  refs.profileName.placeholder = t("profilePlaceholder");
   refs.connectBtn.textContent = !STATE.connectionChecked
     ? (STATE.lang === "ru" ? "Подключиться" : "Connect")
     : (STATE.serverConfigured ? t("connectRefresh") : t("connectRecheck"));
@@ -1656,6 +1717,30 @@ async function retryLastAction() {
   if (action === "refresh-clients") return refreshClients();
 }
 
+async function saveServerAlias() {
+  const server = activeSavedServer();
+  if (!server) return;
+  refs.serverAliasSaveBtn.disabled = true;
+  try {
+    const result = await fetchJson(`/api/account/servers/${server.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ label: STATE.serverAliasDraft.value.trim() || undefined }),
+    });
+    if (!result.ok || !result.server) throw new Error(result.error || "Could not save server name");
+    STATE.savedServers = STATE.savedServers.map((item) => item.id === server.id ? result.server : item);
+    STATE.serverAliasDraft = {
+      serverId: result.server.id,
+      value: hasCustomServerLabel(result.server) ? String(result.server.label).trim() : "",
+    };
+    toast(t("serverAliasSaved"));
+  } catch (error) {
+    toast(classifyError(error).text);
+  } finally {
+    refs.serverAliasSaveBtn.disabled = false;
+    renderAll();
+  }
+}
+
 function scheduleFocusIntoView(target) {
   const container = target?.closest(".field, .settings-block, .toggle-row, .pin-row, .action-row, .add-profile-row");
   if (!container) return;
@@ -1693,6 +1778,19 @@ function bindEvents() {
   refs.profilesRefreshBtn.addEventListener("click", async () => refreshClients());
   refs.goConnectBtn.addEventListener("click", () => setPage("connect"));
   refs.addProfileBtn.addEventListener("click", async () => addProfile());
+  refs.serverAliasInput.addEventListener("input", () => {
+    STATE.serverAliasDraft = {
+      serverId: STATE.activeSavedServerId,
+      value: refs.serverAliasInput.value,
+    };
+  });
+  refs.serverAliasSaveBtn.addEventListener("click", async () => saveServerAlias());
+  refs.serverAliasInput.addEventListener("keydown", async (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      await saveServerAlias();
+    }
+  });
   refs.savePinBtn.addEventListener("click", async () => configurePin());
   refs.unlockPinBtn.addEventListener("click", async () => unlockPin());
   refs.debugCopyBtn.addEventListener("click", async () => copyText(STATE.debugLog.join("\n") || t("debugEmpty")));

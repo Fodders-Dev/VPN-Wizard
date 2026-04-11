@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#eef4ff" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="style.css?v=20260411c" />
+  <link rel="stylesheet" href="style.css?v=20260411d" />
 </head>
 
 <body>
@@ -189,13 +189,18 @@
               <button type="button" class="mini-btn subtle" id="profiles-refresh-btn">Обновить</button>
             </div>
             <div class="server-picker" id="server-picker"></div>
+            <div class="server-alias-row hidden" id="server-alias-row">
+              <input id="server-alias-input" placeholder="Server name" />
+              <button type="button" class="mini-btn compact" id="server-alias-save-btn">Сохранить имя</button>
+            </div>
+            <div class="server-alias-hint hidden" id="server-alias-hint">Можно задать понятное имя, а IP останется рядом.</div>
             <div class="empty-card hidden" id="profiles-empty-card">
               <div class="empty-title" id="profiles-empty-title">Серверов пока нет</div>
               <div class="empty-copy" id="profiles-empty-copy">Подключитесь вручную или войдите через Telegram, чтобы выбрать сохранённый сервер.</div>
               <button type="button" class="mini-btn" id="go-connect-btn">Добавить сервер</button>
             </div>
             <div class="add-profile-row" id="add-profile-row">
-              <input id="profile-name-input" placeholder="grandma-phone" />
+              <input id="profile-name-input" placeholder="Add profile..." />
               <button type="button" class="primary-btn compact" id="add-profile-btn">Добавить</button>
             </div>
           </section>
@@ -362,8 +367,8 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260411c"></script>
-  <script src="app.js?v=20260411c"></script>
+  <script src="config.js?v=20260411d"></script>
+  <script src="app.js?v=20260411d"></script>
 </body>
 
 </html>
