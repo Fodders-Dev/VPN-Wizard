@@ -65,6 +65,7 @@ const refs = {
   profilesRefreshBtn: document.getElementById("profiles-refresh-btn"),
   currentServerTitle: document.getElementById("current-server-title"),
   serverPicker: document.getElementById("server-picker"),
+  serverAliasToggleBtn: document.getElementById("server-alias-toggle-btn"),
   serverAliasRow: document.getElementById("server-alias-row"),
   serverAliasInput: document.getElementById("server-alias-input"),
   serverAliasSaveBtn: document.getElementById("server-alias-save-btn"),
@@ -171,6 +172,8 @@ const COPY = {
     savedServerUse: "Открыть",
     savedServerDelete: "Удалить",
     savedServerSaved: "Сохранён",
+    serverAliasToggle: "Имя",
+    serverAliasToggleHide: "Скрыть имя",
     serverAliasPlaceholder: "Имя сервера",
     serverAliasSave: "Сохранить имя",
     serverAliasHint: "Можно дать серверу понятное имя, а IP останется рядом.",
@@ -291,6 +294,8 @@ const COPY = {
     savedServerUse: "Open",
     savedServerDelete: "Delete",
     savedServerSaved: "Saved",
+    serverAliasToggle: "Name",
+    serverAliasToggleHide: "Hide name",
     serverAliasPlaceholder: "Server name",
     serverAliasSave: "Save name",
     serverAliasHint: "Give the server a clear name while keeping the IP nearby.",
@@ -370,6 +375,7 @@ const STATE = {
   pendingClientFocus: null,
   settings: loadSettings(),
   serverAliasDraft: { serverId: null, value: "" },
+  serverAliasOpen: false,
 };
 
 function loadSettings() {
@@ -881,12 +887,16 @@ function renderServerPicker() {
 
 function renderServerAliasEditor() {
   const server = activeSavedServer();
-  const shouldShow = Boolean(server && STATE.account.authenticated);
+  const available = Boolean(server && STATE.account.authenticated);
+  refs.serverAliasToggleBtn.classList.toggle("hidden", !available);
+  refs.serverAliasToggleBtn.textContent = STATE.serverAliasOpen ? t("serverAliasToggleHide") : t("serverAliasToggle");
+  const shouldShow = available && STATE.serverAliasOpen;
   refs.serverAliasRow.classList.toggle("hidden", !shouldShow);
   refs.serverAliasHint.classList.toggle("hidden", !shouldShow);
-  if (!shouldShow) {
+  if (!available) {
     refs.serverAliasInput.value = "";
     STATE.serverAliasDraft = { serverId: null, value: "" };
+    STATE.serverAliasOpen = false;
     return;
   }
   const customLabel = hasCustomServerLabel(server) ? String(server.label).trim() : "";
@@ -1244,6 +1254,7 @@ async function activateSavedServer(serverId) {
     if (input) input.checked = true;
   }
   STATE.activeSavedServerId = serverId;
+  STATE.serverAliasOpen = false;
   renderConnectStatus("busy", t("connectBusyTitle"), t("connectBusyBody"));
   setRetryAction("connect-saved", { serverId });
   setDiagnostics();
@@ -1732,6 +1743,7 @@ async function saveServerAlias() {
       serverId: result.server.id,
       value: hasCustomServerLabel(result.server) ? String(result.server.label).trim() : "",
     };
+    STATE.serverAliasOpen = false;
     toast(t("serverAliasSaved"));
   } catch (error) {
     toast(classifyError(error).text);
@@ -1742,7 +1754,7 @@ async function saveServerAlias() {
 }
 
 function scheduleFocusIntoView(target) {
-  const container = target?.closest(".field, .settings-block, .toggle-row, .pin-row, .action-row, .add-profile-row");
+  const container = target?.closest(".field, .settings-block, .toggle-row, .pin-row, .action-row, .add-profile-row, .server-alias-row");
   if (!container) return;
   const behavior = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "auto" : "smooth";
   window.setTimeout(() => {
@@ -1778,6 +1790,11 @@ function bindEvents() {
   refs.profilesRefreshBtn.addEventListener("click", async () => refreshClients());
   refs.goConnectBtn.addEventListener("click", () => setPage("connect"));
   refs.addProfileBtn.addEventListener("click", async () => addProfile());
+  refs.serverAliasToggleBtn.addEventListener("click", () => {
+    STATE.serverAliasOpen = !STATE.serverAliasOpen;
+    renderAll();
+    if (STATE.serverAliasOpen) scheduleFocusIntoView(refs.serverAliasInput);
+  });
   refs.serverAliasInput.addEventListener("input", () => {
     STATE.serverAliasDraft = {
       serverId: STATE.activeSavedServerId,

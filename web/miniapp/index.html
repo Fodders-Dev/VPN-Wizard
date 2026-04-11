@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#eef4ff" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="style.css?v=20260411d" />
+  <link rel="stylesheet" href="style.css?v=20260411e" />
 </head>
 
 <body>
@@ -186,7 +186,10 @@
                 <div class="eyebrow" id="profiles-eyebrow">Текущий сервер</div>
                 <h2 class="card-title" id="current-server-title">Сначала подключите сервер</h2>
               </div>
-              <button type="button" class="mini-btn subtle" id="profiles-refresh-btn">Обновить</button>
+              <div class="server-head-actions">
+                <button type="button" class="mini-btn subtle compact" id="server-alias-toggle-btn">Имя</button>
+                <button type="button" class="mini-btn subtle" id="profiles-refresh-btn">Обновить</button>
+              </div>
             </div>
             <div class="server-picker" id="server-picker"></div>
             <div class="server-alias-row hidden" id="server-alias-row">
@@ -367,8 +370,8 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260411d"></script>
-  <script src="app.js?v=20260411d"></script>
+  <script src="config.js?v=20260411e"></script>
+  <script src="app.js?v=20260411e"></script>
 </body>
 
 </html>

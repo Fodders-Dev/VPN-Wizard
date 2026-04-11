@@ -763,15 +763,25 @@ textarea {
   -webkit-overflow-scrolling: touch;
 }
 
+.server-head-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+}
+
 .server-alias-row {
   display: flex;
   gap: 10px;
   margin-top: 10px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .server-alias-row input {
   flex: 1;
+  min-width: 0;
 }
 
 .server-alias-hint {
@@ -1178,7 +1188,8 @@ textarea {
 
   .action-row,
   .auth-actions,
-  .add-profile-row {
+  .add-profile-row,
+  .server-head-actions {
     flex-wrap: wrap;
   }
 
@@ -1191,6 +1202,17 @@ textarea {
   .toggle-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .server-alias-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .server-alias-row .mini-btn,
+  .server-head-actions .mini-btn {
+    width: 100%;
+    justify-content: center;
   }
 }
 
