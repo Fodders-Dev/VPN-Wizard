@@ -143,8 +143,23 @@ def test_saved_server_access_requires_pin_unlock(monkeypatch, tmp_path) -> None:
     assert observed == {"host": "1.2.3.4", "user": "root", "password": "secret"}
 
 
-def test_clients_export_retries_after_transient_ssh_failure(monkeypatch) -> None:
+def test_session_login_requires_authenticated_account(monkeypatch, tmp_path) -> None:
+    _configure_env(monkeypatch, tmp_path)
     client = TestClient(server.app)
+
+    response = client.post(
+        "/api/sessions/login",
+        json={"ssh": {"host": "1.2.3.4", "user": "root", "password": "secret", "port": 22}},
+    )
+
+    assert response.status_code == 401
+    assert "Telegram login required" in response.text
+
+
+def test_clients_export_retries_after_transient_ssh_failure(monkeypatch, tmp_path) -> None:
+    _configure_env(monkeypatch, tmp_path)
+    client = TestClient(server.app)
+    client.post("/api/auth/telegram/web", json=_web_auth_payload("123456:telegram-test-token"))
     attempts = {"count": 0}
 
     @contextmanager

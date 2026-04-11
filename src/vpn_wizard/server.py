@@ -68,8 +68,6 @@ if cors_origins and "*" not in cors_origins:
 
 print(f"VPN Wizard: Loaded CORS origins: {cors_origins}")
 
-if not cors_origins:
-    cors_origins = ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
@@ -526,6 +524,7 @@ def _build_qr_png(config: str) -> bytes:
 @dataclass
 class Job:
     job_id: str
+    owner_user_id: Optional[int] = None
     status: str = "queued"
     progress: list[str] = field(default_factory=list)
     checks: list[dict] = field(default_factory=list)
@@ -537,27 +536,47 @@ class Job:
     auto_download_id: Optional[str] = None
     client_name: Optional[str] = None
     error: Optional[str] = None
+    created_at: float = 0.0
+    expires_at: float = 0.0
 
 
 class JobStore:
-    def __init__(self) -> None:
+    def __init__(self, ttl_seconds: int = 1800) -> None:
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
+        self._ttl_seconds = max(300, ttl_seconds)
 
-    def create(self) -> Job:
+    def _cleanup(self, now: float) -> None:
+        expired = [job_id for job_id, job in self._jobs.items() if job.expires_at and job.expires_at <= now]
+        for job_id in expired:
+            self._jobs.pop(job_id, None)
+
+    def create(self, owner_user_id: Optional[int] = None) -> Job:
         job_id = uuid.uuid4().hex
-        job = Job(job_id=job_id)
+        now = time.time()
+        job = Job(
+            job_id=job_id,
+            owner_user_id=owner_user_id,
+            created_at=now,
+            expires_at=now + self._ttl_seconds,
+        )
         with self._lock:
+            self._cleanup(now)
             self._jobs[job_id] = job
         return job
 
-    def get(self, job_id: str) -> Optional[Job]:
+    def get(self, job_id: str, owner_user_id: Optional[int] = None) -> Optional[Job]:
+        now = time.time()
         with self._lock:
+            self._cleanup(now)
             job = self._jobs.get(job_id)
             if not job:
                 return None
+            if owner_user_id is not None and job.owner_user_id != owner_user_id:
+                return None
             return Job(
                 job_id=job.job_id,
+                owner_user_id=job.owner_user_id,
                 status=job.status,
                 progress=list(job.progress),
                 checks=list(job.checks),
@@ -569,27 +588,35 @@ class JobStore:
                 auto_download_id=job.auto_download_id,
                 client_name=job.client_name,
                 error=job.error,
+                created_at=job.created_at,
+                expires_at=job.expires_at,
             )
 
     def update(self, job_id: str, **kwargs) -> None:
+        now = time.time()
         with self._lock:
+            self._cleanup(now)
             job = self._jobs.get(job_id)
             if not job:
                 return
             for key, value in kwargs.items():
                 setattr(job, key, value)
+            job.expires_at = now + self._ttl_seconds
 
     def append_progress(self, job_id: str, message: str) -> None:
+        now = time.time()
         with self._lock:
+            self._cleanup(now)
             job = self._jobs.get(job_id)
             if not job:
                 return
             job.progress.append(message)
             if len(job.progress) > 50:
                 job.progress = job.progress[-50:]
+            job.expires_at = now + self._ttl_seconds
 
 
-JOB_STORE = JobStore()
+JOB_STORE = JobStore(ttl_seconds=int(os.getenv("VPNW_JOB_TTL_SECONDS", "1800")))
 
 
 @dataclass
@@ -598,13 +625,24 @@ class DownloadItem:
     qr_png: bytes
     name: str
     suffix: str = "conf"
+    owner_user_id: Optional[int] = None
+    created_at: float = 0.0
+    expires_at: float = 0.0
 
 
 class DownloadStore:
-    def __init__(self, limit: int = 200) -> None:
+    def __init__(self, limit: int = 200, ttl_seconds: int = 1800) -> None:
         self._items: "OrderedDict[str, DownloadItem]" = OrderedDict()
         self._lock = threading.Lock()
         self._limit = limit
+        self._ttl_seconds = max(300, ttl_seconds)
+
+    def _cleanup(self, now: float) -> None:
+        expired = [download_id for download_id, item in self._items.items() if item.expires_at and item.expires_at <= now]
+        for download_id in expired:
+            self._items.pop(download_id, None)
+        while len(self._items) > self._limit:
+            self._items.popitem(last=False)
 
     def create(
         self,
@@ -613,28 +651,41 @@ class DownloadStore:
         name: Optional[str],
         suffix: str = "conf",
         *,
+        owner_user_id: Optional[int] = None,
         download_id: Optional[str] = None,
     ) -> str:
         download_id = (download_id or uuid.uuid4().hex).strip() or uuid.uuid4().hex
         safe_name = _safe_name(name)
         safe_suffix = (suffix or "conf").strip().lstrip(".") or "conf"
+        now = time.time()
         with self._lock:
+            self._cleanup(now)
             self._items[download_id] = DownloadItem(
                 config=config,
                 qr_png=qr_png,
                 name=safe_name,
                 suffix=safe_suffix,
+                owner_user_id=owner_user_id,
+                created_at=now,
+                expires_at=now + self._ttl_seconds,
             )
-            if len(self._items) > self._limit:
-                self._items.popitem(last=False)
         return download_id
 
-    def get(self, download_id: str) -> Optional[DownloadItem]:
+    def get(self, download_id: str, owner_user_id: Optional[int] = None) -> Optional[DownloadItem]:
+        now = time.time()
         with self._lock:
-            return self._items.get(download_id)
+            self._cleanup(now)
+            item = self._items.get(download_id)
+            if item is None:
+                return None
+            if owner_user_id is not None and item.owner_user_id != owner_user_id:
+                return None
+            return item
 
 
-DOWNLOAD_STORE = DownloadStore()
+DOWNLOAD_STORE = DownloadStore(
+    ttl_seconds=int(os.getenv("VPNW_DOWNLOAD_TTL_SECONDS", "1800")),
+)
 
 
 @dataclass
@@ -643,6 +694,7 @@ class SessionItem:
     expires_at: float
     created_at: float
     touched_at: float
+    owner_user_id: Optional[int] = None
 
 
 class SessionStore:
@@ -659,7 +711,7 @@ class SessionStore:
         while len(self._items) > self._limit:
             self._items.popitem(last=False)
 
-    def create(self, ssh: SSHPayload) -> str:
+    def create(self, ssh: SSHPayload, owner_user_id: Optional[int] = None) -> str:
         session_id = uuid.uuid4().hex
         now = time.time()
         item = SessionItem(
@@ -667,32 +719,100 @@ class SessionStore:
             expires_at=now + self._ttl_seconds,
             created_at=now,
             touched_at=now,
+            owner_user_id=owner_user_id,
         )
         with self._lock:
             self._cleanup(now)
             self._items[session_id] = item
         return session_id
 
-    def get(self, session_id: str) -> Optional[SSHPayload]:
+    def get(self, session_id: str, owner_user_id: Optional[int] = None) -> Optional[SSHPayload]:
         now = time.time()
         with self._lock:
             self._cleanup(now)
             item = self._items.get(session_id)
             if not item:
                 return None
+            if owner_user_id is not None and item.owner_user_id != owner_user_id:
+                return None
             item.touched_at = now
             item.expires_at = now + self._ttl_seconds
             self._items.move_to_end(session_id)
             return item.ssh.model_copy(deep=True)
 
-    def revoke(self, session_id: str) -> bool:
+    def revoke(self, session_id: str, owner_user_id: Optional[int] = None) -> bool:
         with self._lock:
-            return self._items.pop(session_id, None) is not None
+            item = self._items.get(session_id)
+            if item is None:
+                return False
+            if owner_user_id is not None and item.owner_user_id != owner_user_id:
+                return False
+            self._items.pop(session_id, None)
+            return True
 
 
 SESSION_STORE = SessionStore(
     ttl_seconds=int(os.getenv("VPNW_SESSION_TTL_SECONDS", "86400")),
     limit=int(os.getenv("VPNW_SESSION_LIMIT", "512")),
+)
+
+
+class PinUnlockLimiter:
+    def __init__(self, threshold: int = 5, window_seconds: int = 600, lockout_seconds: int = 300) -> None:
+        self._threshold = max(1, threshold)
+        self._window_seconds = max(60, window_seconds)
+        self._lockout_seconds = max(60, lockout_seconds)
+        self._items: dict[str, dict[str, float | int]] = {}
+        self._lock = threading.Lock()
+
+    def _cleanup(self, now: float) -> None:
+        expired = [
+            session_id
+            for session_id, item in self._items.items()
+            if float(item.get("locked_until", 0)) <= now and float(item.get("last_failure_at", 0)) + self._window_seconds <= now
+        ]
+        for session_id in expired:
+            self._items.pop(session_id, None)
+
+    def remaining(self, session_id: str) -> int:
+        now = time.time()
+        with self._lock:
+            self._cleanup(now)
+            item = self._items.get(session_id)
+            if not item:
+                return 0
+            locked_until = float(item.get("locked_until", 0))
+            if locked_until <= now:
+                return 0
+            return max(1, int(locked_until - now))
+
+    def record_failure(self, session_id: str) -> int:
+        now = time.time()
+        with self._lock:
+            self._cleanup(now)
+            item = self._items.get(session_id)
+            if item is None or float(item.get("last_failure_at", 0)) + self._window_seconds <= now:
+                item = {"count": 0, "last_failure_at": now, "locked_until": 0.0}
+            item["count"] = int(item.get("count", 0)) + 1
+            item["last_failure_at"] = now
+            if int(item["count"]) >= self._threshold:
+                item["count"] = 0
+                item["locked_until"] = now + self._lockout_seconds
+            self._items[session_id] = item
+            locked_until = float(item.get("locked_until", 0))
+            if locked_until > now:
+                return max(1, int(locked_until - now))
+            return 0
+
+    def reset(self, session_id: str) -> None:
+        with self._lock:
+            self._items.pop(session_id, None)
+
+
+PIN_UNLOCK_LIMITER = PinUnlockLimiter(
+    threshold=int(os.getenv("VPNW_PIN_UNLOCK_THRESHOLD", "5")),
+    window_seconds=int(os.getenv("VPNW_PIN_UNLOCK_WINDOW_SECONDS", "600")),
+    lockout_seconds=int(os.getenv("VPNW_PIN_UNLOCK_LOCKOUT_SECONDS", "300")),
 )
 
 APP_SESSION_COOKIE = "vpnw_app_session"
@@ -731,6 +851,12 @@ def _current_account(request: Request, *, required: bool = False) -> Optional[di
             raise HTTPException(status_code=401, detail="Account session expired.")
         return None
     return session
+
+
+def _require_account(request: Request) -> dict:
+    account = _current_account(request, required=True)
+    assert account is not None
+    return account
 
 
 def _cookie_secure(request: Request) -> bool:
@@ -939,6 +1065,7 @@ def auth_logout(request: Request, response: Response) -> CurrentUserResponse:
     session_id = _app_session_token(request)
     if session_id:
         _account_store().revoke_auth_session(session_id)
+        PIN_UNLOCK_LIMITER.reset(session_id)
     _clear_auth_cookie(response)
     return CurrentUserResponse(ok=True, authenticated=False)
 
@@ -1019,9 +1146,26 @@ def account_unlock_pin(payload: PinUnlockRequest, request: Request) -> PinRespon
     try:
         account = _current_account(request, required=True)
         assert account is not None
+        remaining = PIN_UNLOCK_LIMITER.remaining(account["session_id"])
+        if remaining:
+            return PinResponse(
+                ok=False,
+                pin_enabled=True,
+                pin_required=True,
+                error=f"Too many wrong PIN attempts. Try again in {remaining}s.",
+            )
         ok = _account_store().unlock_pin(account["session_id"], payload.pin)
         if not ok:
+            remaining = PIN_UNLOCK_LIMITER.record_failure(account["session_id"])
+            if remaining:
+                return PinResponse(
+                    ok=False,
+                    pin_enabled=True,
+                    pin_required=True,
+                    error=f"Too many wrong PIN attempts. Try again in {remaining}s.",
+                )
             return PinResponse(ok=False, pin_enabled=True, pin_required=True, error="Wrong PIN.")
+        PIN_UNLOCK_LIMITER.reset(account["session_id"])
         refreshed = _account_store().get_auth_session(account["session_id"])
         pin_enabled = bool(refreshed and refreshed["user"].get("pin_enabled"))
         pin_required = bool(refreshed and refreshed["user"].get("pin_enabled") and not refreshed["pin_unlocked"])
@@ -1076,15 +1220,17 @@ def _resolve_ssh_payload(
     if ssh_payload is not None:
         return ssh_payload
     if session_id:
-        session_ssh = SESSION_STORE.get(session_id)
+        if request is None:
+            raise RuntimeError("Session access requires an authenticated request.")
+        account = _require_account(request)
+        session_ssh = SESSION_STORE.get(session_id, owner_user_id=account["user"]["id"])
         if session_ssh is not None:
             return session_ssh
         raise RuntimeError("Session expired. Please log in again.")
     if saved_server_id:
         if request is None:
             raise RuntimeError("Saved server access requires an authenticated request.")
-        account = _current_account(request, required=True)
-        assert account is not None
+        account = _require_account(request)
         creds = _account_store().resolve_server_credentials(
             user_id=account["user"]["id"],
             server_id=saved_server_id,
@@ -1130,11 +1276,21 @@ def _ssh_connection(
 
 
 def _materialize_saved_server(payload: BaseModel, request: Request) -> BaseModel:
+    session_id = getattr(payload, "session_id", None)
+    if session_id and getattr(payload, "ssh", None) is None:
+        account = _require_account(request)
+        session_ssh = SESSION_STORE.get(session_id, owner_user_id=account["user"]["id"])
+        if session_ssh is None:
+            raise RuntimeError("Session expired. Please connect again.")
+        updated = payload.model_dump()
+        updated["ssh"] = session_ssh.model_dump(exclude_none=True)
+        updated["session_id"] = None
+        payload = payload.__class__(**updated)
+
     saved_server_id = getattr(payload, "saved_server_id", None)
     if not saved_server_id:
         return payload
-    account = _current_account(request, required=True)
-    assert account is not None
+    account = _require_account(request)
     creds = _account_store().resolve_server_credentials(
         user_id=account["user"]["id"],
         server_id=saved_server_id,
@@ -1165,7 +1321,12 @@ def _materialize_saved_server(payload: BaseModel, request: Request) -> BaseModel
     return payload.__class__(**updated)
 
 
-def _run_provision(job_id: str, payload: ProvisionRequest, public_base_url: Optional[str] = None) -> None:
+def _run_provision(
+    job_id: str,
+    payload: ProvisionRequest,
+    owner_user_id: Optional[int],
+    public_base_url: Optional[str] = None,
+) -> None:
     try:
         JOB_STORE.update(job_id, status="running")
 
@@ -1321,7 +1482,14 @@ def _run_provision(job_id: str, payload: ProvisionRequest, public_base_url: Opti
             qr_seed = auto_url or "VPN Wizard"
             qr_png = _build_qr_png(qr_seed)
             qr_b64 = base64.b64encode(qr_png).decode("ascii")
-            DOWNLOAD_STORE.create(auto_config, qr_png, f"{opts.client_name}-auto", suffix="json", download_id=auto_download_id)
+            DOWNLOAD_STORE.create(
+                auto_config,
+                qr_png,
+                f"{opts.client_name}-auto",
+                suffix="json",
+                owner_user_id=owner_user_id,
+                download_id=auto_download_id,
+            )
             # For proxy profiles we treat the auto profile as the primary artifact.
             download_id = auto_download_id
         else:
@@ -1329,9 +1497,21 @@ def _run_provision(job_id: str, payload: ProvisionRequest, public_base_url: Opti
             qr_png = _build_qr_png(qr_seed) if (config or auto_config) else None
             qr_b64 = base64.b64encode(qr_png).decode("ascii") if qr_png else None
             if config and qr_png:
-                download_id = DOWNLOAD_STORE.create(config, qr_png, opts.client_name, suffix=suffix)
+                download_id = DOWNLOAD_STORE.create(
+                    config,
+                    qr_png,
+                    opts.client_name,
+                    suffix=suffix,
+                    owner_user_id=owner_user_id,
+                )
             if opts.protocol in {"vless_reality", "shadowtls_ss"} and auto_config and qr_png:
-                auto_download_id = DOWNLOAD_STORE.create(auto_config, qr_png, f"{opts.client_name}-auto", suffix="json")
+                auto_download_id = DOWNLOAD_STORE.create(
+                    auto_config,
+                    qr_png,
+                    f"{opts.client_name}-auto",
+                    suffix="json",
+                    owner_user_id=owner_user_id,
+                )
         JOB_STORE.update(
             job_id,
             status="done",
@@ -1354,8 +1534,9 @@ def health() -> dict:
 
 
 @app.post("/api/ssh/discover-port", response_model=SSHDiscoverResponse)
-async def ssh_discover_port(payload: SSHDiscoverRequest) -> SSHDiscoverResponse:
+async def ssh_discover_port(payload: SSHDiscoverRequest, request: Request) -> SSHDiscoverResponse:
     try:
+        _require_account(request)
         clean_host, parsed_port = _split_host_port(payload.host)
         preferred = payload.port if payload.port is not None else parsed_port
         found_port, checked = _discover_ssh_port(clean_host, preferred_port=preferred)
@@ -1372,16 +1553,19 @@ async def ssh_discover_port(payload: SSHDiscoverRequest) -> SSHDiscoverResponse:
             port=found_port,
             checked_ports=checked,
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         return SSHDiscoverResponse(ok=False, error=_error_message(exc))
 
 
 @app.post("/api/sessions/login", response_model=SessionLoginResponse)
-async def session_login(payload: SessionLoginRequest) -> SessionLoginResponse:
+async def session_login(payload: SessionLoginRequest, request: Request) -> SessionLoginResponse:
     request_id = uuid.uuid4().hex[:8]
     logger.info("ssh.login.start req=%s target=%s", request_id, _ssh_target_label(payload.ssh))
     last_exc: Optional[Exception] = None
     try:
+        account = _require_account(request)
         for attempt in range(1, 4):
             try:
                 with _ssh_connection(
@@ -1399,8 +1583,8 @@ async def session_login(payload: SessionLoginRequest) -> SessionLoginResponse:
                 time.sleep(1.2 * attempt)
         if last_exc is not None:
             raise last_exc
-        session_id = SESSION_STORE.create(payload.ssh)
-        logger.info("ssh.login.ok req=%s target=%s session=%s", request_id, _ssh_target_label(payload.ssh), session_id)
+        session_id = SESSION_STORE.create(payload.ssh, owner_user_id=account["user"]["id"])
+        logger.info("ssh.login.ok req=%s target=%s", request_id, _ssh_target_label(payload.ssh))
         return SessionLoginResponse(
             ok=True,
             session_id=session_id,
@@ -1408,6 +1592,8 @@ async def session_login(payload: SessionLoginRequest) -> SessionLoginResponse:
             user=payload.ssh.user,
             port=payload.ssh.port,
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.warning(
             "ssh.login.fail req=%s target=%s error=%s",
@@ -1420,8 +1606,9 @@ async def session_login(payload: SessionLoginRequest) -> SessionLoginResponse:
 
 
 @app.post("/api/sessions/revoke", response_model=RollbackResponse)
-async def session_revoke(payload: SessionRevokeRequest) -> RollbackResponse:
-    removed = SESSION_STORE.revoke(payload.session_id)
+async def session_revoke(payload: SessionRevokeRequest, request: Request) -> RollbackResponse:
+    account = _require_account(request)
+    removed = SESSION_STORE.revoke(payload.session_id, owner_user_id=account["user"]["id"])
     if not removed:
         return RollbackResponse(ok=False, error="Session not found.")
     return RollbackResponse(ok=True)
@@ -1429,15 +1616,23 @@ async def session_revoke(payload: SessionRevokeRequest) -> RollbackResponse:
 
 @app.post("/api/provision", response_model=JobCreateResponse)
 async def provision(payload: ProvisionRequest, background_tasks: BackgroundTasks, request: Request) -> JobCreateResponse:
+    account = _require_account(request)
     payload = _materialize_saved_server(payload, request)
-    job = JOB_STORE.create()
-    background_tasks.add_task(_run_provision, job.job_id, payload, _public_base_url_from_request(request))
+    job = JOB_STORE.create(owner_user_id=account["user"]["id"])
+    background_tasks.add_task(
+        _run_provision,
+        job.job_id,
+        payload,
+        account["user"]["id"],
+        _public_base_url_from_request(request),
+    )
     return JobCreateResponse(job_id=job.job_id)
 
 
 @app.get("/api/jobs/{job_id}", response_model=JobStatus)
-def job_status(job_id: str) -> JobStatus:
-    job = JOB_STORE.get(job_id)
+def job_status(job_id: str, request: Request) -> JobStatus:
+    account = _require_account(request)
+    job = JOB_STORE.get(job_id, owner_user_id=account["user"]["id"])
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return JobStatus(
@@ -1453,8 +1648,9 @@ def job_status(job_id: str) -> JobStatus:
 
 
 @app.get("/api/jobs/{job_id}/result", response_model=ProvisionResponse)
-def job_result(job_id: str) -> ProvisionResponse:
-    job = JOB_STORE.get(job_id)
+def job_result(job_id: str, request: Request) -> ProvisionResponse:
+    account = _require_account(request)
+    job = JOB_STORE.get(job_id, owner_user_id=account["user"]["id"])
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     if job.status == "error":
@@ -1504,6 +1700,7 @@ def download_qr(download_id: str) -> Response:
 @app.post("/api/rollback", response_model=RollbackResponse)
 async def rollback(payload: RollbackRequest, request: Request) -> RollbackResponse:
     try:
+        _require_account(request)
         payload = _materialize_saved_server(payload, request)
         with _ssh_connection(payload.ssh, payload.session_id, request=request) as (ssh, _resolved):
             prov = WireGuardProvisioner(ssh)
@@ -1511,6 +1708,8 @@ async def rollback(payload: RollbackRequest, request: Request) -> RollbackRespon
         if not backup:
             return RollbackResponse(ok=False, error="No backup found.")
         return RollbackResponse(ok=True, backup=backup)
+    except HTTPException:
+        raise
     except Exception as exc:
         return RollbackResponse(ok=False, error=_error_message(exc))
 
@@ -1521,6 +1720,7 @@ async def client_list(payload: RollbackRequest, request: Request) -> ClientListR
     target = _ssh_target_label(payload.ssh) if payload.ssh else (payload.session_id or payload.saved_server_id or "unknown")
     logger.info("ssh.clients.list.start req=%s target=%s protocol=%s", request_id, target, payload.protocol or "auto")
     try:
+        _require_account(request)
         payload = _materialize_saved_server(payload, request)
         def _operation(attempt: int) -> list[dict]:
             with _ssh_connection(
@@ -1548,6 +1748,8 @@ async def client_list(payload: RollbackRequest, request: Request) -> ClientListR
         )
         logger.info("ssh.clients.list.ok req=%s target=%s count=%s", request_id, target, len(clients))
         return ClientListResponse(ok=True, clients=clients)
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.warning(
             "ssh.clients.list.fail req=%s target=%s error=%s",
@@ -1571,6 +1773,7 @@ async def client_add(payload: ClientRequest, request: Request) -> ClientAddRespo
         payload.client_name or "client1",
     )
     try:
+        account = _require_account(request)
         payload = _materialize_saved_server(payload, request)
         def _operation(attempt: int) -> dict:
             with _ssh_connection(
@@ -1651,16 +1854,35 @@ async def client_add(payload: ClientRequest, request: Request) -> ClientAddRespo
             qr_seed = auto_url or "VPN Wizard"
             qr_png = _build_qr_png(qr_seed)
             qr_b64 = base64.b64encode(qr_png).decode("ascii")
-            DOWNLOAD_STORE.create(auto_config, qr_png, f"{client_name}-auto", suffix="json", download_id=auto_download_id)
+            DOWNLOAD_STORE.create(
+                auto_config,
+                qr_png,
+                f"{client_name}-auto",
+                suffix="json",
+                owner_user_id=account["user"]["id"],
+                download_id=auto_download_id,
+            )
             download_id = auto_download_id
         else:
             qr_seed = config_value if config_value else "VPN Wizard"
             qr_png = _build_qr_png(qr_seed) if (config_value or auto_config) else None
             qr_b64 = base64.b64encode(qr_png).decode("ascii") if qr_png else None
             if config_value and qr_png:
-                download_id = DOWNLOAD_STORE.create(config_value, qr_png, client_name, suffix=suffix)
+                download_id = DOWNLOAD_STORE.create(
+                    config_value,
+                    qr_png,
+                    client_name,
+                    suffix=suffix,
+                    owner_user_id=account["user"]["id"],
+                )
             if payload.protocol in {"vless_reality", "shadowtls_ss"} and auto_config and qr_png:
-                auto_download_id = DOWNLOAD_STORE.create(auto_config, qr_png, f"{client_name}-auto", suffix="json")
+                auto_download_id = DOWNLOAD_STORE.create(
+                    auto_config,
+                    qr_png,
+                    f"{client_name}-auto",
+                    suffix="json",
+                    owner_user_id=account["user"]["id"],
+                )
         logger.info("ssh.clients.add.ok req=%s target=%s client=%s", request_id, target, client_name)
         return ClientAddResponse(
             ok=True,
@@ -1674,6 +1896,8 @@ async def client_add(payload: ClientRequest, request: Request) -> ClientAddRespo
             auto_download_id=auto_download_id,
             interface=iface,
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.warning(
             "ssh.clients.add.fail req=%s target=%s error=%s",
@@ -1697,6 +1921,7 @@ async def client_remove(payload: ClientRemoveRequest, request: Request) -> Rollb
         payload.client_name,
     )
     try:
+        _require_account(request)
         payload = _materialize_saved_server(payload, request)
         def _operation(attempt: int) -> bool:
             with _ssh_connection(
@@ -1726,6 +1951,8 @@ async def client_remove(payload: ClientRemoveRequest, request: Request) -> Rollb
             return RollbackResponse(ok=False, error="Client not found.")
         logger.info("ssh.clients.remove.ok req=%s target=%s client=%s", request_id, target, payload.client_name)
         return RollbackResponse(ok=True, backup=None)
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.warning(
             "ssh.clients.remove.fail req=%s target=%s error=%s",
@@ -1749,6 +1976,7 @@ async def client_rotate(payload: ClientRemoveRequest, request: Request) -> Clien
         payload.client_name,
     )
     try:
+        account = _require_account(request)
         if payload.protocol in {"vless_reality", "shadowtls_ss"}:
             return ClientAddResponse(ok=False, error="Rotate is not supported for proxy profiles.")
         payload = _materialize_saved_server(payload, request)
@@ -1778,7 +2006,12 @@ async def client_rotate(payload: ClientRemoveRequest, request: Request) -> Clien
         )
         qr_png = _build_qr_png(result["config"])
         qr_b64 = base64.b64encode(qr_png).decode("ascii")
-        download_id = DOWNLOAD_STORE.create(result["config"], qr_png, result.get("name"))
+        download_id = DOWNLOAD_STORE.create(
+            result["config"],
+            qr_png,
+            result.get("name"),
+            owner_user_id=account["user"]["id"],
+        )
         logger.info("ssh.clients.rotate.ok req=%s target=%s client=%s", request_id, target, result.get("name"))
         return ClientAddResponse(
             ok=True,
@@ -1789,6 +2022,8 @@ async def client_rotate(payload: ClientRemoveRequest, request: Request) -> Clien
             download_id=download_id,
             interface=result.get("interface"),
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.warning(
             "ssh.clients.rotate.fail req=%s target=%s error=%s",
@@ -1812,6 +2047,7 @@ async def client_export(payload: ClientRemoveRequest, request: Request) -> Clien
         payload.client_name,
     )
     try:
+        account = _require_account(request)
         payload = _materialize_saved_server(payload, request)
         def _operation(attempt: int) -> dict:
             with _ssh_connection(
@@ -1889,16 +2125,35 @@ async def client_export(payload: ClientRemoveRequest, request: Request) -> Clien
             qr_seed = auto_url or "VPN Wizard"
             qr_png = _build_qr_png(qr_seed)
             qr_b64 = base64.b64encode(qr_png).decode("ascii")
-            DOWNLOAD_STORE.create(auto_config, qr_png, f"{client_name}-auto", suffix="json", download_id=auto_download_id)
+            DOWNLOAD_STORE.create(
+                auto_config,
+                qr_png,
+                f"{client_name}-auto",
+                suffix="json",
+                owner_user_id=account["user"]["id"],
+                download_id=auto_download_id,
+            )
             download_id = auto_download_id
         else:
             qr_seed = config_value if config_value else "VPN Wizard"
             qr_png = _build_qr_png(qr_seed) if (config_value or auto_config) else None
             qr_b64 = base64.b64encode(qr_png).decode("ascii") if qr_png else None
             if config_value and qr_png:
-                download_id = DOWNLOAD_STORE.create(config_value, qr_png, client_name, suffix=suffix)
+                download_id = DOWNLOAD_STORE.create(
+                    config_value,
+                    qr_png,
+                    client_name,
+                    suffix=suffix,
+                    owner_user_id=account["user"]["id"],
+                )
             if payload.protocol in {"vless_reality", "shadowtls_ss"} and auto_config and qr_png:
-                auto_download_id = DOWNLOAD_STORE.create(auto_config, qr_png, f"{client_name}-auto", suffix="json")
+                auto_download_id = DOWNLOAD_STORE.create(
+                    auto_config,
+                    qr_png,
+                    f"{client_name}-auto",
+                    suffix="json",
+                    owner_user_id=account["user"]["id"],
+                )
         logger.info("ssh.clients.export.ok req=%s target=%s client=%s", request_id, target, client_name)
         return ClientExportResponse(
             ok=True,
@@ -1912,6 +2167,8 @@ async def client_export(payload: ClientRemoveRequest, request: Request) -> Clien
             auto_download_id=auto_download_id,
             interface=iface,
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.warning(
             "ssh.clients.export.fail req=%s target=%s error=%s",
@@ -2006,11 +2263,14 @@ def _detect_server_status(ssh: SSHRunner) -> dict:
 @app.post("/api/logs", response_model=LogsResponse)
 async def get_logs(payload: RollbackRequest, request: Request) -> LogsResponse:
     try:
+        _require_account(request)
         payload = _materialize_saved_server(payload, request)
         with _ssh_connection(payload.ssh, payload.session_id, request=request) as (ssh, _resolved):
             prov = WireGuardProvisioner(ssh)
             report = prov.get_system_report()
         return LogsResponse(ok=True, logs=report)
+    except HTTPException:
+        raise
     except Exception as exc:
         return LogsResponse(ok=False, error=_error_message(exc))
 
@@ -2021,6 +2281,7 @@ async def server_status(payload: RollbackRequest, request: Request) -> ServerSta
     target = _ssh_target_label(payload.ssh) if payload.ssh else (payload.session_id or payload.saved_server_id or "unknown")
     logger.info("ssh.status.start req=%s target=%s protocol=%s", request_id, target, payload.protocol or "auto")
     try:
+        _require_account(request)
         payload = _materialize_saved_server(payload, request)
         last_exc: Optional[Exception] = None
         status: dict = {}
@@ -2075,6 +2336,8 @@ async def server_status(payload: RollbackRequest, request: Request) -> ServerSta
             tyumen_port=status.get("tyumen_port"),
             proxy_sni=status.get("sni"),
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.warning(
             "ssh.status.fail req=%s target=%s error=%s",
@@ -2089,6 +2352,7 @@ async def server_status(payload: RollbackRequest, request: Request) -> ServerSta
 @app.post("/api/server/precheck", response_model=PrecheckResponse)
 async def server_precheck(payload: ProvisionRequest, request: Request) -> PrecheckResponse:
     try:
+        _require_account(request)
         payload = _materialize_saved_server(payload, request)
         with _ssh_connection(payload.ssh, payload.session_id, request=request) as (ssh, _resolved):
             opts = payload.options
@@ -2151,14 +2415,17 @@ async def server_precheck(payload: ProvisionRequest, request: Request) -> Preche
                 )
                 checks = prov.pre_check()
         return PrecheckResponse(ok=True, checks=checks)
+    except HTTPException:
+        raise
     except Exception as exc:
         return PrecheckResponse(ok=False, error=_error_message(exc))
 
 
 @app.post("/api/repair", response_model=JobCreateResponse)
 async def run_repair(payload: RollbackRequest, background_tasks: BackgroundTasks, request: Request) -> JobCreateResponse:
+    account = _require_account(request)
     payload = _materialize_saved_server(payload, request)
-    job = JOB_STORE.create()
+    job = JOB_STORE.create(owner_user_id=account["user"]["id"])
 
     def _do_repair(job_id: str, payload: RollbackRequest):
         try:

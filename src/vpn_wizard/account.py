@@ -45,11 +45,10 @@ def _derive_fernet(secret: str) -> Fernet:
 
 
 def resolve_secret_key() -> str:
-    return (
-        (os.getenv("VPNW_SECRET_KEY") or "").strip()
-        or (os.getenv("VPNW_BOT_TOKEN") or "").strip()
-        or "vpn-wizard-dev-secret"
-    )
+    value = (os.getenv("VPNW_SECRET_KEY") or "").strip()
+    if value:
+        return value
+    raise RuntimeError("VPNW_SECRET_KEY must be configured.")
 
 
 def build_account_store() -> "AccountStore":

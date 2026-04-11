@@ -123,6 +123,7 @@ const COPY = {
     connectBusyChip: "Подключаемся",
     connectReadyChip: "Готово",
     connectErrorChip: "Ошибка",
+    connectLoginRequired: "Сначала войдите через Telegram.",
     connectIdleTitle: "Подключите сервер и продолжайте без лишних шагов.",
     connectIdleBody: "После проверки вы сразу увидите настройку сервера или список профилей.",
     connectBusyTitle: "Подключаемся к серверу",
@@ -245,6 +246,7 @@ const COPY = {
     connectBusyChip: "Connecting",
     connectReadyChip: "Ready",
     connectErrorChip: "Error",
+    connectLoginRequired: "Sign in with Telegram first.",
     connectIdleTitle: "Connect your server and keep every next action nearby.",
     connectIdleBody: "After the check you immediately get either setup or the profile list.",
     connectBusyTitle: "Connecting to the server",
@@ -492,7 +494,7 @@ function redactSecrets(value) {
     const output = {};
     Object.entries(value).forEach(([key, val]) => {
       const normalized = key.toLowerCase();
-      if (["password", "key_content", "key", "init_data", "pin"].includes(normalized)) {
+      if (["password", "key_content", "key", "init_data", "pin", "session_id"].includes(normalized)) {
         output[key] = "***";
       } else {
         output[key] = redactSecrets(val);
@@ -598,10 +600,14 @@ function focusClientResultIfNeeded() {
 
 function classifyError(error) {
   const message = String(error?.message || error || "");
+  if (error?.kind === "http" && error.status === 401 && /telegram login required/i.test(message)) {
+    return { type: "session", text: t("connectLoginRequired") };
+  }
   if (error?.kind === "http" && error.status === 401) return { type: "session", text: t("connectSessionError") };
   if (error?.kind === "http" && error.status === 403 && /pin/i.test(message)) return { type: "session", text: t("pinNoteLocked") };
   if (error?.kind === "http" && error.status >= 500) return { type: "server", text: t("connectServerError") };
   if (/failed to fetch|networkerror|load failed|cors/i.test(message)) return { type: "api", text: t("connectTransportError") };
+  if (/telegram login required/i.test(message)) return { type: "session", text: t("connectLoginRequired") };
   if (/session expired/i.test(message)) return { type: "session", text: t("connectSessionError") };
   if (/pin unlock required/i.test(message)) return { type: "session", text: t("pinNoteLocked") };
   if (/permission denied|authentication failed|private key|password/i.test(message)) return { type: "auth", text: t("connectAuthError") };

@@ -1,22 +1,43 @@
 from __future__ import annotations
 
-import asyncio
+import hashlib
+import hmac
 import paramiko
+import time
 
+from fastapi.testclient import TestClient
+
+import vpn_wizard.server as server_module
 from vpn_wizard.server import (
     DOWNLOAD_STORE,
     JobStore,
     SSHPayload,
-    SSHDiscoverRequest,
     SessionStore,
     _discover_ssh_port,
     _error_message,
     _is_retryable_ssh_error,
     _split_host_port,
-    download_config,
-    download_qr,
-    ssh_discover_port,
 )
+
+
+def _configure_env(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("VPNW_STATE_DB", str(tmp_path / "state.db"))
+    monkeypatch.setenv("VPNW_SECRET_KEY", "test-secret-key")
+    monkeypatch.setenv("VPNW_BOT_TOKEN", "123456:telegram-test-token")
+    monkeypatch.setenv("VPNW_BOT_USERNAME", "vpn_wizard_test_bot")
+
+
+def _web_auth_payload(bot_token: str) -> dict[str, object]:
+    now = int(time.time())
+    payload = {
+        "id": 10101,
+        "first_name": "Fodder",
+        "username": "fodder_test",
+        "auth_date": now,
+    }
+    data_check = "\n".join(f"{key}={payload[key]}" for key in sorted(payload))
+    digest = hmac.new(hashlib.sha256(bot_token.encode("utf-8")).digest(), data_check.encode("utf-8"), "sha256").hexdigest()
+    return {**payload, "hash": digest}
 
 
 def test_job_store_create_update_and_progress() -> None:
@@ -31,27 +52,39 @@ def test_job_store_create_update_and_progress() -> None:
     assert stored.alternatives is None
 
 
-def test_download_config_returns_attachment() -> None:
-    download_id = DOWNLOAD_STORE.create("config data", b"png", "demo-profile")
-    response = download_config(download_id)
-    assert response.media_type == "text/plain"
-    assert response.body == b"config data"
+def test_download_config_returns_attachment(monkeypatch, tmp_path) -> None:
+    _configure_env(monkeypatch, tmp_path)
+    client = TestClient(server_module.app)
+    client.post("/api/auth/telegram/web", json=_web_auth_payload("123456:telegram-test-token"))
+    download_id = DOWNLOAD_STORE.create("config data", b"png", "demo-profile", owner_user_id=1)
+    response = client.get(f"/api/download/{download_id}/config")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/plain")
+    assert response.content == b"config data"
     assert response.headers["content-disposition"].endswith('filename="demo-profile.conf"')
 
 
-def test_download_config_respects_custom_suffix() -> None:
-    download_id = DOWNLOAD_STORE.create("vless://demo", b"png", "demo-profile", suffix="txt")
-    response = download_config(download_id)
-    assert response.media_type == "text/plain"
-    assert response.body == b"vless://demo"
+def test_download_config_respects_custom_suffix(monkeypatch, tmp_path) -> None:
+    _configure_env(monkeypatch, tmp_path)
+    client = TestClient(server_module.app)
+    client.post("/api/auth/telegram/web", json=_web_auth_payload("123456:telegram-test-token"))
+    download_id = DOWNLOAD_STORE.create("vless://demo", b"png", "demo-profile", suffix="txt", owner_user_id=1)
+    response = client.get(f"/api/download/{download_id}/config")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/plain")
+    assert response.content == b"vless://demo"
     assert response.headers["content-disposition"].endswith('filename="demo-profile.txt"')
 
 
-def test_download_qr_returns_png() -> None:
-    download_id = DOWNLOAD_STORE.create("config data", b"png", "client 01")
-    response = download_qr(download_id)
-    assert response.media_type == "image/png"
-    assert response.body == b"png"
+def test_download_qr_returns_png(monkeypatch, tmp_path) -> None:
+    _configure_env(monkeypatch, tmp_path)
+    client = TestClient(server_module.app)
+    client.post("/api/auth/telegram/web", json=_web_auth_payload("123456:telegram-test-token"))
+    download_id = DOWNLOAD_STORE.create("config data", b"png", "client 01", owner_user_id=1)
+    response = client.get(f"/api/download/{download_id}/qr")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/png")
+    assert response.content == b"png"
     assert response.headers["content-disposition"].endswith('filename="client01.png"')
 
 
@@ -111,15 +144,21 @@ def test_discover_ssh_port_parses_host_embedded_port(monkeypatch) -> None:
     assert order[0] == 2022
 
 
-def test_ssh_discover_endpoint_returns_error_when_not_found(monkeypatch) -> None:
+def test_ssh_discover_endpoint_returns_error_when_not_found(monkeypatch, tmp_path) -> None:
+    _configure_env(monkeypatch, tmp_path)
+
     def fake_discover(host: str, preferred_port: int | None = None) -> tuple[int | None, list[int]]:
         return None, [22, 2222]
 
     monkeypatch.setattr("vpn_wizard.server._discover_ssh_port", fake_discover)
-    response = asyncio.run(ssh_discover_port(SSHDiscoverRequest(host="example.com")))
-    assert response.ok is False
-    assert response.checked_ports == [22, 2222]
-    assert response.error is not None
+    client = TestClient(server_module.app)
+    client.post("/api/auth/telegram/web", json=_web_auth_payload("123456:telegram-test-token"))
+    response = client.post("/api/ssh/discover-port", json={"host": "example.com"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is False
+    assert payload["checked_ports"] == [22, 2222]
+    assert payload["error"] is not None
 
 
 def test_error_message_maps_empty_auth_exception() -> None:
