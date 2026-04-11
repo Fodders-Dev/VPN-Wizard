@@ -1,0 +1,8 @@
+[Unit]
+Description=Pull latest VPN Wizard code from GitHub and restart the service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/vpn-wizard-autodeploy

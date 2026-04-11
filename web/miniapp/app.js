@@ -8,6 +8,12 @@ const CLIENT_SORT_KEY = "vpnw_client_sort_v1";
 const tg = window.Telegram?.WebApp || null;
 const PROXY_MODES = new Set(["shadowtls_ss", "vless_reality"]);
 const DEBUG_LOG_LIMIT = 60;
+const PROVISION_STEP_ESTIMATE = {
+  amneziawg: 8,
+  wireguard: 8,
+  shadowtls_ss: 7,
+  vless_reality: 7,
+};
 
 const refs = {
   authCard: document.getElementById("auth-card"),
@@ -48,6 +54,12 @@ const refs = {
   connectStatusChip: document.getElementById("connect-status-chip"),
   connectStatusTitle: document.getElementById("connect-status-title"),
   connectStatusBody: document.getElementById("connect-status-body"),
+  connectProgressPanel: document.getElementById("connect-progress-panel"),
+  connectProgressLabel: document.getElementById("connect-progress-label"),
+  connectProgressElapsed: document.getElementById("connect-progress-elapsed"),
+  connectProgressBar: document.getElementById("connect-progress-bar"),
+  connectProgressLog: document.getElementById("connect-progress-log"),
+  connectChecklist: document.getElementById("connect-checklist"),
   profileName: document.getElementById("profile-name-input"),
   addProfileBtn: document.getElementById("add-profile-btn"),
   profilesRefreshBtn: document.getElementById("profiles-refresh-btn"),
@@ -110,8 +122,10 @@ const COPY = {
     connectIdleBody: "После проверки вы сразу увидите настройку сервера или список профилей.",
     connectBusyTitle: "Подключаемся к серверу",
     connectBusyBody: "Проверяем SSH и текущее состояние сервиса.",
-    connectReadyConfigured: "Сервер готов. Переходим к профилям.",
-    connectReadyUnconfigured: "Сервер доступен. Осталась одна кнопка настройки.",
+    connectReadyConfigured: "Сервер готов. Можно открывать профили.",
+    connectReadyConfiguredBody: "Сервис уже поднят. Проверьте список профилей или создайте новый.",
+    connectReadyUnconfigured: "Сервер доступен. Следующий шаг: настройка.",
+    connectReadyUnconfiguredBody: "Нажмите «Настроить сервер». Мы покажем живой прогресс и последние шаги установки.",
     connectTransportError: "Интерфейс не может достучаться до API. Сначала восстановите связь, потом повторите попытку.",
     connectAuthError: "Не удалось войти по SSH. Проверьте пользователя, пароль или ключ.",
     connectPortError: "SSH порт не найден. Если он не 22, укажите его в настройках.",
@@ -160,6 +174,29 @@ const COPY = {
     confirmContinue: "Продолжить",
     confirmCancel: "Отмена",
     setupBusy: "Настраиваем сервер. Это может занять пару минут.",
+    setupBusyBody: "Ниже видно, сколько шагов уже прошло и на чём сейчас установка.",
+    setupProgressCounter: "Шаг {count} из ~{total}",
+    setupProgressUnknown: "Запускаем установку",
+    setupElapsed: "Прошло {time}",
+    roadmapConnectTitle: "Проверить доступ к серверу",
+    roadmapConnectPending: "Введите IP, SSH-пользователя и пароль или ключ.",
+    roadmapConnectDone: "Доступ подтверждён для {target}.",
+    roadmapSetupTitle: "Установить VPN и открыть нужные порты",
+    roadmapSetupPending: "После проверки появится кнопка настройки.",
+    roadmapSetupReady: "Сервер пустой или сервис ещё не поднят. Нажмите «Настроить сервер».",
+    roadmapSetupBusy: "Настройка идёт. Ниже показываем последние шаги сервера.",
+    roadmapSetupDone: "Сервис поднят. Можно переходить к профилям.",
+    roadmapProfilesTitle: "Выдать и сохранить профили",
+    roadmapProfilesPending: "После настройки здесь появится выдача профилей.",
+    roadmapProfilesReady: "Откройте профили и создайте первый конфиг.",
+    roadmapProfilesDone: "Профили готовы. Их можно открывать, перевыпускать и удалять.",
+    connectRecheck: "Проверить снова",
+    connectRefresh: "Обновить состояние",
+    goSetup: "Вернуться к настройке",
+    clientsSetupTitle: "Сервер подключён, но ещё не настроен",
+    clientsSetupCopy: "Вернитесь на вкладку подключения и запустите настройку. После этого здесь появятся профили.",
+    clientsFirstProfileTitle: "Сервер готов, профилей пока нет",
+    clientsFirstProfileCopy: "Введите имя выше и нажмите «Добавить», чтобы выпустить первый профиль.",
     profileBusy: "Создаём профиль...",
     copyDone: "Скопировано.",
     copyFailed: "Не удалось скопировать.",
@@ -200,8 +237,10 @@ const COPY = {
     connectIdleBody: "After the check you immediately get either setup or the profile list.",
     connectBusyTitle: "Connecting to the server",
     connectBusyBody: "Checking SSH and current service state.",
-    connectReadyConfigured: "The server is ready. Opening profiles.",
-    connectReadyUnconfigured: "The server is reachable. One setup button is left.",
+    connectReadyConfigured: "The server is ready. Profiles are next.",
+    connectReadyConfiguredBody: "The service is already up. Open profiles or create a new one.",
+    connectReadyUnconfigured: "The server is reachable. Setup is the next step.",
+    connectReadyUnconfiguredBody: "Tap “Set up server”. We will show live progress and recent install steps.",
     connectTransportError: "The app cannot reach the API yet. Fix connectivity and retry.",
     connectAuthError: "SSH login failed. Check the user, password, or key.",
     connectPortError: "No SSH port was found. If it is not 22, set it in Settings.",
@@ -250,6 +289,29 @@ const COPY = {
     confirmContinue: "Continue",
     confirmCancel: "Cancel",
     setupBusy: "Setting up the server. This may take a few minutes.",
+    setupBusyBody: "You can see completed steps and the current stage below.",
+    setupProgressCounter: "Step {count} of ~{total}",
+    setupProgressUnknown: "Starting setup",
+    setupElapsed: "Elapsed {time}",
+    roadmapConnectTitle: "Check server access",
+    roadmapConnectPending: "Enter the IP, SSH user, and password or key.",
+    roadmapConnectDone: "Access confirmed for {target}.",
+    roadmapSetupTitle: "Install VPN and open the required ports",
+    roadmapSetupPending: "The setup action appears after the connection check.",
+    roadmapSetupReady: "The server is empty or the service is not installed yet. Tap “Set up server”.",
+    roadmapSetupBusy: "Setup is running. Recent server steps are shown below.",
+    roadmapSetupDone: "The service is up. You can move to profiles.",
+    roadmapProfilesTitle: "Issue and reuse profiles",
+    roadmapProfilesPending: "Profile delivery appears after setup finishes.",
+    roadmapProfilesReady: "Open profiles and create the first config.",
+    roadmapProfilesDone: "Profiles are ready. You can open, rotate, and delete them.",
+    connectRecheck: "Check again",
+    connectRefresh: "Refresh state",
+    goSetup: "Back to setup",
+    clientsSetupTitle: "The server is connected but not configured yet",
+    clientsSetupCopy: "Go back to the Connect tab and start setup. Profiles will appear here after that.",
+    clientsFirstProfileTitle: "The server is ready but there are no profiles yet",
+    clientsFirstProfileCopy: "Enter a name above and tap “Add” to issue the first profile.",
     profileBusy: "Creating a profile...",
     copyDone: "Copied.",
     copyFailed: "Could not copy.",
@@ -281,6 +343,8 @@ const STATE = {
   connectionChecked: false,
   serverConfigured: false,
   serverInfo: null,
+  connectStatus: { kind: "idle", title: "", body: "" },
+  provision: { active: false, jobId: null, progress: [], startedAt: 0, finishedAt: 0 },
   clients: [],
   clientsLoading: false,
   clientSort: localStorage.getItem(CLIENT_SORT_KEY) || "updated",
@@ -440,6 +504,16 @@ function openExternal(url) {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
+function currentMiniappUrl() {
+  const configured = String(STATE.authConfig?.canonical_miniapp_url || "").trim();
+  if (configured) return configured;
+  try {
+    return new URL("/miniapp/", window.location.origin).toString();
+  } catch {
+    return CANONICAL_MINIAPP_URL;
+  }
+}
+
 function parsePort(value) {
   if (!value) return null;
   const port = Number(value);
@@ -596,7 +670,29 @@ function setPage(page) {
   refs.navButtons.forEach((node) => node.classList.toggle("active", node.dataset.pageTarget === page));
 }
 
+function expectedProvisionSteps() {
+  return PROVISION_STEP_ESTIMATE[selectedMode()] || 7;
+}
+
+function formatElapsed(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function setActionButtonStyle(button, variant) {
+  button.classList.remove("primary-btn", "mini-btn", "subtle");
+  if (variant === "primary") {
+    button.classList.add("primary-btn");
+    return;
+  }
+  button.classList.add("mini-btn");
+  if (variant === "subtle") button.classList.add("subtle");
+}
+
 function renderConnectStatus(kind, title, body) {
+  STATE.connectStatus = { kind, title, body };
   refs.connectStatusChip.textContent =
     kind === "busy" ? t("connectBusyChip") :
     kind === "success" ? t("connectReadyChip") :
@@ -604,6 +700,82 @@ function renderConnectStatus(kind, title, body) {
     t("connectIdleChip");
   refs.connectStatusTitle.textContent = title;
   refs.connectStatusBody.textContent = body;
+}
+
+function renderConnectChecklist() {
+  const target = activeServerLabel();
+  const steps = [
+    {
+      title: t("roadmapConnectTitle"),
+      copy: STATE.connectionChecked && STATE.activeTarget
+        ? interpolate("roadmapConnectDone", { target })
+        : t("roadmapConnectPending"),
+      state: STATE.connectionChecked && STATE.activeTarget ? "done" : "current",
+    },
+    {
+      title: t("roadmapSetupTitle"),
+      copy: STATE.serverConfigured
+        ? t("roadmapSetupDone")
+        : STATE.provision.active
+          ? t("roadmapSetupBusy")
+          : STATE.connectionChecked
+            ? t("roadmapSetupReady")
+            : t("roadmapSetupPending"),
+      state: STATE.serverConfigured ? "done" : STATE.provision.active || STATE.connectionChecked ? "current" : "pending",
+    },
+    {
+      title: t("roadmapProfilesTitle"),
+      copy: STATE.serverConfigured
+        ? (STATE.clients.length ? t("roadmapProfilesDone") : t("roadmapProfilesReady"))
+        : t("roadmapProfilesPending"),
+      state: !STATE.serverConfigured ? "pending" : STATE.clients.length ? "done" : "current",
+    },
+  ];
+
+  refs.connectChecklist.innerHTML = steps.map((step, index) => `
+    <div class="status-step is-${step.state}">
+      <div class="status-step-badge">${step.state === "done" ? "✓" : index + 1}</div>
+      <div>
+        <div class="status-step-title">${escapeHtml(step.title)}</div>
+        <div class="status-step-copy">${escapeHtml(step.copy)}</div>
+      </div>
+    </div>
+  `).join("");
+}
+
+function renderConnectProgress() {
+  const progress = STATE.provision.progress || [];
+  const active = STATE.provision.active || progress.length > 0;
+  refs.connectProgressPanel.classList.toggle("hidden", !active);
+  if (!active) {
+    refs.connectProgressLabel.textContent = "";
+    refs.connectProgressElapsed.textContent = "";
+    refs.connectProgressBar.style.width = "0%";
+    refs.connectProgressLog.innerHTML = "";
+    return;
+  }
+
+  const expected = expectedProvisionSteps();
+  const completed = progress.length;
+  const ratio = STATE.provision.active
+    ? Math.min(92, Math.max(14, Math.round((completed / Math.max(expected, 1)) * 100)))
+    : 100;
+  const recent = (progress.length ? progress : [t("setupBusyBody")]).slice(-3);
+
+  refs.connectProgressLabel.textContent = completed
+    ? interpolate("setupProgressCounter", { count: completed, total: expected })
+    : t("setupProgressUnknown");
+  refs.connectProgressElapsed.textContent = interpolate("setupElapsed", {
+    time: formatElapsed((STATE.provision.finishedAt || Date.now()) - (STATE.provision.startedAt || Date.now())),
+  });
+  refs.connectProgressBar.style.width = `${ratio}%`;
+  refs.connectProgressLog.innerHTML = recent.map((line, index) => `
+    <div class="status-log-line ${index === recent.length - 1 ? "current" : ""}">${escapeHtml(line)}</div>
+  `).join("");
+}
+
+function resetProvisionState() {
+  STATE.provision = { active: false, jobId: null, progress: [], startedAt: 0, finishedAt: 0 };
 }
 
 function renderAuth() {
@@ -667,6 +839,17 @@ function renderServerPicker() {
   });
 }
 
+function enableHorizontalWheelScroll(node) {
+  if (!node) return;
+  node.addEventListener("wheel", (event) => {
+    if (node.scrollWidth <= node.clientWidth + 4) return;
+    const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+    if (!delta) return;
+    node.scrollLeft += delta;
+    event.preventDefault();
+  }, { passive: false });
+}
+
 function renderSavedServers() {
   refs.savedServersList.innerHTML = "";
   if (!STATE.account.authenticated) {
@@ -711,11 +894,24 @@ function renderClients() {
     return;
   }
   if (!STATE.serverConfigured) {
-    refs.clientsList.innerHTML = `<div class="empty-card"><div class="empty-title">${t("connectReadyUnconfigured")}</div><div class="empty-copy">${t("connectIdleBody")}</div></div>`;
+    refs.clientsList.innerHTML = `
+      <div class="empty-card">
+        <div class="empty-title">${t("clientsSetupTitle")}</div>
+        <div class="empty-copy">${t("clientsSetupCopy")}</div>
+        <div class="empty-actions">
+          <button type="button" class="mini-btn" data-open-setup="true">${t("goSetup")}</button>
+        </div>
+      </div>
+    `;
     return;
   }
   if (!STATE.clients.length) {
-    refs.clientsList.innerHTML = `<div class="empty-card"><div class="empty-copy">${t("clientNone")}</div></div>`;
+    refs.clientsList.innerHTML = `
+      <div class="empty-card">
+        <div class="empty-title">${t("clientsFirstProfileTitle")}</div>
+        <div class="empty-copy">${t("clientsFirstProfileCopy")}</div>
+      </div>
+    `;
     return;
   }
   sortClients(STATE.clients).forEach((client) => {
@@ -828,7 +1024,9 @@ function renderAll() {
   refs.profilesRefreshBtn.textContent = STATE.lang === "ru" ? "Обновить" : "Refresh";
   refs.addProfileBtn.textContent = STATE.lang === "ru" ? "Добавить" : "Add";
   refs.profileName.placeholder = STATE.lang === "ru" ? "grandma-phone" : "grandma-phone";
-  refs.connectBtn.textContent = STATE.lang === "ru" ? "Подключиться" : "Connect";
+  refs.connectBtn.textContent = !STATE.connectionChecked
+    ? (STATE.lang === "ru" ? "Подключиться" : "Connect")
+    : (STATE.serverConfigured ? t("connectRefresh") : t("connectRecheck"));
   refs.setupBtn.textContent = STATE.lang === "ru" ? "Настроить сервер" : "Set up server";
   refs.openProfilesBtn.textContent = STATE.lang === "ru" ? "Открыть профили" : "Open profiles";
   refs.savePinBtn.textContent = STATE.lang === "ru" ? "Сохранить PIN" : "Save PIN";
@@ -843,14 +1041,24 @@ function renderAll() {
   renderSavedServers();
   renderProfilesHeader();
   renderClients();
-  refs.setupBtn.classList.toggle("hidden", !STATE.connectionChecked || STATE.serverConfigured);
-  refs.openProfilesBtn.classList.toggle("hidden", !STATE.connectionChecked || !STATE.serverConfigured);
+  const shouldShowSetup = STATE.connectionChecked && !STATE.serverConfigured;
+  const shouldShowProfiles = STATE.connectionChecked && STATE.serverConfigured;
+  refs.setupBtn.classList.toggle("hidden", !shouldShowSetup);
+  refs.openProfilesBtn.classList.toggle("hidden", !shouldShowProfiles);
+  refs.connectBtn.disabled = STATE.provision.active;
+  refs.setupBtn.disabled = STATE.provision.active;
+  refs.openProfilesBtn.disabled = false;
+  setActionButtonStyle(refs.connectBtn, STATE.connectionChecked ? "subtle" : "primary");
+  setActionButtonStyle(refs.setupBtn, shouldShowSetup ? "primary" : "subtle");
+  setActionButtonStyle(refs.openProfilesBtn, shouldShowProfiles ? "primary" : "subtle");
   refs.langButtons.forEach((button) => button.classList.toggle("active", button.dataset.lang === STATE.lang));
   refs.sshPort.value = STATE.settings.ssh_port || "";
   refs.listenPort.value = STATE.settings.listen_port || "";
   refs.proxySni.value = STATE.settings.proxy_sni || "";
   refs.navButtons.forEach((node) => node.classList.toggle("active", node.dataset.pageTarget === STATE.page));
   refs.pageNodes.forEach((node) => node.classList.toggle("active", node.dataset.page === STATE.page));
+  renderConnectChecklist();
+  renderConnectProgress();
   renderDebugLog();
   focusClientResultIfNeeded();
 }
@@ -922,6 +1130,7 @@ async function maybeSaveServer(ssh) {
 
 async function connectManual() {
   logDebug("connect.manual.start", { host: refs.host.value.trim(), user: refs.user.value.trim(), mode: selectedMode() });
+  resetProvisionState();
   renderConnectStatus("busy", t("connectBusyTitle"), t("connectBusyBody"));
   setRetryAction("connect-manual");
   setDiagnostics();
@@ -941,12 +1150,12 @@ async function connectManual() {
     STATE.activeTarget = { kind: "manual", sessionId, manualSnapshot: { host: ssh.host, user: ssh.user } };
     await maybeSaveServer(ssh);
     if (STATE.serverConfigured) {
-      renderConnectStatus("success", t("connectReadyConfigured"), t("connectIdleBody"));
+      renderConnectStatus("success", t("connectReadyConfigured"), t("connectReadyConfiguredBody"));
       await refreshClients();
       setPage("profiles");
     } else {
       STATE.clients = [];
-      renderConnectStatus("success", t("connectReadyUnconfigured"), t("connectIdleBody"));
+      renderConnectStatus("success", t("connectReadyUnconfigured"), t("connectReadyUnconfiguredBody"));
       setPage("connect");
     }
   } catch (error) {
@@ -962,6 +1171,13 @@ async function connectManual() {
 async function activateSavedServer(serverId) {
   const server = STATE.savedServers.find((item) => item.id === serverId);
   if (!server) return;
+  const previousSavedServerId = STATE.activeSavedServerId;
+  const previousTarget = STATE.activeTarget;
+  const previousConnectionChecked = STATE.connectionChecked;
+  const previousServerConfigured = STATE.serverConfigured;
+  const previousServerInfo = STATE.serverInfo;
+  const previousClients = [...STATE.clients];
+  resetProvisionState();
   if (server.mode) {
     const input = refs.modeInputs.find((node) => node.value === server.mode);
     if (input) input.checked = true;
@@ -982,16 +1198,22 @@ async function activateSavedServer(serverId) {
     STATE.serverInfo = status;
     STATE.activeTarget = { kind: "saved", serverId };
     if (STATE.serverConfigured) {
-      renderConnectStatus("success", t("connectReadyConfigured"), t("connectIdleBody"));
+      renderConnectStatus("success", t("connectReadyConfigured"), t("connectReadyConfiguredBody"));
       await refreshClients();
       setPage("profiles");
     } else {
       STATE.clients = [];
-      renderConnectStatus("success", t("connectReadyUnconfigured"), t("connectIdleBody"));
+      renderConnectStatus("success", t("connectReadyUnconfigured"), t("connectReadyUnconfiguredBody"));
       setPage("connect");
     }
   } catch (error) {
     const info = classifyError(error);
+    STATE.activeSavedServerId = previousSavedServerId;
+    STATE.activeTarget = previousTarget;
+    STATE.connectionChecked = previousConnectionChecked;
+    STATE.serverConfigured = previousServerConfigured;
+    STATE.serverInfo = previousServerInfo;
+    STATE.clients = previousClients;
     if (info.type === "api") showTransportDiagnostics(STATE.apiBase);
     renderConnectStatus("error", info.text, connectErrorBody(info, error));
     if (info.type === "session") setPage("settings");
@@ -1030,21 +1252,31 @@ async function refreshClients(options = {}) {
 async function pollJob(jobId, fallbackName) {
   while (true) {
     const job = await fetchJson(`/api/jobs/${jobId}`);
-    if (job.status === "error") throw new Error(job.error || "Job failed");
+    STATE.provision.jobId = jobId;
+    STATE.provision.progress = Array.isArray(job.progress) ? job.progress : [];
+    if (job.status === "error") {
+      STATE.provision.active = false;
+      STATE.provision.finishedAt = Date.now();
+      throw new Error(job.error || "Job failed");
+    }
     if (job.status === "done") {
+      STATE.provision.active = false;
+      STATE.provision.finishedAt = Date.now();
       const result = await fetchJson(`/api/jobs/${jobId}/result`);
       const name = result.client_name || fallbackName || "client1";
       applyClientResult(name, result);
       return;
     }
-    renderConnectStatus("busy", t("setupBusy"), (job.progress || []).slice(-1)[0] || t("connectBusyBody"));
+    renderConnectStatus("busy", t("setupBusy"), t("setupBusyBody"));
+    renderAll();
     await new Promise((resolve) => setTimeout(resolve, 1500));
   }
 }
 
 async function setupServer() {
   if (!STATE.activeTarget) return;
-  renderConnectStatus("busy", t("setupBusy"), t("connectBusyBody"));
+  STATE.provision = { active: true, jobId: null, progress: [], startedAt: Date.now(), finishedAt: 0 };
+  renderConnectStatus("busy", t("setupBusy"), t("setupBusyBody"));
   setRetryAction("setup-server");
   renderAll();
   try {
@@ -1067,9 +1299,11 @@ async function setupServer() {
     await pollJob(result.job_id, clientName);
     STATE.serverConfigured = true;
     await refreshClients();
-    renderConnectStatus("success", t("connectReadyConfigured"), t("connectIdleBody"));
+    renderConnectStatus("success", t("connectReadyConfigured"), t("connectReadyConfiguredBody"));
     setPage("profiles");
   } catch (error) {
+    STATE.provision.active = false;
+    STATE.provision.finishedAt = Date.now();
     const info = classifyError(error);
     if (info.type === "api") showTransportDiagnostics(STATE.apiBase);
     renderConnectStatus("error", info.text, connectErrorBody(info, error));
@@ -1237,6 +1471,7 @@ async function deleteSavedServer(serverId) {
       STATE.activeTarget = null;
       STATE.connectionChecked = false;
       STATE.serverConfigured = false;
+      resetProvisionState();
       STATE.clients = [];
     }
   } catch (error) {
@@ -1345,6 +1580,7 @@ async function logout() {
       STATE.activeTarget = null;
       STATE.connectionChecked = false;
       STATE.serverConfigured = false;
+      resetProvisionState();
       STATE.clients = [];
     }
     renderTelegramWidget();
@@ -1420,6 +1656,15 @@ async function retryLastAction() {
   if (action === "refresh-clients") return refreshClients();
 }
 
+function scheduleFocusIntoView(target) {
+  const container = target?.closest(".field, .settings-block, .toggle-row, .pin-row, .action-row, .add-profile-row");
+  if (!container) return;
+  const behavior = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "auto" : "smooth";
+  window.setTimeout(() => {
+    container.scrollIntoView({ block: "center", inline: "nearest", behavior });
+  }, 180);
+}
+
 function bindEvents() {
   window.addEventListener("resize", () => {
     updateViewportState();
@@ -1438,7 +1683,7 @@ function bindEvents() {
     bootstrapApiBase();
     setDiagnostics({ title: t("diagnosticsTitle"), body: t("diagnosticsResetDone"), extra: STATE.apiBase });
   });
-  refs.diagnosticsOpenBtn.addEventListener("click", () => openExternal(CANONICAL_MINIAPP_URL));
+  refs.diagnosticsOpenBtn.addEventListener("click", () => openExternal(currentMiniappUrl()));
   refs.diagnosticsCloseBtn.addEventListener("click", () => setDiagnostics());
   refs.miniappLoginBtn.addEventListener("click", async () => loginViaMiniApp());
   refs.logoutBtn.addEventListener("click", async () => logout());
@@ -1481,6 +1726,7 @@ function bindEvents() {
     const button = event.target.closest("[data-server-id]");
     if (button) await activateSavedServer(button.dataset.serverId);
   });
+  enableHorizontalWheelScroll(refs.serverPicker);
   refs.savedServersList.addEventListener("click", async (event) => {
     const openBtn = event.target.closest("[data-saved-open]");
     if (openBtn) return activateSavedServer(openBtn.dataset.savedOpen);
@@ -1488,6 +1734,11 @@ function bindEvents() {
     if (deleteBtn) await deleteSavedServer(deleteBtn.dataset.savedDelete);
   });
   refs.clientsList.addEventListener("click", async (event) => {
+    const setupBtn = event.target.closest("[data-open-setup]");
+    if (setupBtn) {
+      setPage("connect");
+      return;
+    }
     const openBtn = event.target.closest("[data-client-open]");
     if (openBtn) return toggleClientInline(openBtn.dataset.clientOpen);
     const rotateBtn = event.target.closest("[data-client-rotate]");
@@ -1500,6 +1751,9 @@ function bindEvents() {
     if (downloadBtn) openExternal(downloadBtn.dataset.download);
     const downloadQrBtn = event.target.closest("[data-download-qr]");
     if (downloadQrBtn) openExternal(downloadQrBtn.dataset.downloadQr);
+  });
+  document.addEventListener("focusin", (event) => {
+    if (event.target.matches("input, textarea")) scheduleFocusIntoView(event.target);
   });
 }
 

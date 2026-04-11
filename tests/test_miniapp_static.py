@@ -11,6 +11,10 @@ def test_miniapp_uses_canonical_api_fallback_and_test_hooks() -> None:
     assert 'const CANONICAL_API_BASE = "https://vpn-wizard-production.up.railway.app";' in js
     assert "function resolveApiBaseFrom" in js
     assert "window.__VPNW_TEST__" in js
+    config_js = (ROOT / "web" / "miniapp" / "config.js").read_text(encoding="utf-8")
+    assert "vercel" in config_js
+    assert "window.location.hostname" in config_js
+    assert 'window.API_BASE = "https://vpn-wizard-production.up.railway.app";' in config_js
 
 
 def test_miniapp_shell_is_single_flow_and_has_diagnostics_panel() -> None:
@@ -20,4 +24,6 @@ def test_miniapp_shell_is_single_flow_and_has_diagnostics_panel() -> None:
     assert 'data-page="connect"' in html
     assert 'id="user-input" autocomplete="username" placeholder="root" value="root" required' in html
     assert 'id="debug-log"' in html
+    assert 'id="connect-progress-panel"' in html
+    assert 'id="connect-checklist"' in html
     assert 'id="faq-sheet"' not in html

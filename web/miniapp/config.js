@@ -1,3 +1,5 @@
-// Default Vercel-hosted miniapp traffic to the production Railway API.
-// Bundled /miniapp still uses same-origin because resolveApiBase prefers /miniapp first.
-window.API_BASE = window.API_BASE || "https://vpn-wizard-production.up.railway.app";
+// Keep Vercel-hosted static builds pointing at the production API.
+// Bundled /miniapp deployments should stay same-origin and therefore leave window.API_BASE unset.
+if (!window.API_BASE && /(?:^|\\.)vercel\\.app$/i.test(window.location.hostname)) {
+  window.API_BASE = "https://vpn-wizard-production.up.railway.app";
+}

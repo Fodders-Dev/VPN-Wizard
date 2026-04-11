@@ -12,6 +12,8 @@
   --glass: rgba(255, 255, 255, 0.56);
   --glass-strong: rgba(255, 255, 255, 0.78);
   --glass-deep: rgba(233, 240, 255, 0.68);
+  --glass-auth: rgba(232, 246, 242, 0.72);
+  --glass-auth-strong: rgba(245, 252, 248, 0.9);
   --accent: #1368ff;
   --accent-strong: #084dc3;
   --mint: #1ba58d;
@@ -254,21 +256,47 @@ textarea {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0) scale(1);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.page.active::-webkit-scrollbar {
+  display: none;
 }
 
 .page-stack {
-  height: 100%;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  padding-bottom: 4px;
 }
 
 #auth-card.is-condensed .card-copy {
   display: none;
 }
 
+#auth-card {
+  background:
+    radial-gradient(circle at top right, rgba(27, 165, 141, 0.14), transparent 34%),
+    linear-gradient(180deg, var(--glass-auth-strong), var(--glass-auth));
+  border-color: rgba(107, 174, 157, 0.26);
+}
+
+#auth-card .card-copy {
+  max-width: 40ch;
+}
+
+#auth-card.is-condensed {
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
 #auth-card.is-condensed .card-head {
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+  align-items: center;
 }
 
 #auth-card.is-condensed .auth-actions {
@@ -290,7 +318,7 @@ textarea {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .list-card {
@@ -327,14 +355,8 @@ textarea {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: auto;
-  overscroll-behavior: contain;
+  overflow: visible;
   padding-right: 2px;
-  scrollbar-width: none;
-}
-
-#connect-form::-webkit-scrollbar {
-  display: none;
 }
 
 .field {
@@ -498,6 +520,138 @@ textarea {
   line-height: 1.42;
 }
 
+.status-progress {
+  margin-top: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.status-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.status-progress-track {
+  position: relative;
+  overflow: hidden;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(19, 104, 255, 0.08);
+}
+
+.status-progress-bar {
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1ba58d, #1368ff);
+  box-shadow: 0 8px 18px rgba(19, 104, 255, 0.22);
+  transition: width 240ms ease;
+}
+
+.status-progress-log {
+  display: grid;
+  gap: 6px;
+}
+
+.status-log-line {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.status-log-line::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  flex: 0 0 7px;
+  border-radius: 999px;
+  background: rgba(19, 104, 255, 0.24);
+}
+
+.status-log-line.current {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.status-log-line.current::before {
+  background: var(--accent);
+  box-shadow: 0 0 0 5px rgba(19, 104, 255, 0.1);
+}
+
+.status-checklist {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.status-step {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 13px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.62);
+}
+
+.status-step-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink-soft);
+  background: rgba(19, 104, 255, 0.08);
+}
+
+.status-step-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.status-step-copy {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+
+.status-step.is-done {
+  border-color: rgba(27, 165, 141, 0.24);
+  background: rgba(232, 250, 246, 0.72);
+}
+
+.status-step.is-done .status-step-badge {
+  background: rgba(27, 165, 141, 0.14);
+  color: var(--mint);
+}
+
+.status-step.is-current {
+  border-color: rgba(19, 104, 255, 0.24);
+  background: linear-gradient(180deg, rgba(221, 235, 255, 0.78), rgba(241, 247, 255, 0.78));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.status-step.is-current .status-step-badge {
+  background: rgba(19, 104, 255, 0.14);
+  color: var(--accent-strong);
+}
+
+.status-step.is-pending .status-step-badge {
+  background: rgba(14, 27, 52, 0.06);
+}
+
 .action-row,
 .auth-actions,
 .diagnostics-actions,
@@ -600,9 +754,13 @@ textarea {
   display: flex;
   gap: 8px;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-behavior: smooth;
   scrollbar-width: none;
   min-height: 42px;
-  padding-bottom: 2px;
+  padding-bottom: 6px;
+  margin-bottom: -4px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .server-picker::-webkit-scrollbar {
@@ -613,6 +771,7 @@ textarea {
   border: 0;
   border-radius: 999px;
   padding: 10px 14px;
+  flex: 0 0 auto;
   background: rgba(255, 255, 255, 0.56);
   border: 1px solid rgba(255, 255, 255, 0.62);
   white-space: nowrap;
@@ -635,6 +794,13 @@ textarea {
 .empty-title {
   font-weight: 700;
   margin-bottom: 6px;
+}
+
+.empty-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
 }
 
 .add-profile-row {
@@ -1117,6 +1283,26 @@ textarea {
     display: none;
   }
 
+  .status-progress {
+    margin-top: 10px;
+    gap: 8px;
+  }
+
+  .status-progress-head,
+  .status-step-copy,
+  .status-log-line {
+    font-size: 12px;
+  }
+
+  .status-step {
+    padding: 10px 11px;
+    gap: 8px;
+  }
+
+  .status-step-title {
+    font-size: 13px;
+  }
+
   .action-row {
     padding-top: 10px;
   }
@@ -1321,6 +1507,26 @@ body.compact-height.compact-width .status-title {
   font-size: 0.88rem;
 }
 
+body.compact-height.compact-width .status-progress {
+  margin-top: 8px;
+  gap: 6px;
+}
+
+body.compact-height.compact-width .status-progress-head,
+body.compact-height.compact-width .status-log-line,
+body.compact-height.compact-width .status-step-copy {
+  font-size: 11px;
+}
+
+body.compact-height.compact-width .status-step {
+  padding: 9px 10px;
+  gap: 7px;
+}
+
+body.compact-height.compact-width .status-step-title {
+  font-size: 12px;
+}
+
 body.compact-height.compact-width .debug-log {
   min-height: 96px;
   max-height: 122px;
@@ -1452,6 +1658,16 @@ body.ultra-compact-height.compact-width .status-card {
 
 body.ultra-compact-height.compact-width .status-title {
   font-size: 0.82rem;
+}
+
+body.ultra-compact-height.compact-width .status-step {
+  padding: 8px 9px;
+}
+
+body.ultra-compact-height.compact-width .status-step-badge {
+  width: 24px;
+  height: 24px;
+  font-size: 11px;
 }
 
 body.ultra-compact-height.compact-width .debug-head {

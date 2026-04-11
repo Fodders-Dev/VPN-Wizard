@@ -1,0 +1,11 @@
+[Unit]
+Description=Check GitHub for new VPN Wizard commits
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+RandomizedDelaySec=15s
+Unit=vpn-wizard-autodeploy.service
+
+[Install]
+WantedBy=timers.target

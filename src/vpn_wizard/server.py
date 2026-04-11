@@ -37,7 +37,7 @@ from vpn_wizard.account import (
 from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
 from vpn_wizard.proxy import ProxyProvisioner
 from vpn_wizard.shadowtls import ShadowTLSSSProvisioner
-from vpn_wizard.urls import CANONICAL_MINIAPP_URL
+from vpn_wizard.urls import resolve_public_miniapp_url
 
 
 app = FastAPI(title="VPN Wizard API")
@@ -863,13 +863,17 @@ def _current_user_payload(request: Request) -> CurrentUserResponse:
 
 
 @app.get("/api/auth/config", response_model=AuthConfigResponse)
-def auth_config() -> AuthConfigResponse:
+def auth_config(request: Request) -> AuthConfigResponse:
+    public_base_url = (os.getenv("VPNW_PUBLIC_BASE_URL") or "").strip().rstrip("/") or None
+    resolved_miniapp_url = resolve_public_miniapp_url(
+        (os.getenv("VPNW_MINIAPP_URL") or "").strip() or (f"{public_base_url}/miniapp" if public_base_url else None)
+    )
     return AuthConfigResponse(
         ok=True,
         browser_login_enabled=_browser_login_enabled(),
         miniapp_login_enabled=_miniapp_login_enabled(),
         telegram_bot_username=_telegram_bot_username(),
-        canonical_miniapp_url=CANONICAL_MINIAPP_URL,
+        canonical_miniapp_url=resolved_miniapp_url,
     )
 
 
