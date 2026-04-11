@@ -709,6 +709,11 @@ textarea {
   padding-inline: 16px;
 }
 
+.primary-btn.compact,
+.mini-btn.compact {
+  padding: 10px 14px;
+}
+
 .mini-btn {
   background: rgba(255, 255, 255, 0.62);
   color: var(--ink);
@@ -1188,14 +1193,36 @@ textarea {
 
   .action-row,
   .auth-actions,
-  .add-profile-row,
-  .server-head-actions {
+  .diagnostics-actions,
+  .modal-actions,
+  .pin-row {
     flex-wrap: wrap;
   }
 
-  .primary-btn,
-  .mini-btn {
+  .action-row > .primary-btn,
+  .action-row > .mini-btn,
+  .auth-actions > .primary-btn,
+  .auth-actions > .mini-btn,
+  .diagnostics-actions > .mini-btn,
+  .modal-actions > .mini-btn,
+  .modal-actions > .primary-btn,
+  .pin-row > .mini-btn,
+  .pin-row > .primary-btn {
     width: 100%;
+    justify-content: center;
+  }
+
+  .add-profile-row,
+  .server-head-actions {
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+
+  .add-profile-row .primary-btn,
+  .add-profile-row .mini-btn,
+  .server-head-actions .mini-btn {
+    width: auto;
+    flex: 0 0 auto;
     justify-content: center;
   }
 
@@ -1209,8 +1236,7 @@ textarea {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .server-alias-row .mini-btn,
-  .server-head-actions .mini-btn {
+  .server-alias-row .mini-btn {
     width: 100%;
     justify-content: center;
   }
