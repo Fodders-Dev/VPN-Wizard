@@ -30,17 +30,19 @@ def test_build_link_contains_required_reality_params() -> None:
         sni="www.cloudflare.com",
         public_key="PUBKEY",
         short_id="abcd1234abcd1234",
+        path="/vpnw-xh-test",
         name="client1",
     )
     assert link.startswith("vless://11111111-1111-1111-1111-111111111111@1.2.3.4:443?")
     assert "security=reality" in link
-    assert "flow=xtls-rprx-vision" in link
+    assert "type=xhttp" in link
+    assert "path=%2Fvpnw-xh-test" in link
     assert "pbk=PUBKEY" in link
     assert "sid=abcd1234abcd1234" in link
     assert link.endswith("#client1")
 
 
-def test_detect_status_reads_vless_reality_shape(monkeypatch) -> None:
+def test_detect_status_reads_xray_shape(monkeypatch) -> None:
     prov = ProxyProvisioner(DummySSH())
     monkeypatch.setattr(
         prov,
@@ -61,7 +63,7 @@ def test_detect_status_reads_vless_reality_shape(monkeypatch) -> None:
     )
     status = prov.detect_status()
     assert status["configured"] is True
-    assert status["protocol"] == "vless_reality"
+    assert status["protocol"] == "xray"
     assert status["listen_port"] == 443
     assert status["clients_count"] == 2
     assert status["sni"] == "www.cloudflare.com"
@@ -130,13 +132,14 @@ def _base_reality_config() -> dict:
                 "protocol": "vless",
                 "settings": {
                     "clients": [
-                        {"id": "client-1-id", "flow": "xtls-rprx-vision", "email": "client1"}
+                        {"id": "client-1-id", "email": "client1"}
                     ],
                     "decryption": "none",
                 },
                 "streamSettings": {
-                    "network": "tcp",
+                    "network": "xhttp",
                     "security": "reality",
+                    "xhttpSettings": {"path": "/vpnw-xh-fixed"},
                     "sockopt": {
                         "tcpFastOpen": True,
                         "tcpKeepAliveIdle": 300,
@@ -144,6 +147,7 @@ def _base_reality_config() -> dict:
                         "tcpUserTimeout": 30000,
                     },
                     "realitySettings": {
+                        "target": "www.cloudflare.com:443",
                         "dest": "www.cloudflare.com:443",
                         "serverNames": ["www.cloudflare.com", "www.apple.com"],
                         "privateKey": "PRIVKEY",
@@ -179,6 +183,7 @@ def test_setup_reuses_existing_reality_without_rotating_keys(monkeypatch) -> Non
     assert result["sni"] == "www.cloudflare.com"
     assert "sid=sid-client-1" in result["link"]
     assert "pbk=PUBKEY" in result["link"]
+    assert "type=xhttp" in result["link"]
     assert not writes
     assert not restarts
 
@@ -230,16 +235,19 @@ def test_setup_initial_config_uses_ipv4_domain_strategy(monkeypatch) -> None:
     assert isinstance(outbounds, list)
     assert outbounds and outbounds[0].get("protocol") == "freedom"
     assert outbounds[0].get("settings", {}).get("domainStrategy") == "UseIPv4"
+    stream = writes[0]["inbounds"][0]["streamSettings"]
+    assert stream.get("network") == "xhttp"
+    assert (stream.get("xhttpSettings") or {}).get("path")
 
 
 def test_singbox_auto_config_keeps_udp_enabled_and_sets_xudp_packet_encoding() -> None:
     prov = ProxyProvisioner(DummySSH())
     link = (
         "vless://11111111-1111-1111-1111-111111111111@1.2.3.4:2083"
-        "?encryption=none&flow=xtls-rprx-vision&security=reality"
-        "&sni=www.microsoft.com&fp=chrome&pbk=PUBKEY&sid=abcd1234abcd1234&type=tcp#client1"
+        "?encryption=none&security=reality"
+        "&sni=www.microsoft.com&fp=chrome&pbk=PUBKEY&sid=abcd1234abcd1234&type=xhttp&path=%2Fvpnw-xh-test#client1"
     )
-    cfg = json.loads(prov.build_singbox_auto_config(primary_link=link, alternatives=None))
+    cfg = json.loads(prov.build_singbox_auto_config(primary_link=link, alternatives=None, include_tun=True))
 
     # Ensure QUIC is blocked (avoids slow page loads when HTTP/3 is flaky)
     route_rules = (cfg.get("route") or {}).get("rules") or []
@@ -253,6 +261,8 @@ def test_singbox_auto_config_keeps_udp_enabled_and_sets_xudp_packet_encoding() -
         # Must not force TCP-only; otherwise UDP is disabled in sing-box.
         assert o.get("network") != "tcp"
         assert o.get("packet_encoding") == "xudp"
+        assert (o.get("transport") or {}).get("type") == "xhttp"
+        assert (o.get("transport") or {}).get("path") == "/vpnw-xh-test"
 
     # Default: route should be pinned to a selector tagged "proxy".
     selector = next((o for o in outbounds if o.get("type") == "selector"), None)

@@ -75,6 +75,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+XRAY_PROTOCOLS = {"xray", "vless_reality"}
+LEGACY_PROXY_PROTOCOLS = {"shadowtls_ss", "vless_reality"}
+
+
+def _is_xray_protocol(protocol: Optional[str]) -> bool:
+    return (protocol or "").strip() in XRAY_PROTOCOLS
+
+
+def _is_legacy_proxy_protocol(protocol: Optional[str]) -> bool:
+    return (protocol or "").strip() in LEGACY_PROXY_PROTOCOLS
+
 
 class SSHPayload(BaseModel):
     host: str = Field(..., examples=["1.2.3.4"])
@@ -300,7 +311,7 @@ class ProvisionOptions(BaseModel):
     auto_mtu: bool = True
     tune: bool = True
     check: bool = True
-    protocol: str = "amneziawg"  # "wireguard" or "amneziawg"
+    protocol: str = "amneziawg"
     proxy_sni: Optional[str] = None
 
 
@@ -1343,7 +1354,7 @@ def _run_provision(
             checks: list[dict] = []
             suffix = "conf"
 
-            if opts.protocol == "vless_reality":
+            if _is_xray_protocol(opts.protocol):
                 proxy = ProxyProvisioner(ssh, progress=progress)
                 proxy_port = opts.listen_port
                 if not proxy_port:
@@ -1504,7 +1515,7 @@ def _run_provision(
                     suffix=suffix,
                     owner_user_id=owner_user_id,
                 )
-            if opts.protocol in {"vless_reality", "shadowtls_ss"} and auto_config and qr_png:
+            if (_is_xray_protocol(opts.protocol) or opts.protocol == "shadowtls_ss") and auto_config and qr_png:
                 auto_download_id = DOWNLOAD_STORE.create(
                     auto_config,
                     qr_png,
@@ -1516,8 +1527,8 @@ def _run_provision(
             job_id,
             status="done",
             config=config,
-            alternatives=alternatives if opts.protocol == "vless_reality" else None,
-            auto_config=auto_config if opts.protocol in {"vless_reality", "shadowtls_ss"} else None,
+            alternatives=alternatives if _is_xray_protocol(opts.protocol) else None,
+            auto_config=auto_config if (_is_xray_protocol(opts.protocol) or opts.protocol == "shadowtls_ss") else None,
             qr_png_base64=qr_b64,
             download_id=download_id,
             auto_download_id=auto_download_id,
@@ -1734,7 +1745,7 @@ async def client_list(payload: RollbackRequest, request: Request) -> ClientListR
                     message,
                 ),
             ) as (ssh, _resolved):
-                if payload.protocol == "vless_reality":
+                if _is_xray_protocol(payload.protocol):
                     return ProxyProvisioner(ssh).list_clients()
                 if payload.protocol == "shadowtls_ss":
                     return ShadowTLSSSProvisioner(ssh).list_clients()
@@ -1787,7 +1798,7 @@ async def client_add(payload: ClientRequest, request: Request) -> ClientAddRespo
                     message,
                 ),
             ) as (ssh, _resolved):
-                if payload.protocol == "vless_reality":
+                if _is_xray_protocol(payload.protocol):
                     proxy = ProxyProvisioner(ssh)
                     result = proxy.add_client(payload.client_name or "client1")
                     return {
@@ -1875,7 +1886,7 @@ async def client_add(payload: ClientRequest, request: Request) -> ClientAddRespo
                     suffix=suffix,
                     owner_user_id=account["user"]["id"],
                 )
-            if payload.protocol in {"vless_reality", "shadowtls_ss"} and auto_config and qr_png:
+            if (_is_xray_protocol(payload.protocol) or payload.protocol == "shadowtls_ss") and auto_config and qr_png:
                 auto_download_id = DOWNLOAD_STORE.create(
                     auto_config,
                     qr_png,
@@ -1935,7 +1946,7 @@ async def client_remove(payload: ClientRemoveRequest, request: Request) -> Rollb
                     message,
                 ),
             ) as (ssh, _resolved):
-                if payload.protocol == "vless_reality":
+                if _is_xray_protocol(payload.protocol):
                     return ProxyProvisioner(ssh).remove_client(payload.client_name)
                 if payload.protocol == "shadowtls_ss":
                     return ShadowTLSSSProvisioner(ssh).remove_client(payload.client_name)
@@ -1977,7 +1988,7 @@ async def client_rotate(payload: ClientRemoveRequest, request: Request) -> Clien
     )
     try:
         account = _require_account(request)
-        if payload.protocol in {"vless_reality", "shadowtls_ss"}:
+        if _is_legacy_proxy_protocol(payload.protocol) or _is_xray_protocol(payload.protocol):
             return ClientAddResponse(ok=False, error="Rotate is not supported for proxy profiles.")
         payload = _materialize_saved_server(payload, request)
         def _operation(attempt: int) -> dict:
@@ -2061,7 +2072,7 @@ async def client_export(payload: ClientRemoveRequest, request: Request) -> Clien
                     message,
                 ),
             ) as (ssh, _resolved):
-                if payload.protocol == "vless_reality":
+                if _is_xray_protocol(payload.protocol):
                     proxy = ProxyProvisioner(ssh)
                     result = proxy.export_client(payload.client_name)
                     return {
@@ -2146,7 +2157,7 @@ async def client_export(payload: ClientRemoveRequest, request: Request) -> Clien
                     suffix=suffix,
                     owner_user_id=account["user"]["id"],
                 )
-            if payload.protocol in {"vless_reality", "shadowtls_ss"} and auto_config and qr_png:
+            if (_is_xray_protocol(payload.protocol) or payload.protocol == "shadowtls_ss") and auto_config and qr_png:
                 auto_download_id = DOWNLOAD_STORE.create(
                     auto_config,
                     qr_png,
@@ -2293,7 +2304,7 @@ async def server_status(payload: RollbackRequest, request: Request) -> ServerSta
                     request=request,
                     logger=lambda message: logger.info("ssh.status.trace req=%s attempt=%s %s", request_id, attempt, message),
                 ) as (ssh, _resolved):
-                    if payload.protocol == "vless_reality":
+                    if _is_xray_protocol(payload.protocol):
                         status = ProxyProvisioner(ssh).detect_status()
                     elif payload.protocol == "shadowtls_ss":
                         status = ShadowTLSSSProvisioner(ssh).detect_status()
@@ -2356,7 +2367,7 @@ async def server_precheck(payload: ProvisionRequest, request: Request) -> Preche
         payload = _materialize_saved_server(payload, request)
         with _ssh_connection(payload.ssh, payload.session_id, request=request) as (ssh, _resolved):
             opts = payload.options
-            if opts.protocol == "vless_reality":
+            if _is_xray_protocol(opts.protocol):
                 proxy = ProxyProvisioner(ssh)
                 proxy_port = opts.listen_port
                 auto_selected = False

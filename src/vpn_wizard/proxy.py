@@ -28,6 +28,7 @@ class ProxyProvisioner:
     XRAY_BIN = "/usr/local/bin/xray"
     XRAY_ETC = "/usr/local/etc/xray"
     XRAY_CONF = f"{XRAY_ETC}/config.json"
+    DEFAULT_XHTTP_PATH_PREFIX = "/vpnw-xh-"
     # Conservative RU-friendly port list. Some ISPs filter "CDN-ish" ports (2053/2083/2096/etc).
     FALLBACK_PORTS = (443, 8443, 9443, 10443, 4443)
     DEFAULT_SNI_CANDIDATES = _parse_domain_list(
@@ -107,6 +108,9 @@ class ProxyProvisioner:
 
     def _random_short_id(self) -> str:
         return uuid.uuid4().hex[:16]
+
+    def _random_xhttp_path(self) -> str:
+        return f"{self.DEFAULT_XHTTP_PATH_PREFIX}{uuid.uuid4().hex[:10]}"
 
     def _build_server_names(self, primary_sni: str) -> list[str]:
         ordered = [primary_sni] + self.sni_candidates
@@ -432,7 +436,10 @@ class ProxyProvisioner:
         sni: str,
         public_key: str,
         short_id: str,
+        path: Optional[str],
         name: str,
+        transport_type: str = "xhttp",
+        flow: Optional[str] = None,
         fingerprint: Optional[str] = None,
     ) -> str:
         fp = (fingerprint or self.fingerprint or "chrome").strip().lower()
@@ -440,14 +447,18 @@ class ProxyProvisioner:
             fp = "chrome"
         params = {
             "encryption": "none",
-            "flow": "xtls-rprx-vision",
             "security": "reality",
             "sni": sni,
             "fp": fp,
             "pbk": public_key,
             "sid": short_id,
-            "type": "tcp",
+            "type": transport_type or "xhttp",
         }
+        if params["type"] == "xhttp":
+            params["path"] = path or self._random_xhttp_path()
+            params["spx"] = "/"
+        elif flow:
+            params["flow"] = flow
         query = "&".join(f"{key}={quote(str(value), safe='')}" for key, value in params.items())
         tag = quote(name, safe="-_.")
         return f"vless://{client_uuid}@{host}:{port}?{query}#{tag}"
@@ -460,9 +471,12 @@ class ProxyProvisioner:
         port: int,
         public_key: str,
         short_id: str,
+        path: Optional[str],
         name: str,
         server_names: list[str],
         selected_sni: str,
+        transport_type: str = "xhttp",
+        flow: Optional[str] = None,
     ) -> list[dict]:
         # Provide a few "switch-and-try" alternatives for RU networks.
         # Many issues are DPI-specific; changing SNI/fingerprint often helps without server changes.
@@ -479,7 +493,10 @@ class ProxyProvisioner:
                     sni=sni,
                     public_key=public_key,
                     short_id=short_id,
+                    path=path,
                     name=name,
+                    transport_type=transport_type,
+                    flow=flow,
                     fingerprint=fp,
                 )
                 result.append({"sni": sni, "fp": fp, "link": link})
@@ -503,7 +520,9 @@ class ProxyProvisioner:
         fp = str(flat.get("fp") or "").strip().lower()
         pbk = str(flat.get("pbk") or "").strip()
         sid = str(flat.get("sid") or "").strip()
+        path = str(flat.get("path") or "").strip()
         flow = str(flat.get("flow") or "").strip()
+        transport_type = str(flat.get("type") or "tcp").strip().lower()
         if not pbk or not sid:
             raise RuntimeError("Invalid vless link: missing Reality pbk/sid.")
         return {
@@ -514,6 +533,8 @@ class ProxyProvisioner:
             "fp": fp,
             "pbk": pbk,
             "sid": sid,
+            "type": transport_type or "tcp",
+            "path": path or "",
             "flow": flow or "xtls-rprx-vision",
         }
 
@@ -548,36 +569,40 @@ class ProxyProvisioner:
         server = parsed[0]["host"]
         server_port = parsed[0]["port"]
         uuid_value = parsed[0]["uuid"]
-        flow = parsed[0]["flow"]
 
         outbounds: list[dict] = []
         outbound_tags: list[str] = []
         for idx, item in enumerate(parsed, start=1):
             tag = f"p{idx}"
             outbound_tags.append(tag)
-            outbounds.append(
-                {
-                    "type": "vless",
-                    "tag": tag,
-                    "server": server,
-                    "server_port": server_port,
-                    "uuid": uuid_value,
-                    "flow": flow,
-                    # Important for RU networks:
-                    # do NOT force "network": "tcp" here. If we do, UDP is disabled in sing-box,
-                    # which breaks/cripples QUIC and sometimes DNS in TUN mode, leading to
-                    # "works at first, then becomes slow/timeout" behavior.
-                    #
-                    # With Xray Reality we can carry UDP over TCP via xudp.
-                    "packet_encoding": "xudp",
-                    "tls": {
-                        "enabled": True,
-                        "server_name": item["sni"] or "www.microsoft.com",
-                        "utls": {"enabled": True, "fingerprint": item["fp"] or "chrome"},
-                        "reality": {"enabled": True, "public_key": item["pbk"], "short_id": item["sid"]},
-                    },
+            outbound = {
+                "type": "vless",
+                "tag": tag,
+                "server": server,
+                "server_port": server_port,
+                "uuid": uuid_value,
+                # Important for RU networks:
+                # do NOT force "network": "tcp" here. If we do, UDP is disabled in sing-box,
+                # which breaks/cripples QUIC and sometimes DNS in TUN mode, leading to
+                # "works at first, then becomes slow/timeout" behavior.
+                #
+                # With Xray Reality we can carry UDP over TCP via xudp.
+                "packet_encoding": "xudp",
+                "tls": {
+                    "enabled": True,
+                    "server_name": item["sni"] or "www.microsoft.com",
+                    "utls": {"enabled": True, "fingerprint": item["fp"] or "chrome"},
+                    "reality": {"enabled": True, "public_key": item["pbk"], "short_id": item["sid"]},
+                },
+            }
+            if item["type"] == "xhttp":
+                outbound["transport"] = {
+                    "type": "xhttp",
+                    "path": item["path"] or self._random_xhttp_path(),
                 }
-            )
+            elif item["flow"]:
+                outbound["flow"] = item["flow"]
+            outbounds.append(outbound)
 
         # Default route is a selector pinned to primary outbound.
         # urltest-based auto switching is optional because some clients treat urltest failures
@@ -672,6 +697,25 @@ class ProxyProvisioner:
             raise RuntimeError("Xray inbound port is invalid.")
         return inbound, clients, short_ids, private_key, port
 
+    def _resolve_path(self, inbound: dict) -> str:
+        stream = inbound.get("streamSettings") or {}
+        xhttp = stream.get("xhttpSettings") or {}
+        path = str(xhttp.get("path") or "").strip()
+        return path or self._random_xhttp_path()
+
+    def _resolve_transport(self, inbound: dict) -> tuple[str, Optional[str], Optional[str]]:
+        stream = inbound.get("streamSettings") or {}
+        network = str(stream.get("network") or "tcp").strip().lower() or "tcp"
+        if network == "xhttp":
+            return "xhttp", self._resolve_path(inbound), None
+        settings = inbound.get("settings") or {}
+        clients = settings.get("clients") or []
+        flow = None
+        if isinstance(clients, list) and clients:
+            first = clients[0] if isinstance(clients[0], dict) else {}
+            flow = str(first.get("flow") or "").strip() or "xtls-rprx-vision"
+        return "tcp", None, flow or "xtls-rprx-vision"
+
     def _resolve_sni(self, inbound: dict) -> str:
         stream = inbound.get("streamSettings") or {}
         reality = stream.get("realitySettings") or {}
@@ -680,8 +724,8 @@ class ProxyProvisioner:
             first = str(names[0]).strip()
             if first:
                 return first
-        dest = str(reality.get("dest") or "").strip()
-        return self._split_sni_from_dest(dest)
+        target = str(reality.get("target") or reality.get("dest") or "").strip()
+        return self._split_sni_from_dest(target)
 
     def detect_status(self) -> dict:
         cfg = self._read_config()
@@ -695,7 +739,7 @@ class ProxyProvisioner:
         service_state = self.ssh.run("systemctl is-active xray || true", sudo=True, check=False).strip()
         return {
             "configured": True,
-            "protocol": "vless_reality",
+            "protocol": "xray",
             "listen_port": inbound.get("port"),
             "clients_count": len(clients) if isinstance(clients, list) else 0,
             "sni": self._resolve_sni(inbound),
@@ -759,9 +803,18 @@ class ProxyProvisioner:
             inbound, clients, short_ids, private_key, current_port = self._client_state(config)
             stream = inbound.setdefault("streamSettings", {})
             reality = stream.setdefault("realitySettings", {})
+            xhttp = stream.setdefault("xhttpSettings", {})
             changed = False
 
             changed = self._ensure_stream_sockopt(stream) or changed
+            if stream.get("network") != "xhttp":
+                stream["network"] = "xhttp"
+                changed = True
+            current_path = str(xhttp.get("path") or "").strip()
+            if not current_path:
+                current_path = self._random_xhttp_path()
+                xhttp["path"] = current_path
+                changed = True
 
             outbounds = config.setdefault("outbounds", [])
             freedom = None
@@ -787,6 +840,9 @@ class ProxyProvisioner:
                 inbound["port"] = selected_port
                 changed = True
 
+            if reality.get("target") != f"{selected_sni}:443":
+                reality["target"] = f"{selected_sni}:443"
+                changed = True
             if reality.get("dest") != f"{selected_sni}:443":
                 reality["dest"] = f"{selected_sni}:443"
                 changed = True
@@ -824,7 +880,6 @@ class ProxyProvisioner:
                 clients.append(
                     {
                         "id": str(uuid.uuid4()),
-                        "flow": "xtls-rprx-vision",
                         "email": name,
                     }
                 )
@@ -837,8 +892,8 @@ class ProxyProvisioner:
             if not str(entry.get("id") or "").strip():
                 entry["id"] = str(uuid.uuid4())
                 changed = True
-            if entry.get("flow") != "xtls-rprx-vision":
-                entry["flow"] = "xtls-rprx-vision"
+            if "flow" in entry:
+                entry.pop("flow", None)
                 changed = True
             if entry.get("email") != name:
                 entry["email"] = name
@@ -865,6 +920,7 @@ class ProxyProvisioner:
             client_uuid = str(entry.get("id") or "").strip()
             public_key = self._derive_public_key(private_key)
             host = self._public_ip()
+            path = self._resolve_path(inbound)
             link = self._build_link(
                 client_uuid=client_uuid,
                 host=host,
@@ -872,7 +928,9 @@ class ProxyProvisioner:
                 sni=selected_sni,
                 public_key=public_key,
                 short_id=short_id,
+                path=path,
                 name=name,
+                transport_type="xhttp",
             )
             alternatives = self._build_alternatives(
                 client_uuid=client_uuid,
@@ -880,9 +938,11 @@ class ProxyProvisioner:
                 port=selected_port,
                 public_key=public_key,
                 short_id=short_id,
+                path=path,
                 name=name,
                 server_names=server_names,
                 selected_sni=selected_sni,
+                transport_type="xhttp",
             )
             return {
                 "name": name,
@@ -909,11 +969,11 @@ class ProxyProvisioner:
                     "port": port,
                     "protocol": "vless",
                     "settings": {
-                        "clients": [{"id": client_uuid, "flow": "xtls-rprx-vision", "email": name}],
+                        "clients": [{"id": client_uuid, "email": name}],
                         "decryption": "none",
                     },
                     "streamSettings": {
-                        "network": "tcp",
+                        "network": "xhttp",
                         "security": "reality",
                         "sockopt": {
                             "tcpFastOpen": True,
@@ -921,8 +981,13 @@ class ProxyProvisioner:
                             "tcpKeepAliveInterval": 60,
                             "tcpUserTimeout": 30000,
                         },
+                        "xhttpSettings": {
+                            "path": self._random_xhttp_path(),
+                            "mode": "auto",
+                        },
                         "realitySettings": {
                             "show": False,
+                            "target": f"{server_name}:443",
                             "dest": f"{server_name}:443",
                             "xver": 0,
                             "serverNames": server_names,
@@ -945,6 +1010,7 @@ class ProxyProvisioner:
         self.progress("Starting Xray service")
         self._restart_xray()
         host = self._public_ip()
+        path = self._resolve_path(config["inbounds"][0])
         link = self._build_link(
             client_uuid=client_uuid,
             host=host,
@@ -952,7 +1018,9 @@ class ProxyProvisioner:
             sni=server_name,
             public_key=public_key,
             short_id=short_id,
+            path=path,
             name=name,
+            transport_type="xhttp",
         )
         alternatives = self._build_alternatives(
             client_uuid=client_uuid,
@@ -960,9 +1028,11 @@ class ProxyProvisioner:
             port=port,
             public_key=public_key,
             short_id=short_id,
+            path=path,
             name=name,
             server_names=server_names,
             selected_sni=server_name,
+            transport_type="xhttp",
         )
         return {
             "name": name,
@@ -983,7 +1053,7 @@ class ProxyProvisioner:
             if not isinstance(item, dict):
                 continue
             name = str(item.get("email") or "").strip() or f"client{idx + 1}"
-            result.append({"name": name, "interface": "vless-reality", "created_at": None, "updated_at": None})
+            result.append({"name": name, "interface": "xray", "created_at": None, "updated_at": None})
         return result
 
     def export_client(self, client_name: str) -> dict:
@@ -1011,6 +1081,7 @@ class ProxyProvisioner:
             self._restart_xray()
         public_key = self._derive_public_key(private_key)
         sni = self._resolve_sni(inbound)
+        transport_type, path, flow = self._resolve_transport(inbound)
         host = self._public_ip()
         link = self._build_link(
             client_uuid=client_uuid,
@@ -1019,7 +1090,10 @@ class ProxyProvisioner:
             sni=sni,
             public_key=public_key,
             short_id=short_id,
+            path=path,
             name=name,
+            transport_type=transport_type,
+            flow=flow,
         )
         stream = inbound.get("streamSettings") or {}
         reality = stream.get("realitySettings") or {}
@@ -1036,14 +1110,17 @@ class ProxyProvisioner:
             port=port,
             public_key=public_key,
             short_id=short_id,
+            path=path,
             name=name,
             server_names=server_names,
             selected_sni=sni,
+            transport_type=transport_type,
+            flow=flow,
         )
         return {
             "name": name,
             "link": link,
-            "interface": "vless-reality",
+            "interface": "xray",
             "sni": sni,
             "server_names": server_names,
             "alternatives": alternatives,
@@ -1064,7 +1141,6 @@ class ProxyProvisioner:
         clients.append(
             {
                 "id": str(uuid.uuid4()),
-                "flow": "xtls-rprx-vision",
                 "email": name,
             }
         )

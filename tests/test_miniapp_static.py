@@ -26,4 +26,8 @@ def test_miniapp_shell_is_single_flow_and_has_diagnostics_panel() -> None:
     assert 'id="debug-log"' in html
     assert 'id="connect-progress-panel"' in html
     assert 'id="connect-checklist"' in html
+    assert 'value="amneziawg"' in html
+    assert 'value="xray"' in html
+    assert 'value="shadowtls_ss"' not in html
+    assert 'value="vless_reality"' not in html
     assert 'id="faq-sheet"' not in html

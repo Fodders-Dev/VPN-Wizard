@@ -6,13 +6,14 @@ const SETTINGS_KEY = "vpnw_settings_v3";
 const PAGE_KEY = "vpnw_page_v3";
 const CLIENT_SORT_KEY = "vpnw_client_sort_v1";
 const tg = window.Telegram?.WebApp || null;
-const PROXY_MODES = new Set(["shadowtls_ss", "vless_reality"]);
+const PROXY_MODES = new Set(["xray", "vless_reality", "shadowtls_ss"]);
 const DEBUG_LOG_LIMIT = 60;
 const PROVISION_STEP_ESTIMATE = {
   amneziawg: 8,
   wireguard: 8,
-  shadowtls_ss: 7,
+  xray: 7,
   vless_reality: 7,
+  shadowtls_ss: 7,
 };
 
 const refs = {
@@ -104,7 +105,7 @@ const refs = {
 
 const COPY = {
   ru: {
-    topbarCopy: "Сервер, профили и все действия на одном экране.",
+    topbarCopy: "Конструктор сервера: выберите протокол, поднимите сервис и выдайте профили.",
     guestBadge: "Гость",
     accountBadge: "Telegram",
     diagnosticsTitle: "Миниапп не может дотянуться до API",
@@ -219,7 +220,7 @@ const COPY = {
     help_key: "Вставьте приватный SSH ключ полностью. Он не сохраняется без галочки “Запомнить сервер”.",
     help_ssh_port: "Нужен только если SSH у вас не на 22. Иначе оставьте пустым.",
     help_listen_port: "Порт VPN или прокси. Если не знаете, оставьте пустым.",
-    help_proxy_sni: "Нужен только для proxy-режимов и нестандартных сценариев.",
+    help_proxy_sni: "Нужен только для XRay и нестандартных сценариев.",
     debugEmpty: "Debug log is empty.",
     debugLabel: "Debug",
     debugCopy: "Последние шаги miniapp и API без секретов.",
@@ -227,7 +228,7 @@ const COPY = {
     debugClearBtn: "Очистить",
   },
   en: {
-    topbarCopy: "Server, profiles, and useful actions on a single screen.",
+    topbarCopy: "Server builder: choose a protocol, provision the stack, and issue profiles.",
     guestBadge: "Guest",
     accountBadge: "Telegram",
     diagnosticsTitle: "The miniapp cannot reach the API",
@@ -342,7 +343,7 @@ const COPY = {
     help_key: "Paste the full private SSH key. It is only stored when you explicitly save the server.",
     help_ssh_port: "Only needed if SSH is not on 22. Otherwise leave empty.",
     help_listen_port: "VPN or proxy port. Leave empty if you are not sure.",
-    help_proxy_sni: "Only needed for proxy modes and uncommon setups.",
+    help_proxy_sni: "Only needed for XRay and uncommon setups.",
     debugEmpty: "Debug log is empty.",
     debugLabel: "Debug",
     debugCopy: "Recent miniapp and API steps without secrets.",
@@ -544,7 +545,22 @@ function parsePort(value) {
 }
 
 function selectedMode() {
-  return refs.modeInputs.find((input) => input.checked)?.value || "amneziawg";
+  return normalizeMode(refs.modeInputs.find((input) => input.checked)?.value);
+}
+
+function normalizeMode(mode) {
+  const value = String(mode || "").trim();
+  if (!value) return "amneziawg";
+  if (value === "vless_reality") return "xray";
+  return value;
+}
+
+function modeDisplayLabel(mode) {
+  const value = normalizeMode(mode);
+  if (value === "amneziawg") return "AmneziaWG";
+  if (value === "xray") return "XRay";
+  if (value === "wireguard") return "WireGuard";
+  return value;
 }
 
 function authMethod() {
@@ -945,7 +961,7 @@ function renderSavedServers() {
           <div class="saved-server-name">${escapeHtml(server.label || `${server.ssh_user}@${server.host}`)}</div>
           <div class="saved-server-meta">
             <span class="meta-pill">${escapeHtml(server.ssh_user)}@${escapeHtml(server.host)}:${server.ssh_port}</span>
-            ${server.mode ? `<span class="meta-pill">${escapeHtml(server.mode)}</span>` : ""}
+            ${server.mode ? `<span class="meta-pill">${escapeHtml(modeDisplayLabel(server.mode))}</span>` : ""}
             <span class="meta-pill">${t("savedServerSaved")}</span>
           </div>
         </div>
@@ -1060,12 +1076,10 @@ function renderAll() {
   document.getElementById("remember-server-label").textContent = STATE.lang === "ru" ? "Запомнить сервер в аккаунте" : "Save this server in my account";
   document.getElementById("auth-method-password-label").textContent = STATE.lang === "ru" ? "Пароль" : "Password";
   document.getElementById("auth-method-key-label").textContent = STATE.lang === "ru" ? "Ключ" : "Key";
-  document.getElementById("mode-vpn-title").textContent = STATE.lang === "ru" ? "VPN" : "VPN";
-  document.getElementById("mode-vpn-copy").textContent = STATE.lang === "ru" ? "Для всего устройства и семьи." : "Whole-device access for home and family.";
-  document.getElementById("mode-shadowtls-title").textContent = STATE.lang === "ru" ? "Антиблок" : "Anti-block";
-  document.getElementById("mode-shadowtls-copy").textContent = STATE.lang === "ru" ? "Быстрый импорт в Hiddify." : "Fast Hiddify import.";
-  document.getElementById("mode-vless-title").textContent = STATE.lang === "ru" ? "Legacy proxy" : "Legacy proxy";
-  document.getElementById("mode-vless-copy").textContent = STATE.lang === "ru" ? "Для тяжёлых сетей и TCP 443." : "For tougher networks and TCP 443.";
+  document.getElementById("mode-vpn-title").textContent = "AmneziaWG";
+  document.getElementById("mode-vpn-copy").textContent = STATE.lang === "ru" ? "Основной выбор для устройств, семьи и всего трафика." : "Primary choice for devices, family, and full-tunnel access.";
+  document.getElementById("mode-xray-title").textContent = "XRay";
+  document.getElementById("mode-xray-copy").textContent = STATE.lang === "ru" ? "VLESS XHTTP REALITY для сложных сетей и запасного канала." : "VLESS XHTTP REALITY for tougher networks and fallback access.";
   document.getElementById("profiles-eyebrow").textContent = STATE.lang === "ru" ? "Текущий сервер" : "Current server";
   document.getElementById("clients-title").textContent = STATE.lang === "ru" ? "Все под рукой" : "Everything nearby";
   document.getElementById("settings-eyebrow").textContent = STATE.lang === "ru" ? "Настройки" : "Settings";
@@ -1256,7 +1270,7 @@ async function activateSavedServer(serverId) {
   const previousClients = [...STATE.clients];
   resetProvisionState();
   if (server.mode) {
-    const input = refs.modeInputs.find((node) => node.value === server.mode);
+    const input = refs.modeInputs.find((node) => node.value === normalizeMode(server.mode));
     if (input) input.checked = true;
   }
   STATE.activeSavedServerId = serverId;
