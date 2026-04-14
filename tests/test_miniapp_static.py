@@ -28,6 +28,8 @@ def test_miniapp_shell_is_single_flow_and_has_diagnostics_panel() -> None:
     assert 'id="connect-checklist"' in html
     assert 'value="amneziawg"' in html
     assert 'value="xray"' in html
+    assert 'id="relay-card"' in html
+    assert 'id="relay-enabled-toggle"' in html
     assert 'value="shadowtls_ss"' not in html
     assert 'value="vless_reality"' not in html
     assert 'id="faq-sheet"' not in html

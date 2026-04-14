@@ -137,6 +137,64 @@
                 </label>
               </div>
 
+              <section class="relay-card hidden" id="relay-card">
+                <label class="toggle-row relay-toggle-row">
+                  <span class="toggle">
+                    <input type="checkbox" id="relay-enabled-toggle" />
+                    <span id="relay-enabled-label">Использовать relay для белых списков</span>
+                  </span>
+                  <span class="toggle-hint" id="relay-enabled-hint">Второй VPS принимает вход и пересылает его на XRay.</span>
+                </label>
+                <div class="relay-fields hidden" id="relay-fields">
+                  <div class="inline-note" id="relay-note">Подходит для отдельного VPS в Yandex Cloud или другой разрешённой сети.</div>
+                  <div class="field-grid two">
+                    <label class="field">
+                      <span class="field-label">
+                        <span id="relay-host-label">Relay IP или домен</span>
+                        <button type="button" class="help-btn" data-help="relay_host">?</button>
+                      </span>
+                      <input id="relay-host-input" autocomplete="url" placeholder="203.0.113.10" />
+                    </label>
+                    <label class="field">
+                      <span class="field-label">
+                        <span id="relay-user-label">Relay SSH пользователь</span>
+                        <button type="button" class="help-btn" data-help="relay_user">?</button>
+                      </span>
+                      <input id="relay-user-input" autocomplete="username" placeholder="root" value="root" />
+                    </label>
+                  </div>
+
+                  <div class="method-switch relay-switch" role="radiogroup" aria-label="Relay auth method">
+                    <label class="method-pill active">
+                      <input type="radio" name="relay_auth_method" value="password" checked />
+                      <span id="relay-auth-password-label">Пароль</span>
+                    </label>
+                    <label class="method-pill">
+                      <input type="radio" name="relay_auth_method" value="key" />
+                      <span id="relay-auth-key-label">Ключ</span>
+                    </label>
+                  </div>
+
+                  <div class="field-grid" id="relay-secret-fields">
+                    <label class="field" id="relay-password-field">
+                      <span class="field-label">
+                        <span id="relay-password-label">Relay SSH пароль</span>
+                        <button type="button" class="help-btn" data-help="relay_password">?</button>
+                      </span>
+                      <input id="relay-password-input" type="password" autocomplete="current-password" placeholder="Пароль от relay-сервера" />
+                    </label>
+
+                    <label class="field hidden" id="relay-key-field">
+                      <span class="field-label">
+                        <span id="relay-key-label">Relay SSH ключ</span>
+                        <button type="button" class="help-btn" data-help="relay_key">?</button>
+                      </span>
+                      <textarea id="relay-key-input" rows="4" placeholder="Вставьте приватный ключ relay"></textarea>
+                    </label>
+                  </div>
+                </div>
+              </section>
+
               <label class="toggle-row">
                 <span class="toggle">
                   <input type="checkbox" id="remember-server-toggle" />

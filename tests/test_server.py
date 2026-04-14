@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import paramiko
 import time
+from contextlib import contextmanager
 
 from fastapi.testclient import TestClient
 
@@ -114,6 +115,77 @@ def test_session_store_create_get_and_revoke() -> None:
     assert restored.password == "secret"
     assert store.revoke(session_id) is True
     assert store.get(session_id) is None
+
+
+def test_clients_export_rewrites_xray_links_to_saved_relay(monkeypatch, tmp_path) -> None:
+    _configure_env(monkeypatch, tmp_path)
+    client = TestClient(server_module.app)
+    client.post("/api/auth/telegram/web", json=_web_auth_payload("123456:telegram-test-token"))
+    save_response = client.post(
+        "/api/account/servers",
+        json={
+            "ssh": {"host": "1.2.3.4", "user": "root", "port": 22, "password": "secret"},
+            "protocol": "xray",
+            "relay": {
+                "ssh": {"host": "10.20.30.40", "user": "root", "port": 22, "password": "relay-secret"},
+                "public_host": "relay.example.com",
+                "listen_port": 7443,
+            },
+        },
+    )
+    server_id = save_response.json()["server"]["id"]
+
+    class FakeProxyProvisioner:
+        def __init__(self, ssh, **kwargs):
+            self.ssh = ssh
+
+        def export_client(self, client_name: str) -> dict[str, object]:
+            assert client_name == "client1"
+            return {
+                "name": client_name,
+                "link": (
+                    "vless://11111111-1111-1111-1111-111111111111@1.2.3.4:443"
+                    "?encryption=none&security=reality"
+                    "&sni=www.microsoft.com&fp=chrome&pbk=PUBKEY&sid=abcd1234abcd1234"
+                    "&type=xhttp&path=%2Fvpnw-xh-test#client1"
+                ),
+                "alternatives": [
+                    {
+                        "sni": "www.apple.com",
+                        "fp": "safari",
+                        "link": (
+                            "vless://11111111-1111-1111-1111-111111111111@1.2.3.4:443"
+                            "?encryption=none&security=reality"
+                            "&sni=www.apple.com&fp=safari&pbk=PUBKEY&sid=abcd1234abcd1234"
+                            "&type=xhttp&path=%2Fvpnw-xh-test#client1"
+                        ),
+                    }
+                ],
+                "interface": "xray",
+            }
+
+        def build_singbox_auto_config(self, primary_link: str, alternatives=None, **kwargs) -> str:
+            return "ORIGIN_AUTO"
+
+    @contextmanager
+    def fake_ssh_connection(ssh_payload, session_id=None, saved_server_id=None, request=None, logger=None):
+        yield object(), ssh_payload
+
+    monkeypatch.setattr(server_module, "_ssh_connection", fake_ssh_connection)
+    monkeypatch.setattr(server_module, "ProxyProvisioner", FakeProxyProvisioner)
+
+    response = client.post(
+        "/api/clients/export",
+        json={"saved_server_id": server_id, "protocol": "xray", "client_name": "client1"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert "@relay.example.com:7443?" in payload["config"]
+    assert payload["alternatives"]
+    assert "@relay.example.com:7443?" in payload["alternatives"][0]["link"]
+    assert "relay.example.com" in (payload["auto_config"] or "")
 
 
 def test_discover_ssh_port_prefers_preferred_port(monkeypatch) -> None:

@@ -29,13 +29,15 @@ from pydantic import BaseModel, Field, model_validator
 import qrcode
 import uvicorn
 
+import vpn_wizard.proxy as proxy_module
 from vpn_wizard.account import (
     build_account_store,
     verify_telegram_login,
     verify_telegram_webapp_init_data,
 )
 from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
-from vpn_wizard.proxy import ProxyProvisioner
+from vpn_wizard.proxy import ProxyProvisioner, rewrite_vless_alternatives, rewrite_vless_endpoint
+from vpn_wizard.relay import RelayProvisioner
 from vpn_wizard.shadowtls import ShadowTLSSSProvisioner
 from vpn_wizard.urls import resolve_public_miniapp_url
 
@@ -108,6 +110,23 @@ class SSHPayload(BaseModel):
             raise ValueError("SSH user is required.")
         if not 1 <= self.port <= 65535:
             raise ValueError("SSH port must be between 1 and 65535.")
+        return self
+
+
+class RelayPayload(BaseModel):
+    ssh: SSHPayload
+    public_host: Optional[str] = None
+    listen_port: Optional[int] = Field(default=None, ge=1, le=65535)
+
+    @model_validator(mode="after")
+    def normalize(self) -> "RelayPayload":
+        clean_public_host, parsed_port = _split_host_port(self.public_host or "")
+        if clean_public_host:
+            self.public_host = clean_public_host
+            if parsed_port is not None and self.listen_port is None:
+                self.listen_port = parsed_port
+        else:
+            self.public_host = self.ssh.host
         return self
 
 
@@ -279,6 +298,7 @@ class AuthRequest(BaseModel):
     session_id: Optional[str] = None
     saved_server_id: Optional[str] = None
     protocol: Optional[str] = None
+    relay: Optional[RelayPayload] = None
 
 
 class SSHDiscoverRequest(BaseModel):
@@ -466,6 +486,7 @@ class SavedServerRequest(BaseModel):
     protocol: Optional[str] = None
     listen_port: Optional[int] = None
     proxy_sni: Optional[str] = None
+    relay: Optional[RelayPayload] = None
 
 
 class SavedServerRenameRequest(BaseModel):
@@ -1105,6 +1126,7 @@ def account_save_server(payload: SavedServerRequest, request: Request) -> SavedS
             listen_port=payload.listen_port,
             proxy_sni=payload.proxy_sni,
             label=payload.label,
+            relay=_relay_payload_to_store(payload.relay),
             server_id=payload.server_id,
         )
         return SavedServerResponse(ok=True, server=server)
@@ -1197,6 +1219,64 @@ def _safe_name(name: Optional[str]) -> str:
 def _download_filename(name: Optional[str], suffix: str) -> str:
     safe = _safe_name(name)
     return f"{safe}.{suffix}"
+
+
+def _relay_payload_to_store(relay: Optional[RelayPayload]) -> Optional[dict]:
+    if relay is None:
+        return None
+    return {
+        "host": relay.ssh.host,
+        "user": relay.ssh.user,
+        "port": relay.ssh.port,
+        "password": relay.ssh.password,
+        "key_content": relay.ssh.key_content,
+        "public_host": relay.public_host or relay.ssh.host,
+        "listen_port": relay.listen_port,
+    }
+
+
+def _relay_payload_from_creds(relay: Optional[dict]) -> Optional[dict]:
+    if not relay:
+        return None
+    host = str(relay.get("host") or "").strip()
+    user = str(relay.get("user") or "").strip()
+    port = relay.get("port")
+    if not host or not user or not port:
+        return None
+    return {
+        "ssh": {
+            "host": host,
+            "user": user,
+            "port": int(port),
+            "password": relay.get("password"),
+            "key_content": relay.get("key_content"),
+        },
+        "public_host": relay.get("public_host") or host,
+        "listen_port": relay.get("listen_port"),
+    }
+
+
+def _rewrite_xray_links_for_relay(
+    *,
+    link: Optional[str],
+    alternatives: Optional[list[dict]],
+    auto_config: Optional[str],
+    relay: Optional[RelayPayload],
+    fallback_port: Optional[int] = None,
+) -> tuple[Optional[str], Optional[list[dict]], Optional[str]]:
+    if relay is None or not link:
+        return link, alternatives, auto_config
+    relay_host = str(relay.public_host or relay.ssh.host or "").strip()
+    relay_port = int(relay.listen_port or fallback_port or 0)
+    if not relay_host or relay_port < 1 or relay_port > 65535:
+        return link, alternatives, auto_config
+    primary_link = rewrite_vless_endpoint(link, relay_host, relay_port)
+    rewritten_alternatives = rewrite_vless_alternatives(alternatives, relay_host, relay_port)
+    proxy = proxy_module.ProxyProvisioner.__new__(proxy_module.ProxyProvisioner)
+    proxy.enable_urltest = False
+    proxy.fingerprint = "chrome"
+    auto = proxy.build_singbox_auto_config(primary_link=primary_link, alternatives=rewritten_alternatives)
+    return primary_link, rewritten_alternatives, auto
 
 
 def _public_base_url_from_request(request: Optional[Request]) -> Optional[str]:
@@ -1317,6 +1397,8 @@ def _materialize_saved_server(payload: BaseModel, request: Request) -> BaseModel
         "password": creds.get("password"),
         "key_content": creds.get("key_content"),
     }
+    if creds.get("relay"):
+        updated["relay"] = _relay_payload_from_creds(creds.get("relay"))
     updated["saved_server_id"] = None
     if "protocol" in updated and not updated.get("protocol") and creds.get("mode"):
         updated["protocol"] = creds["mode"]
@@ -1398,6 +1480,32 @@ def _run_provision(
                 config = result["link"]
                 alternatives = result.get("alternatives")
                 auto_config = proxy.build_singbox_auto_config(primary_link=config, alternatives=alternatives)
+                if payload.relay is not None:
+                    parsed_origin = urlparse(config or "")
+                    origin_host = parsed_origin.hostname
+                    origin_port = parsed_origin.port
+                    if not origin_host or not origin_port:
+                        JOB_STORE.update(job_id, status="error", error="Could not determine XRay endpoint for relay setup.")
+                        return
+                    relay_port = int(payload.relay.listen_port or origin_port)
+                    progress("Connecting to relay over SSH")
+                    with _ssh_connection(payload.relay.ssh, logger=progress) as (relay_ssh, _relay_resolved):
+                        relay_info = RelayProvisioner(relay_ssh, progress=progress).setup(
+                            origin_host=origin_host,
+                            origin_port=origin_port,
+                            listen_port=relay_port,
+                        )
+                    payload.relay.listen_port = int(relay_info["listen_port"])
+                    config, alternatives, auto_config = _rewrite_xray_links_for_relay(
+                        link=config,
+                        alternatives=alternatives,
+                        auto_config=auto_config,
+                        relay=payload.relay,
+                        fallback_port=int(relay_info["listen_port"]),
+                    )
+                    progress(
+                        f"Relay ready on {payload.relay.public_host or payload.relay.ssh.host}:{int(relay_info['listen_port'])}"
+                    )
                 checks = pre_checks if opts.check else []
                 suffix = "txt"
                 JOB_STORE.update(job_id, client_name=result.get("name") or opts.client_name)
@@ -1850,6 +1958,13 @@ async def client_add(payload: ClientRequest, request: Request) -> ClientAddRespo
         config_value = result["config_value"]
         alternatives = result["alternatives"]
         auto_config = result["auto_config"]
+        if _is_xray_protocol(payload.protocol):
+            config_value, alternatives, auto_config = _rewrite_xray_links_for_relay(
+                link=config_value,
+                alternatives=alternatives,
+                auto_config=auto_config,
+                relay=payload.relay,
+            )
         client_ip = result["client_ip"]
         iface = result["iface"]
         suffix = result["suffix"]
@@ -2121,6 +2236,13 @@ async def client_export(payload: ClientRemoveRequest, request: Request) -> Clien
         config_value = result["config_value"]
         alternatives = result["alternatives"]
         auto_config = result["auto_config"]
+        if _is_xray_protocol(payload.protocol):
+            config_value, alternatives, auto_config = _rewrite_xray_links_for_relay(
+                link=config_value,
+                alternatives=alternatives,
+                auto_config=auto_config,
+                relay=payload.relay,
+            )
         client_ip = result["client_ip"]
         iface = result["iface"]
         suffix = result["suffix"]

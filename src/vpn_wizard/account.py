@@ -112,6 +112,13 @@ class AccountStore:
                     proxy_sni TEXT,
                     password_enc TEXT,
                     key_content_enc TEXT,
+                    relay_host TEXT,
+                    relay_ssh_user TEXT,
+                    relay_ssh_port INTEGER,
+                    relay_password_enc TEXT,
+                    relay_key_content_enc TEXT,
+                    relay_public_host TEXT,
+                    relay_listen_port INTEGER,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL,
                     last_used_at INTEGER NOT NULL
@@ -121,6 +128,24 @@ class AccountStore:
                     ON saved_servers(user_id, host, ssh_user, ssh_port, COALESCE(mode, ''));
                 """
             )
+            self._ensure_saved_server_columns(conn)
+
+    def _ensure_saved_server_columns(self, conn: sqlite3.Connection) -> None:
+        rows = conn.execute("PRAGMA table_info(saved_servers)").fetchall()
+        existing = {str(row["name"]) for row in rows}
+        additions = {
+            "relay_host": "TEXT",
+            "relay_ssh_user": "TEXT",
+            "relay_ssh_port": "INTEGER",
+            "relay_password_enc": "TEXT",
+            "relay_key_content_enc": "TEXT",
+            "relay_public_host": "TEXT",
+            "relay_listen_port": "INTEGER",
+        }
+        for column, kind in additions.items():
+            if column in existing:
+                continue
+            conn.execute(f"ALTER TABLE saved_servers ADD COLUMN {column} {kind}")
 
     def _encrypt(self, value: Optional[str]) -> Optional[str]:
         if not value:
@@ -279,11 +304,13 @@ class AccountStore:
         listen_port: Optional[int],
         proxy_sni: Optional[str],
         label: Optional[str],
+        relay: Optional[dict[str, Any]] = None,
         server_id: Optional[str] = None,
     ) -> dict[str, Any]:
         now = _now()
         clean_label = (label or "").strip() or f"{ssh_user}@{host}"
         clean_mode = (mode or "").strip() or None
+        relay_data = self._normalize_relay(relay)
         with self._connect() as conn:
             existing = None
             if server_id:
@@ -305,6 +332,8 @@ class AccountStore:
                     """
                     UPDATE saved_servers
                     SET label = ?, mode = ?, listen_port = ?, proxy_sni = ?, password_enc = ?, key_content_enc = ?,
+                        relay_host = ?, relay_ssh_user = ?, relay_ssh_port = ?, relay_password_enc = ?,
+                        relay_key_content_enc = ?, relay_public_host = ?, relay_listen_port = ?,
                         updated_at = ?, last_used_at = ?
                     WHERE id = ? AND user_id = ?
                     """,
@@ -315,6 +344,13 @@ class AccountStore:
                         proxy_sni,
                         self._encrypt(password),
                         self._encrypt(key_content),
+                        relay_data["host"],
+                        relay_data["ssh_user"],
+                        relay_data["ssh_port"],
+                        self._encrypt(relay_data["password"]),
+                        self._encrypt(relay_data["key_content"]),
+                        relay_data["public_host"],
+                        relay_data["listen_port"],
                         now,
                         now,
                         resolved_id,
@@ -326,8 +362,10 @@ class AccountStore:
                     """
                     INSERT INTO saved_servers (
                         id, user_id, label, host, ssh_user, ssh_port, mode, listen_port, proxy_sni,
-                        password_enc, key_content_enc, created_at, updated_at, last_used_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        password_enc, key_content_enc, relay_host, relay_ssh_user, relay_ssh_port,
+                        relay_password_enc, relay_key_content_enc, relay_public_host, relay_listen_port,
+                        created_at, updated_at, last_used_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         resolved_id,
@@ -341,6 +379,13 @@ class AccountStore:
                         proxy_sni,
                         self._encrypt(password),
                         self._encrypt(key_content),
+                        relay_data["host"],
+                        relay_data["ssh_user"],
+                        relay_data["ssh_port"],
+                        self._encrypt(relay_data["password"]),
+                        self._encrypt(relay_data["key_content"]),
+                        relay_data["public_host"],
+                        relay_data["listen_port"],
                         now,
                         now,
                         now,
@@ -421,6 +466,22 @@ class AccountStore:
             ).fetchone()
             if row is None:
                 raise RuntimeError("Saved server not found.")
+            relay_public_host = (row["relay_public_host"] or row["relay_host"] or "").strip() or None
+            relay_host = (row["relay_host"] or "").strip() or None
+            relay_user = (row["relay_ssh_user"] or "").strip() or None
+            relay_port = int(row["relay_ssh_port"]) if row["relay_ssh_port"] else None
+            relay_listen_port = int(row["relay_listen_port"]) if row["relay_listen_port"] else None
+            relay = None
+            if relay_host and relay_user and relay_port:
+                relay = {
+                    "host": relay_host,
+                    "user": relay_user,
+                    "port": relay_port,
+                    "password": self._decrypt(row["relay_password_enc"]),
+                    "key_content": self._decrypt(row["relay_key_content_enc"]),
+                    "public_host": relay_public_host,
+                    "listen_port": relay_listen_port,
+                }
             return {
                 "id": row["id"],
                 "host": row["host"],
@@ -432,6 +493,7 @@ class AccountStore:
                 "listen_port": row["listen_port"],
                 "proxy_sni": row["proxy_sni"],
                 "label": row["label"],
+                "relay": relay,
             }
 
     def configure_pin(self, user_id: int, pin: Optional[str], enabled: bool) -> dict[str, Any]:
@@ -501,6 +563,10 @@ class AccountStore:
     def _serialize_saved_server(self, row: sqlite3.Row | None) -> dict[str, Any]:
         if row is None:
             raise RuntimeError("Saved server not found.")
+        relay_public_host = (row["relay_public_host"] or row["relay_host"] or "").strip() or None
+        relay_host = (row["relay_host"] or "").strip() or None
+        relay_user = (row["relay_ssh_user"] or "").strip() or None
+        relay_port = int(row["relay_ssh_port"]) if row["relay_ssh_port"] else None
         return {
             "id": row["id"],
             "label": row["label"],
@@ -512,9 +578,44 @@ class AccountStore:
             "proxy_sni": row["proxy_sni"],
             "has_password": bool(row["password_enc"]),
             "has_key": bool(row["key_content_enc"]),
+            "relay_enabled": bool(relay_host and relay_user and relay_port),
+            "relay_public_host": relay_public_host,
+            "relay_ssh_host": relay_host,
+            "relay_ssh_user": relay_user,
+            "relay_ssh_port": relay_port,
+            "relay_listen_port": int(row["relay_listen_port"]) if row["relay_listen_port"] else None,
             "created_at": int(row["created_at"]),
             "updated_at": int(row["updated_at"]),
             "last_used_at": int(row["last_used_at"]),
+        }
+
+    def _normalize_relay(self, relay: Optional[dict[str, Any]]) -> dict[str, Any]:
+        relay = relay or {}
+        host = str(relay.get("host") or "").strip()
+        ssh_user = str(relay.get("user") or relay.get("ssh_user") or "").strip()
+        ssh_port_raw = relay.get("port", relay.get("ssh_port"))
+        ssh_port = int(ssh_port_raw) if ssh_port_raw else None
+        public_host = str(relay.get("public_host") or host).strip() or None
+        listen_port_raw = relay.get("listen_port")
+        listen_port = int(listen_port_raw) if listen_port_raw else None
+        if not host or not ssh_user or not ssh_port:
+            return {
+                "host": None,
+                "ssh_user": None,
+                "ssh_port": None,
+                "password": None,
+                "key_content": None,
+                "public_host": None,
+                "listen_port": None,
+            }
+        return {
+            "host": host,
+            "ssh_user": ssh_user,
+            "ssh_port": ssh_port,
+            "password": relay.get("password"),
+            "key_content": relay.get("key_content"),
+            "public_host": public_host,
+            "listen_port": listen_port,
         }
 
 

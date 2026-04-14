@@ -4,7 +4,7 @@ import copy
 import json
 from types import SimpleNamespace
 
-from vpn_wizard.proxy import ProxyProvisioner
+from vpn_wizard.proxy import ProxyProvisioner, rewrite_vless_alternatives, rewrite_vless_endpoint
 
 
 class DummySSH:
@@ -40,6 +40,27 @@ def test_build_link_contains_required_reality_params() -> None:
     assert "pbk=PUBKEY" in link
     assert "sid=abcd1234abcd1234" in link
     assert link.endswith("#client1")
+
+
+def test_rewrite_vless_endpoint_swaps_host_and_port() -> None:
+    link = (
+        "vless://11111111-1111-1111-1111-111111111111@1.2.3.4:443"
+        "?encryption=none&security=reality&sni=www.microsoft.com&fp=chrome&pbk=PUB&sid=abcd&type=xhttp&path=%2Fvpnw#c1"
+    )
+    rewritten = rewrite_vless_endpoint(link, "relay.example.com", 7443)
+    assert "@relay.example.com:7443?" in rewritten
+    assert "sni=www.microsoft.com" in rewritten
+    assert rewritten.endswith("#c1")
+
+
+def test_rewrite_vless_alternatives_updates_every_link() -> None:
+    alternatives = [
+        {"sni": "www.microsoft.com", "fp": "chrome", "link": "vless://uuid@1.2.3.4:443?pbk=A&sid=B&type=xhttp#one"},
+        {"sni": "www.apple.com", "fp": "safari", "link": "vless://uuid@1.2.3.4:443?pbk=A&sid=B&type=xhttp#two"},
+    ]
+    rewritten = rewrite_vless_alternatives(alternatives, "10.20.30.40", 9443)
+    assert rewritten is not None
+    assert all("@10.20.30.40:9443?" in item["link"] for item in rewritten)
 
 
 def test_detect_status_reads_xray_shape(monkeypatch) -> None:

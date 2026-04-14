@@ -75,8 +75,14 @@ def test_saved_server_roundtrip_works_for_authenticated_user(monkeypatch, tmp_pa
         "/api/account/servers",
         json={
             "ssh": {"host": "1.2.3.4", "user": "root", "port": 2222, "password": "secret"},
-            "protocol": "amneziawg",
-            "listen_port": 51820,
+            "protocol": "xray",
+            "listen_port": 443,
+            "proxy_sni": "www.microsoft.com",
+            "relay": {
+                "ssh": {"host": "10.20.30.40", "user": "root", "port": 22, "password": "relay-secret"},
+                "public_host": "relay.example.com",
+                "listen_port": 7443,
+            },
         },
     )
     assert save_response.status_code == 200
@@ -84,13 +90,16 @@ def test_saved_server_roundtrip_works_for_authenticated_user(monkeypatch, tmp_pa
     assert payload["ok"] is True
     assert payload["server"]["host"] == "1.2.3.4"
     assert payload["server"]["ssh_port"] == 2222
+    assert payload["server"]["relay_enabled"] is True
+    assert payload["server"]["relay_public_host"] == "relay.example.com"
 
     list_response = client.get("/api/account/servers")
     assert list_response.status_code == 200
     servers = list_response.json()["servers"]
     assert len(servers) == 1
     assert servers[0]["has_password"] is True
-    assert servers[0]["mode"] == "amneziawg"
+    assert servers[0]["mode"] == "xray"
+    assert servers[0]["relay_enabled"] is True
 
 
 def test_saved_server_access_requires_pin_unlock(monkeypatch, tmp_path) -> None:

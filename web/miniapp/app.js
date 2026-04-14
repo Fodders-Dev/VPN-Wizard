@@ -45,6 +45,17 @@ const refs = {
   keyField: document.getElementById("key-field"),
   authMethodInputs: Array.from(document.querySelectorAll('input[name="auth_method"]')),
   methodPills: Array.from(document.querySelectorAll(".method-pill")).filter((node) => node.querySelector('input[name="auth_method"]')),
+  relayCard: document.getElementById("relay-card"),
+  relayEnabledToggle: document.getElementById("relay-enabled-toggle"),
+  relayFields: document.getElementById("relay-fields"),
+  relayHost: document.getElementById("relay-host-input"),
+  relayUser: document.getElementById("relay-user-input"),
+  relayPassword: document.getElementById("relay-password-input"),
+  relayKey: document.getElementById("relay-key-input"),
+  relayPasswordField: document.getElementById("relay-password-field"),
+  relayKeyField: document.getElementById("relay-key-field"),
+  relayAuthMethodInputs: Array.from(document.querySelectorAll('input[name="relay_auth_method"]')),
+  relayMethodPills: Array.from(document.querySelectorAll(".method-pill")).filter((node) => node.querySelector('input[name="relay_auth_method"]')),
   modeInputs: Array.from(document.querySelectorAll('input[name="connection_mode"]')),
   modeCards: Array.from(document.querySelectorAll(".mode-card")),
   rememberServerToggle: document.getElementById("remember-server-toggle"),
@@ -218,6 +229,10 @@ const COPY = {
     help_user: "Обычно это `root`. Если провайдер дал другого SSH пользователя, введите его.",
     help_password: "Нужен именно SSH пароль от сервера. Для авторизации ключом переключитесь выше.",
     help_key: "Вставьте приватный SSH ключ полностью. Он не сохраняется без галочки “Запомнить сервер”.",
+    help_relay_host: "IP или домен relay-сервера. Обычно это отдельный VPS в Yandex Cloud или другой разрешённой сети.",
+    help_relay_user: "SSH пользователь relay-сервера. Обычно это `root`.",
+    help_relay_password: "SSH пароль от relay-сервера.",
+    help_relay_key: "Приватный SSH ключ relay-сервера.",
     help_ssh_port: "Нужен только если SSH у вас не на 22. Иначе оставьте пустым.",
     help_listen_port: "Порт VPN или прокси. Если не знаете, оставьте пустым.",
     help_proxy_sni: "Нужен только для XRay и нестандартных сценариев.",
@@ -341,6 +356,10 @@ const COPY = {
     help_user: "Usually this is `root`. If your provider gave another SSH user, use that one.",
     help_password: "This must be the SSH password for the server. Switch above if you log in with a key.",
     help_key: "Paste the full private SSH key. It is only stored when you explicitly save the server.",
+    help_relay_host: "IP or domain of the relay server. Usually this is a separate VPS in Yandex Cloud or another allowed network.",
+    help_relay_user: "SSH user for the relay server. Usually `root`.",
+    help_relay_password: "SSH password for the relay server.",
+    help_relay_key: "Private SSH key for the relay server.",
     help_ssh_port: "Only needed if SSH is not on 22. Otherwise leave empty.",
     help_listen_port: "VPN or proxy port. Leave empty if you are not sure.",
     help_proxy_sni: "Only needed for XRay and uncommon setups.",
@@ -567,6 +586,14 @@ function authMethod() {
   return refs.authMethodInputs.find((input) => input.checked)?.value || "password";
 }
 
+function relayAuthMethod() {
+  return refs.relayAuthMethodInputs.find((input) => input.checked)?.value || "password";
+}
+
+function relayEnabled() {
+  return selectedMode() === "xray" && Boolean(refs.relayEnabledToggle.checked);
+}
+
 function isProxyMode() {
   return PROXY_MODES.has(selectedMode());
 }
@@ -698,12 +725,31 @@ function renderMethodSwitch() {
   refs.keyField.classList.toggle("hidden", current !== "key");
 }
 
+function renderRelayMethodSwitch() {
+  const current = relayAuthMethod();
+  refs.relayMethodPills.forEach((pill) => {
+    const input = pill.querySelector('input[name="relay_auth_method"]');
+    pill.classList.toggle("active", input?.value === current);
+  });
+  refs.relayPasswordField.classList.toggle("hidden", current !== "password");
+  refs.relayKeyField.classList.toggle("hidden", current !== "key");
+}
+
 function renderModeCards() {
   const current = selectedMode();
   refs.modeCards.forEach((card) => {
     const input = card.querySelector('input[name="connection_mode"]');
     card.classList.toggle("active", input?.value === current);
   });
+}
+
+function renderRelaySection() {
+  const visible = selectedMode() === "xray";
+  const expanded = visible && refs.relayEnabledToggle.checked;
+  refs.relayCard.classList.toggle("hidden", !visible);
+  refs.relayFields.classList.toggle("hidden", !expanded);
+  if (!visible) refs.relayEnabledToggle.checked = false;
+  renderRelayMethodSwitch();
 }
 
 function setPage(page) {
@@ -962,6 +1008,7 @@ function renderSavedServers() {
           <div class="saved-server-meta">
             <span class="meta-pill">${escapeHtml(server.ssh_user)}@${escapeHtml(server.host)}:${server.ssh_port}</span>
             ${server.mode ? `<span class="meta-pill">${escapeHtml(modeDisplayLabel(server.mode))}</span>` : ""}
+            ${server.relay_enabled ? `<span class="meta-pill">relay</span>` : ""}
             <span class="meta-pill">${t("savedServerSaved")}</span>
           </div>
         </div>
@@ -1080,6 +1127,19 @@ function renderAll() {
   document.getElementById("mode-vpn-copy").textContent = STATE.lang === "ru" ? "Основной выбор для устройств, семьи и всего трафика." : "Primary choice for devices, family, and full-tunnel access.";
   document.getElementById("mode-xray-title").textContent = "XRay";
   document.getElementById("mode-xray-copy").textContent = STATE.lang === "ru" ? "VLESS XHTTP REALITY для сложных сетей и запасного канала." : "VLESS XHTTP REALITY for tougher networks and fallback access.";
+  document.getElementById("relay-enabled-label").textContent = STATE.lang === "ru" ? "Использовать relay для белых списков" : "Use a relay for whitelist networks";
+  document.getElementById("relay-enabled-hint").textContent = STATE.lang === "ru" ? "Второй VPS принимает вход и пересылает его на XRay." : "A second VPS accepts the entry traffic and forwards it to XRay.";
+  document.getElementById("relay-note").textContent = STATE.lang === "ru" ? "Подходит для отдельного VPS в Yandex Cloud или другой разрешённой сети." : "Useful for a separate VPS in Yandex Cloud or another allowed network.";
+  document.getElementById("relay-host-label").textContent = STATE.lang === "ru" ? "Relay IP или домен" : "Relay IP or domain";
+  document.getElementById("relay-user-label").textContent = STATE.lang === "ru" ? "Relay SSH пользователь" : "Relay SSH user";
+  document.getElementById("relay-auth-password-label").textContent = STATE.lang === "ru" ? "Пароль" : "Password";
+  document.getElementById("relay-auth-key-label").textContent = STATE.lang === "ru" ? "Ключ" : "Key";
+  document.getElementById("relay-password-label").textContent = STATE.lang === "ru" ? "Relay SSH пароль" : "Relay SSH password";
+  document.getElementById("relay-key-label").textContent = STATE.lang === "ru" ? "Relay SSH ключ" : "Relay SSH key";
+  refs.relayHost.placeholder = STATE.lang === "ru" ? "203.0.113.10" : "203.0.113.10";
+  refs.relayUser.placeholder = "root";
+  refs.relayPassword.placeholder = STATE.lang === "ru" ? "Пароль от relay-сервера" : "Relay server password";
+  refs.relayKey.placeholder = STATE.lang === "ru" ? "Вставьте приватный ключ relay" : "Paste the relay private key";
   document.getElementById("profiles-eyebrow").textContent = STATE.lang === "ru" ? "Текущий сервер" : "Current server";
   document.getElementById("clients-title").textContent = STATE.lang === "ru" ? "Все под рукой" : "Everything nearby";
   document.getElementById("settings-eyebrow").textContent = STATE.lang === "ru" ? "Настройки" : "Settings";
@@ -1128,6 +1188,7 @@ function renderAll() {
   refs.confirmContinueBtn.textContent = t("confirmContinue");
   renderMethodSwitch();
   renderModeCards();
+  renderRelaySection();
   renderAuth();
   renderSavedServers();
   renderProfilesHeader();
@@ -1181,6 +1242,29 @@ function buildSshPayloadFromForm() {
   };
 }
 
+function buildRelayPayloadFromForm() {
+  if (!relayEnabled()) return null;
+  const host = refs.relayHost.value.trim();
+  const user = refs.relayUser.value.trim();
+  if (!host || !user) throw new Error(STATE.lang === "ru" ? "Для relay нужен адрес и SSH пользователь." : "Relay host and SSH user are required.");
+  if (relayAuthMethod() === "password" && !refs.relayPassword.value) {
+    throw new Error(STATE.lang === "ru" ? "Введите пароль relay-сервера или переключитесь на ключ." : "Enter the relay password or switch to key auth.");
+  }
+  if (relayAuthMethod() === "key" && !refs.relayKey.value.trim()) {
+    throw new Error(STATE.lang === "ru" ? "Вставьте приватный SSH ключ relay-сервера." : "Paste the relay private SSH key.");
+  }
+  return {
+    ssh: {
+      host,
+      user,
+      port: 22,
+      password: relayAuthMethod() === "password" ? refs.relayPassword.value : null,
+      key_content: relayAuthMethod() === "key" ? refs.relayKey.value.trim() : null,
+    },
+    public_host: host,
+  };
+}
+
 async function loginTransientSession(ssh) {
   const result = await fetchJson("/api/sessions/login", {
     method: "POST",
@@ -1192,7 +1276,13 @@ async function loginTransientSession(ssh) {
 
 function activePayloadBase() {
   if (STATE.activeTarget?.kind === "saved") return { saved_server_id: STATE.activeTarget.serverId, protocol: selectedMode() };
-  if (STATE.activeTarget?.kind === "manual" && STATE.activeTarget.sessionId) return { session_id: STATE.activeTarget.sessionId, protocol: selectedMode() };
+  if (STATE.activeTarget?.kind === "manual" && STATE.activeTarget.sessionId) {
+    return {
+      session_id: STATE.activeTarget.sessionId,
+      protocol: selectedMode(),
+      relay: relayEnabled() ? (buildRelayPayloadFromForm() || STATE.activeTarget.relay || undefined) : undefined,
+    };
+  }
   throw new Error(t("profilesEmptyCopy"));
 }
 
@@ -1210,6 +1300,7 @@ async function maybeSaveServer(ssh) {
       protocol: selectedMode(),
       listen_port: parsePort(STATE.settings.listen_port) || undefined,
       proxy_sni: STATE.settings.proxy_sni || undefined,
+      relay: buildRelayPayloadFromForm() || undefined,
     }),
   });
   if (!result.ok || !result.server) throw new Error(result.error || "Could not save server");
@@ -1228,6 +1319,7 @@ async function connectManual() {
   renderAll();
   try {
     const ssh = buildSshPayloadFromForm();
+    const relay = buildRelayPayloadFromForm();
     const sessionId = await loginTransientSession(ssh);
     logDebug("connect.manual.session_ok", { sessionId });
     const status = await fetchJson("/api/server/status", {
@@ -1238,7 +1330,7 @@ async function connectManual() {
     STATE.connectionChecked = true;
     STATE.serverConfigured = Boolean(status.configured);
     STATE.serverInfo = status;
-    STATE.activeTarget = { kind: "manual", sessionId, manualSnapshot: { host: ssh.host, user: ssh.user } };
+    STATE.activeTarget = { kind: "manual", sessionId, manualSnapshot: { host: ssh.host, user: ssh.user }, relay };
     await maybeSaveServer(ssh);
     if (STATE.serverConfigured) {
       renderConnectStatus("success", t("connectReadyConfigured"), t("connectReadyConfiguredBody"));
@@ -1791,8 +1883,10 @@ function bindEvents() {
     event.preventDefault();
     await connectManual();
   });
-  refs.modeInputs.forEach((input) => input.addEventListener("change", () => { renderModeCards(); renderAll(); }));
+  refs.modeInputs.forEach((input) => input.addEventListener("change", () => { renderModeCards(); renderRelaySection(); renderAll(); }));
   refs.authMethodInputs.forEach((input) => input.addEventListener("change", renderMethodSwitch));
+  refs.relayAuthMethodInputs.forEach((input) => input.addEventListener("change", renderRelayMethodSwitch));
+  refs.relayEnabledToggle.addEventListener("change", () => { renderRelaySection(); renderAll(); });
   refs.navButtons.forEach((button) => button.addEventListener("click", () => setPage(button.dataset.pageTarget)));
   refs.diagnosticsRetryBtn.addEventListener("click", async () => { setDiagnostics(); await retryLastAction(); });
   refs.diagnosticsResetBtn.addEventListener("click", () => {

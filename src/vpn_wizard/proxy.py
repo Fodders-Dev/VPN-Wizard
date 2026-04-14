@@ -6,7 +6,7 @@ import re
 import shlex
 import uuid
 from typing import Callable, Optional
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, urlparse, urlunparse
 
 from vpn_wizard.core import SSHRunner
 
@@ -22,6 +22,34 @@ def _parse_domain_list(raw: str, fallback: tuple[str, ...]) -> tuple[str, ...]:
     if not deduped:
         deduped = list(fallback)
     return tuple(deduped)
+
+
+def _format_vless_netloc(uuid_value: str, host: str, port: int) -> str:
+    clean_host = str(host or "").strip()
+    if ":" in clean_host and not clean_host.startswith("["):
+        clean_host = f"[{clean_host}]"
+    return f"{uuid_value}@{clean_host}:{int(port)}"
+
+
+def rewrite_vless_endpoint(link: str, host: str, port: int) -> str:
+    parsed = urlparse((link or "").strip())
+    if parsed.scheme.lower() != "vless" or not parsed.username:
+        raise RuntimeError("Only vless:// links can be rewritten for relay.")
+    netloc = _format_vless_netloc(parsed.username, host, port)
+    return urlunparse((parsed.scheme, netloc, parsed.path or "", parsed.params or "", parsed.query or "", parsed.fragment or ""))
+
+
+def rewrite_vless_alternatives(alternatives: Optional[list[dict]], host: str, port: int) -> Optional[list[dict]]:
+    if not alternatives:
+        return alternatives
+    result: list[dict] = []
+    for item in alternatives:
+        updated = dict(item or {})
+        link = str(updated.get("link") or "").strip()
+        if link:
+            updated["link"] = rewrite_vless_endpoint(link, host, port)
+        result.append(updated)
+    return result
 
 
 class ProxyProvisioner:
