@@ -504,7 +504,6 @@ class ProxyProvisioner:
         }
         if params["type"] == "xhttp":
             params["path"] = path or self._random_xhttp_path()
-            params["spx"] = "/"
         elif flow:
             params["flow"] = flow
         query = "&".join(f"{key}={quote(str(value), safe='')}" for key, value in params.items())

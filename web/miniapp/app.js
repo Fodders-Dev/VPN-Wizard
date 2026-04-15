@@ -621,7 +621,8 @@ function makeQrDownloadUrl(downloadId) {
 }
 
 function applyClientResult(name, result) {
-  const downloadId = result.download_id || result.auto_download_id || null;
+  const preferAutoArtifact = normalizeMode(result.interface) === "xray" && Boolean(result.auto_download_id);
+  const downloadId = preferAutoArtifact ? (result.auto_download_id || result.download_id || null) : (result.download_id || result.auto_download_id || null);
   STATE.clientResults[name] = {
     primaryText: result.config || "",
     autoText: result.auto_config || "",

@@ -39,6 +39,7 @@ def test_build_link_contains_required_reality_params() -> None:
     assert "path=%2Fvpnw-xh-test" in link
     assert "pbk=PUBKEY" in link
     assert "sid=abcd1234abcd1234" in link
+    assert "spx=" not in link
     assert link.endswith("#client1")
 
 
