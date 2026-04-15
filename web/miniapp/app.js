@@ -5,6 +5,7 @@ const LANG_KEY = "vpnw_lang";
 const SETTINGS_KEY = "vpnw_settings_v3";
 const PAGE_KEY = "vpnw_page_v3";
 const CLIENT_SORT_KEY = "vpnw_client_sort_v1";
+const PROFILE_PROTOCOL_KEY = "vpnw_profile_protocol_v1";
 const tg = window.Telegram?.WebApp || null;
 const PROXY_MODES = new Set(["xray", "vless_reality", "shadowtls_ss"]);
 const DEBUG_LOG_LIMIT = 60;
@@ -75,6 +76,7 @@ const refs = {
   profileName: document.getElementById("profile-name-input"),
   addProfileBtn: document.getElementById("add-profile-btn"),
   profilesRefreshBtn: document.getElementById("profiles-refresh-btn"),
+  profileProtocolButtons: Array.from(document.querySelectorAll("[data-profile-protocol]")),
   currentServerTitle: document.getElementById("current-server-title"),
   serverPicker: document.getElementById("server-picker"),
   serverAliasToggleBtn: document.getElementById("server-alias-toggle-btn"),
@@ -159,6 +161,7 @@ const COPY = {
     profilesMetaLoading: "Загружаем профили...",
     profilesMetaReady: "Профилей: {count}",
     profilesMetaPending: "Сервер ещё не настроен",
+    profilesProtocolLabel: "Протокол",
     profilesEmptyTitle: "Серверов пока нет",
     profilesEmptyCopy: "Подключитесь вручную или войдите через Telegram, чтобы выбрать сохранённый сервер.",
     goConnect: "Добавить сервер",
@@ -287,6 +290,7 @@ const COPY = {
     profilesMetaLoading: "Loading profiles...",
     profilesMetaReady: "Profiles: {count}",
     profilesMetaPending: "The server is not set up yet",
+    profilesProtocolLabel: "Protocol",
     profilesEmptyTitle: "No saved servers yet",
     profilesEmptyCopy: "Connect manually or sign in with Telegram to select a saved server.",
     goConnect: "Add server",
@@ -391,6 +395,7 @@ const STATE = {
   clients: [],
   clientsLoading: false,
   clientSort: localStorage.getItem(CLIENT_SORT_KEY) || "updated",
+  profileProtocol: normalizeMode(localStorage.getItem(PROFILE_PROTOCOL_KEY) || "amneziawg"),
   clientResults: {},
   retryAction: null,
   helpTimer: null,
@@ -584,6 +589,15 @@ function modeDisplayLabel(mode) {
   return value;
 }
 
+function currentProfileProtocol() {
+  return normalizeMode(STATE.profileProtocol || "amneziawg");
+}
+
+function setProfileProtocol(mode) {
+  STATE.profileProtocol = normalizeMode(mode || "amneziawg");
+  localStorage.setItem(PROFILE_PROTOCOL_KEY, STATE.profileProtocol);
+}
+
 function authMethod() {
   return refs.authMethodInputs.find((input) => input.checked)?.value || "password";
 }
@@ -596,8 +610,8 @@ function relayEnabled() {
   return selectedMode() === "xray" && Boolean(refs.relayEnabledToggle.checked);
 }
 
-function isProxyMode() {
-  return PROXY_MODES.has(selectedMode());
+function isProxyMode(mode = selectedMode()) {
+  return PROXY_MODES.has(normalizeMode(mode));
 }
 
 function setRetryAction(action, payload = null) {
@@ -999,6 +1013,13 @@ function renderServerAliasEditor() {
   refs.serverAliasHint.textContent = t("serverAliasHint");
 }
 
+function renderProfileProtocolSwitch() {
+  const current = currentProfileProtocol();
+  refs.profileProtocolButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.profileProtocol === current);
+  });
+}
+
 function enableHorizontalWheelScroll(node) {
   if (!node) return;
   node.addEventListener("wheel", (event) => {
@@ -1098,7 +1119,7 @@ function renderClients() {
         <textarea class="result-text" readonly>${result.primaryText || result.autoText || ""}</textarea>
       </div>
     ` : "";
-    const rotate = isProxyMode() ? "" : `<button type="button" class="tiny-btn" data-client-rotate="${client.name}">${t("clientRotate")}</button>`;
+    const rotate = isProxyMode(currentProfileProtocol()) ? "" : `<button type="button" class="tiny-btn" data-client-rotate="${client.name}">${t("clientRotate")}</button>`;
     const card = document.createElement("article");
     card.className = "client-card";
     card.dataset.clientCard = client.name;
@@ -1133,6 +1154,7 @@ function renderProfilesHeader() {
         : interpolate("profilesMetaReady", { count: STATE.clients.length });
   renderServerPicker();
   renderServerAliasEditor();
+  renderProfileProtocolSwitch();
 }
 
 function renderAll() {
@@ -1163,6 +1185,7 @@ function renderAll() {
   refs.relayPassword.placeholder = STATE.lang === "ru" ? "Пароль от relay-сервера" : "Relay server password";
   refs.relayKey.placeholder = STATE.lang === "ru" ? "Вставьте приватный ключ relay" : "Paste the relay private key";
   document.getElementById("profiles-eyebrow").textContent = STATE.lang === "ru" ? "Текущий сервер" : "Current server";
+  document.getElementById("profiles-protocol-label").textContent = t("profilesProtocolLabel");
   document.getElementById("clients-title").textContent = STATE.lang === "ru" ? "Все под рукой" : "Everything nearby";
   document.getElementById("settings-eyebrow").textContent = STATE.lang === "ru" ? "Настройки" : "Settings";
   document.getElementById("settings-title").textContent = STATE.lang === "ru" ? "Язык, PIN и порты" : "Language, PIN, and ports";
@@ -1296,16 +1319,42 @@ async function loginTransientSession(ssh) {
   return result.session_id;
 }
 
-function activePayloadBase() {
-  if (STATE.activeTarget?.kind === "saved") return { saved_server_id: STATE.activeTarget.serverId, protocol: selectedMode() };
+function activePayloadBase(protocol = selectedMode()) {
+  const normalized = normalizeMode(protocol);
+  if (STATE.activeTarget?.kind === "saved") return { saved_server_id: STATE.activeTarget.serverId, protocol: normalized };
   if (STATE.activeTarget?.kind === "manual" && STATE.activeTarget.sessionId) {
     return {
       session_id: STATE.activeTarget.sessionId,
-      protocol: selectedMode(),
-      relay: relayEnabled() ? (buildRelayPayloadFromForm() || STATE.activeTarget.relay || undefined) : undefined,
+      protocol: normalized,
+      relay: normalized === "xray" && relayEnabled() ? (buildRelayPayloadFromForm() || STATE.activeTarget.relay || undefined) : undefined,
     };
   }
   throw new Error(t("profilesEmptyCopy"));
+}
+
+async function refreshActiveServerStatus(protocol, options = {}) {
+  if (!STATE.activeTarget) return;
+  const normalized = normalizeMode(protocol);
+  const silent = Boolean(options.silent);
+  if (!silent) {
+    renderConnectStatus("busy", t("connectBusyTitle"), t("connectBusyBody"));
+    renderAll();
+  }
+  const status = await fetchJson("/api/server/status", {
+    method: "POST",
+    body: JSON.stringify(activePayloadBase(normalized)),
+  });
+  if (!status.ok) throw new Error(status.error || "Status failed");
+  STATE.connectionChecked = true;
+  STATE.serverConfigured = Boolean(status.configured);
+  STATE.serverInfo = status;
+  if (STATE.serverConfigured) {
+    await refreshClients({ silent, protocol: normalized });
+  } else {
+    STATE.clients = [];
+    STATE.clientsLoading = false;
+    renderAll();
+  }
 }
 
 async function maybeSaveServer(ssh) {
@@ -1349,6 +1398,7 @@ async function connectManual() {
       body: JSON.stringify({ session_id: sessionId, protocol: selectedMode() }),
     });
     if (!status.ok) throw new Error(status.error || "Status failed");
+    setProfileProtocol(selectedMode());
     STATE.connectionChecked = true;
     STATE.serverConfigured = Boolean(status.configured);
     STATE.serverInfo = status;
@@ -1382,11 +1432,13 @@ async function activateSavedServer(serverId) {
   const previousServerConfigured = STATE.serverConfigured;
   const previousServerInfo = STATE.serverInfo;
   const previousClients = [...STATE.clients];
+  const previousProfileProtocol = STATE.profileProtocol;
   resetProvisionState();
   if (server.mode) {
     const input = refs.modeInputs.find((node) => node.value === normalizeMode(server.mode));
     if (input) input.checked = true;
   }
+  setProfileProtocol(server.mode || selectedMode());
   STATE.activeSavedServerId = serverId;
   STATE.serverAliasOpen = false;
   renderConnectStatus("busy", t("connectBusyTitle"), t("connectBusyBody"));
@@ -1396,7 +1448,7 @@ async function activateSavedServer(serverId) {
   try {
     const status = await fetchJson("/api/server/status", {
       method: "POST",
-      body: JSON.stringify({ saved_server_id: serverId, protocol: selectedMode() }),
+      body: JSON.stringify({ saved_server_id: serverId, protocol: currentProfileProtocol() }),
     });
     if (!status.ok) throw new Error(status.error || "Status failed");
     STATE.connectionChecked = true;
@@ -1420,6 +1472,7 @@ async function activateSavedServer(serverId) {
     STATE.serverConfigured = previousServerConfigured;
     STATE.serverInfo = previousServerInfo;
     STATE.clients = previousClients;
+    setProfileProtocol(previousProfileProtocol);
     if (info.type === "api") showTransportDiagnostics(STATE.apiBase);
     renderConnectStatus("error", info.text, connectErrorBody(info, error));
     if (info.type === "session") setPage("settings");
@@ -1428,8 +1481,38 @@ async function activateSavedServer(serverId) {
   }
 }
 
+async function switchProfileProtocol(mode) {
+  const next = normalizeMode(mode);
+  const previous = currentProfileProtocol();
+  if (next === previous) {
+    renderAll();
+    return;
+  }
+  setProfileProtocol(next);
+  STATE.clientResults = {};
+  setRetryAction("switch-profile-protocol", { mode: next });
+  renderAll();
+  if (!STATE.activeTarget) return;
+  try {
+    await refreshActiveServerStatus(next);
+    if (STATE.serverConfigured) {
+      renderConnectStatus("success", t("connectReadyConfigured"), t("connectReadyConfiguredBody"));
+    } else {
+      renderConnectStatus("success", t("connectReadyUnconfigured"), t("connectReadyUnconfiguredBody"));
+    }
+  } catch (error) {
+    setProfileProtocol(previous);
+    const info = classifyError(error);
+    if (info.type === "api") showTransportDiagnostics(STATE.apiBase);
+    toast(info.text);
+  } finally {
+    renderAll();
+  }
+}
+
 async function refreshClients(options = {}) {
   const silent = Boolean(options.silent);
+  const protocol = normalizeMode(options.protocol || currentProfileProtocol());
   if (!STATE.activeTarget || !STATE.serverConfigured) {
     STATE.clients = [];
     renderAll();
@@ -1440,7 +1523,7 @@ async function refreshClients(options = {}) {
   try {
     const result = await fetchJson("/api/clients/list", {
       method: "POST",
-      body: JSON.stringify(activePayloadBase()),
+      body: JSON.stringify(activePayloadBase(protocol)),
     });
     if (!result.ok) throw new Error(result.error || "Client list failed");
     STATE.clients = Array.isArray(result.clients) ? result.clients : [];
@@ -1503,8 +1586,9 @@ async function setupServer() {
       }),
     });
     await pollJob(result.job_id, clientName);
+    setProfileProtocol(selectedMode());
     STATE.serverConfigured = true;
-    await refreshClients();
+    await refreshClients({ protocol: currentProfileProtocol() });
     renderConnectStatus("success", t("connectReadyConfigured"), t("connectReadyConfiguredBody"));
     setPage("profiles");
   } catch (error) {
@@ -1523,11 +1607,12 @@ async function addProfile() {
   refs.addProfileBtn.disabled = true;
   setRetryAction("add-profile");
   try {
+    const protocol = currentProfileProtocol();
     const clientName = refs.profileName.value.trim() || `client-${STATE.clients.length + 1}`;
     const result = await fetchJson("/api/clients/add", {
       method: "POST",
       body: JSON.stringify({
-        ...activePayloadBase(),
+        ...activePayloadBase(protocol),
         client_name: clientName,
         listen_port: parsePort(STATE.settings.listen_port) || undefined,
       }),
@@ -1537,7 +1622,7 @@ async function addProfile() {
     upsertClientLocal({
       name: result.client_name || clientName,
       ip: result.client_ip || "",
-      interface: result.interface || (selectedMode() === "amneziawg" ? "awg0" : selectedMode()),
+      interface: result.interface || (protocol === "amneziawg" ? "awg0" : protocol),
       created_at: Math.floor(Date.now() / 1000),
       updated_at: Math.floor(Date.now() / 1000),
     });
@@ -1562,10 +1647,11 @@ async function toggleClientInline(clientName) {
     return;
   }
   try {
+    const protocol = currentProfileProtocol();
     const result = await fetchJson("/api/clients/export", {
       method: "POST",
       body: JSON.stringify({
-        ...activePayloadBase(),
+        ...activePayloadBase(protocol),
         client_name: clientName,
         listen_port: parsePort(STATE.settings.listen_port) || undefined,
       }),
@@ -1600,10 +1686,11 @@ function closeConfirm(answer) {
 async function rotateClient(clientName) {
   if (!await askConfirm(t("confirmRotateTitle"), t("confirmRotateBody"))) return;
   try {
+    const protocol = currentProfileProtocol();
     const result = await fetchJson("/api/clients/rotate", {
       method: "POST",
       body: JSON.stringify({
-        ...activePayloadBase(),
+        ...activePayloadBase(protocol),
         client_name: clientName,
         listen_port: parsePort(STATE.settings.listen_port) || undefined,
       }),
@@ -1613,7 +1700,7 @@ async function rotateClient(clientName) {
     upsertClientLocal({
       name: clientName,
       ip: result.client_ip || STATE.clients.find((item) => item.name === clientName)?.ip || "",
-      interface: result.interface || STATE.clients.find((item) => item.name === clientName)?.interface || "awg0",
+      interface: result.interface || STATE.clients.find((item) => item.name === clientName)?.interface || (protocol === "amneziawg" ? "awg0" : protocol),
       created_at: STATE.clients.find((item) => item.name === clientName)?.created_at || Math.floor(Date.now() / 1000),
       updated_at: Math.floor(Date.now() / 1000),
     });
@@ -1631,10 +1718,11 @@ async function rotateClient(clientName) {
 async function removeClient(clientName) {
   if (!await askConfirm(t("confirmRemoveTitle"), t("confirmRemoveBody"))) return;
   try {
+    const protocol = currentProfileProtocol();
     const result = await fetchJson("/api/clients/remove", {
       method: "POST",
       body: JSON.stringify({
-        ...activePayloadBase(),
+        ...activePayloadBase(protocol),
         client_name: clientName,
         listen_port: parsePort(STATE.settings.listen_port) || undefined,
       }),
@@ -1860,6 +1948,7 @@ async function retryLastAction() {
   if (action === "setup-server") return setupServer();
   if (action === "add-profile") return addProfile();
   if (action === "refresh-clients") return refreshClients();
+  if (action === "switch-profile-protocol") return switchProfileProtocol(payload?.mode || currentProfileProtocol());
 }
 
 async function saveServerAlias() {
@@ -1956,6 +2045,9 @@ function bindEvents() {
     localStorage.setItem(LANG_KEY, STATE.lang);
     renderTelegramWidget();
     renderAll();
+  }));
+  refs.profileProtocolButtons.forEach((button) => button.addEventListener("click", async () => {
+    await switchProfileProtocol(button.dataset.profileProtocol || "amneziawg");
   }));
   refs.clientSortButtons.forEach((button) => button.addEventListener("click", () => {
     STATE.clientSort = button.dataset.clientSort || "updated";

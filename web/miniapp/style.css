@@ -713,6 +713,12 @@ textarea {
   justify-items: end;
 }
 
+.profiles-protocol-row {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+}
+
 .primary-btn,
 .mini-btn {
   border: 0;
