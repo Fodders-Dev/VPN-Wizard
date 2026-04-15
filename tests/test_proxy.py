@@ -142,6 +142,23 @@ def test_reality_key_parsers_support_equals_separator(monkeypatch) -> None:
     assert prov._derive_public_key("EQUALS_PRIV") == "EQUALS_DERIVED"
 
 
+def test_reality_key_parsers_support_password_public_key_alias(monkeypatch) -> None:
+    prov = ProxyProvisioner(DummySSH())
+
+    def fake_run(command: str, sudo: bool = False, check: bool = True) -> str:
+        if "x25519 -i" in command:
+            return "Password (PublicKey): ALIAS_DERIVED"
+        if "x25519" in command:
+            return "PrivateKey: ALIAS_PRIV\nPassword (PublicKey): ALIAS_PUB\nHash32: HASH"
+        return ""
+
+    monkeypatch.setattr(prov.ssh, "run", fake_run)
+    private_key, public_key = prov._generate_reality_keypair()
+    assert private_key == "ALIAS_PRIV"
+    assert public_key == "ALIAS_PUB"
+    assert prov._derive_public_key("ALIAS_PRIV") == "ALIAS_DERIVED"
+
+
 def test_choose_free_port_uses_fallback_candidates(monkeypatch) -> None:
     prov = ProxyProvisioner(DummySSH())
     monkeypatch.setattr(prov, "_is_port_busy", lambda port: port in {443, 2053})

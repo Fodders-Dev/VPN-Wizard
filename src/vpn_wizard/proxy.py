@@ -81,7 +81,7 @@ class ProxyProvisioner:
     )
     _public_key_patterns = (
         re.compile(r"Public(?:\s*Key)?\s*[:=]\s*(\S+)", flags=re.IGNORECASE),
-        re.compile(r"Password(?:\s*Key)?\s*[:=]\s*(\S+)", flags=re.IGNORECASE),
+        re.compile(r"Password(?:\s*\([^)]+\)|\s*Key)?\s*[:=]\s*(\S+)", flags=re.IGNORECASE),
     )
 
     def __init__(
