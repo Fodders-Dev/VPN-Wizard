@@ -76,6 +76,13 @@ class ProxyProvisioner:
     )
     _sni_pattern = re.compile(r"^(?=.{1,253}$)(?!-)(?:[a-zA-Z0-9-]{1,63}\.)+[a-zA-Z]{2,63}$")
     FINGERPRINT_CANDIDATES = ("chrome", "firefox", "safari", "edge")
+    _private_key_patterns = (
+        re.compile(r"Private(?:\s*Key)?\s*[:=]\s*(\S+)", flags=re.IGNORECASE),
+    )
+    _public_key_patterns = (
+        re.compile(r"Public(?:\s*Key)?\s*[:=]\s*(\S+)", flags=re.IGNORECASE),
+        re.compile(r"Password(?:\s*Key)?\s*[:=]\s*(\S+)", flags=re.IGNORECASE),
+    )
 
     def __init__(
         self,
@@ -254,22 +261,39 @@ class ProxyProvisioner:
 
     def _generate_reality_keypair(self) -> tuple[str, str]:
         raw = self.ssh.run(f"{self.XRAY_BIN} x25519", sudo=True, check=False).strip()
+        private, public = self._parse_x25519_output(raw)
+        if private and public:
+            return private, public
+        # Some VPS images ship an outdated or distro-patched Xray build. Upgrade and retry once.
+        self.progress("Upgrading Xray before retrying key generation")
+        self.ssh.run(
+            "bash -lc "
+            + shlex.quote('bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)"'),
+            sudo=True,
+            check=False,
+        )
+        raw = self.ssh.run(f"{self.XRAY_BIN} x25519", sudo=True, check=False).strip()
+        private, public = self._parse_x25519_output(raw)
+        if private and public:
+            return private, public
+        detail = raw or "empty output"
+        raise RuntimeError(f"Failed to generate Reality keys ({detail[:160]}).")
+
+    def _parse_x25519_output(self, raw: str) -> tuple[str, str]:
         private = ""
         public = ""
         for line in raw.splitlines():
-            match_priv = re.search(r"Private(?:\s*Key)?\s*:\s*(\S+)", line, flags=re.IGNORECASE)
-            if match_priv:
-                private = match_priv.group(1).strip()
-            match_pub = re.search(r"Public(?:\s*Key)?\s*:\s*(\S+)", line, flags=re.IGNORECASE)
-            if match_pub:
-                public = match_pub.group(1).strip()
+            for pattern in self._private_key_patterns:
+                match_priv = pattern.search(line)
+                if match_priv:
+                    private = match_priv.group(1).strip()
+                    break
             if not public:
-                match_password = re.search(r"Password(?:\s*Key)?\s*:\s*(\S+)", line, flags=re.IGNORECASE)
-                if match_password:
-                    # Xray 26+ prints Password as alias of the old Reality public key field.
-                    public = match_password.group(1).strip()
-        if not private or not public:
-            raise RuntimeError("Failed to generate Reality keys.")
+                for pattern in self._public_key_patterns:
+                    match_pub = pattern.search(line)
+                    if match_pub:
+                        public = match_pub.group(1).strip()
+                        break
         return private, public
 
     def _derive_public_key(self, private_key: str) -> str:
@@ -278,14 +302,10 @@ class ProxyProvisioner:
             sudo=True,
             check=False,
         ).strip()
-        for line in raw.splitlines():
-            match_pub = re.search(r"Public(?:\s*Key)?\s*:\s*(\S+)", line, flags=re.IGNORECASE)
-            if match_pub:
-                return match_pub.group(1).strip()
-            match_password = re.search(r"Password(?:\s*Key)?\s*:\s*(\S+)", line, flags=re.IGNORECASE)
-            if match_password:
-                return match_password.group(1).strip()
-        raise RuntimeError("Failed to derive Reality public key.")
+        _private, public = self._parse_x25519_output(raw)
+        if public:
+            return public
+        raise RuntimeError(f"Failed to derive Reality public key ({(raw or 'empty output')[:160]}).")
 
     def _is_port_busy(self, listen_port: int) -> bool:
         state = self.ssh.run(

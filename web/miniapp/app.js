@@ -199,9 +199,10 @@ const COPY = {
     confirmContinue: "Продолжить",
     confirmCancel: "Отмена",
     setupBusy: "Настраиваем сервер. Это может занять пару минут.",
-    setupBusyBody: "Ниже видно, сколько шагов уже прошло и на чём сейчас установка.",
-    setupProgressCounter: "Шаг {count} из ~{total}",
+    setupBusyBody: "Ниже видно текущий этап и последние события на сервере.",
+    setupProgressCounter: "Этап {count} из {total}",
     setupProgressUnknown: "Запускаем установку",
+    setupProgressEvents: "Событий: {count}",
     setupElapsed: "Прошло {time}",
     roadmapConnectTitle: "Проверить доступ к серверу",
     roadmapConnectPending: "Введите IP, SSH-пользователя и пароль или ключ.",
@@ -326,9 +327,10 @@ const COPY = {
     confirmContinue: "Continue",
     confirmCancel: "Cancel",
     setupBusy: "Setting up the server. This may take a few minutes.",
-    setupBusyBody: "You can see completed steps and the current stage below.",
-    setupProgressCounter: "Step {count} of ~{total}",
+    setupBusyBody: "You can see the active stage and the latest server events below.",
+    setupProgressCounter: "Stage {count} of {total}",
     setupProgressUnknown: "Starting setup",
+    setupProgressEvents: "Events: {count}",
     setupElapsed: "Elapsed {time}",
     roadmapConnectTitle: "Check server access",
     roadmapConnectPending: "Enter the IP, SSH user, and password or key.",
@@ -763,6 +765,24 @@ function expectedProvisionSteps() {
   return PROVISION_STEP_ESTIMATE[selectedMode()] || 7;
 }
 
+function detectProvisionStage(progress) {
+  const joined = (progress || []).join("\n").toLowerCase();
+  const stages = [
+    { key: 1, markers: ["connecting over ssh", "подключ"], },
+    { key: 2, markers: ["precheck", "selecting reality sni", "sni probe", "reality sni", "selecting", "probe "] },
+    { key: 3, markers: ["installing", "upgrading xray", "xray-core", "prerequisites", "relay prerequisites"] },
+    { key: 4, markers: ["generating reality keys", "writing xray config", "updating xray config", "writing config"] },
+    { key: 5, markers: ["opening tcp", "firewall", "sysctl", "tuning"] },
+    { key: 6, markers: ["starting xray service", "restarting xray service", "restart", "starting service", "relay on tcp", "relay ready"] },
+    { key: 7, markers: ["profile", "download", "config ready", "done"] },
+  ];
+  let current = 1;
+  for (const stage of stages) {
+    if (stage.markers.some((marker) => joined.includes(marker))) current = stage.key;
+  }
+  return current;
+}
+
 function formatElapsed(ms) {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const minutes = Math.floor(totalSeconds / 60);
@@ -845,14 +865,15 @@ function renderConnectProgress() {
   }
 
   const expected = expectedProvisionSteps();
-  const completed = progress.length;
+  const events = progress.length;
+  const stage = detectProvisionStage(progress);
   const ratio = STATE.provision.active
-    ? Math.min(92, Math.max(14, Math.round((completed / Math.max(expected, 1)) * 100)))
+    ? Math.min(92, Math.max(14, Math.round((stage / Math.max(expected, 1)) * 100)))
     : 100;
   const recent = (progress.length ? progress : [t("setupBusyBody")]).slice(-3);
 
-  refs.connectProgressLabel.textContent = completed
-    ? interpolate("setupProgressCounter", { count: completed, total: expected })
+  refs.connectProgressLabel.textContent = events
+    ? `${interpolate("setupProgressCounter", { count: Math.min(stage, expected), total: expected })} · ${interpolate("setupProgressEvents", { count: events })}`
     : t("setupProgressUnknown");
   refs.connectProgressElapsed.textContent = interpolate("setupElapsed", {
     time: formatElapsed((STATE.provision.finishedAt || Date.now()) - (STATE.provision.startedAt || Date.now())),
