@@ -1,4 +1,4 @@
-const CANONICAL_API_BASE = "https://vpn-wizard-production.up.railway.app";
+const CANONICAL_API_BASE = "https://212-69-84-167.nip.io";
 const CANONICAL_MINIAPP_URL = `${CANONICAL_API_BASE}/miniapp/`;
 const API_OVERRIDE_KEY = "vpnw_api_base";
 const LANG_KEY = "vpnw_lang";
@@ -123,7 +123,7 @@ const COPY = {
     accountBadge: "Telegram",
     diagnosticsTitle: "Миниапп не может дотянуться до API",
     diagnosticsBody: "Это проблема связи между интерфейсом и сервисом, а не ошибка SSH на вашем сервере.",
-    diagnosticsResetDone: "Сохранённый API-адрес сброшен. Railway снова активен.",
+    diagnosticsResetDone: "Сохранённый API-адрес сброшен. Используем текущий сервер.",
     authTitleGuest: "Войти через Telegram",
     authCopyGuest: "Войдите через Telegram, чтобы выбирать свои серверы без повторного ввода IP и пароля.",
     authTitleReady: "Аккаунт подключен",
@@ -252,7 +252,7 @@ const COPY = {
     accountBadge: "Telegram",
     diagnosticsTitle: "The miniapp cannot reach the API",
     diagnosticsBody: "This is an app-to-service transport issue, not an SSH issue on your server.",
-    diagnosticsResetDone: "Stored API target was cleared. Railway is active again.",
+    diagnosticsResetDone: "Stored API target was cleared. Using the current server again.",
     authTitleGuest: "Sign in with Telegram",
     authCopyGuest: "Use Telegram sign-in to pick your servers without entering IP and password again.",
     authTitleReady: "Account connected",
@@ -1185,7 +1185,8 @@ function renderAll() {
   refs.relayPassword.placeholder = STATE.lang === "ru" ? "Пароль от relay-сервера" : "Relay server password";
   refs.relayKey.placeholder = STATE.lang === "ru" ? "Вставьте приватный ключ relay" : "Paste the relay private key";
   document.getElementById("profiles-eyebrow").textContent = STATE.lang === "ru" ? "Текущий сервер" : "Current server";
-  document.getElementById("profiles-protocol-label").textContent = t("profilesProtocolLabel");
+  const profilesProtocolLabel = document.getElementById("profiles-protocol-label");
+  if (profilesProtocolLabel) profilesProtocolLabel.textContent = t("profilesProtocolLabel");
   document.getElementById("clients-title").textContent = STATE.lang === "ru" ? "Все под рукой" : "Everything nearby";
   document.getElementById("settings-eyebrow").textContent = STATE.lang === "ru" ? "Настройки" : "Settings";
   document.getElementById("settings-title").textContent = STATE.lang === "ru" ? "Язык, PIN и порты" : "Language, PIN, and ports";
@@ -1212,7 +1213,7 @@ function renderAll() {
   document.getElementById("nav-settings-label").textContent = STATE.lang === "ru" ? "Настройки" : "Settings";
   refs.diagnosticsRetryBtn.textContent = STATE.lang === "ru" ? "Повторить" : "Retry";
   refs.diagnosticsResetBtn.textContent = STATE.lang === "ru" ? "Сбросить API" : "Reset API";
-  refs.diagnosticsOpenBtn.textContent = STATE.lang === "ru" ? "Открыть Railway" : "Open Railway";
+  refs.diagnosticsOpenBtn.textContent = STATE.lang === "ru" ? "Открыть миниапп" : "Open miniapp";
   refs.miniappLoginBtn.textContent = t("loginTg");
   refs.logoutBtn.textContent = t("logout");
   refs.logoutSettingsBtn.textContent = t("settingsLogout");
