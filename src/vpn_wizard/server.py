@@ -339,6 +339,7 @@ class ProvisionRequest(BaseModel):
     ssh: Optional[SSHPayload] = None
     session_id: Optional[str] = None
     saved_server_id: Optional[str] = None
+    relay: Optional[RelayPayload] = None
     options: ProvisionOptions = Field(default_factory=ProvisionOptions)
 
 

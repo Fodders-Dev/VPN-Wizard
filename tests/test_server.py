@@ -12,6 +12,7 @@ import vpn_wizard.server as server_module
 from vpn_wizard.server import (
     DOWNLOAD_STORE,
     JobStore,
+    ProvisionRequest,
     SSHPayload,
     SessionStore,
     _discover_ssh_port,
@@ -103,6 +104,11 @@ def test_ssh_payload_normalizes_host_port() -> None:
 
     explicit_port = SSHPayload(host="example.com:2222", user="root", port=2022)
     assert explicit_port.port == 2022
+
+
+def test_provision_request_exposes_optional_relay_field() -> None:
+    payload = ProvisionRequest()
+    assert payload.relay is None
 
 
 def test_session_store_create_get_and_revoke() -> None:
