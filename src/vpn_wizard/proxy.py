@@ -57,6 +57,13 @@ class ProxyProvisioner:
     XRAY_ETC = "/usr/local/etc/xray"
     XRAY_CONF = f"{XRAY_ETC}/config.json"
     DEFAULT_XHTTP_PATH_PREFIX = "/vpnw-xh-"
+    # TCP + xtls-rprx-vision is the canonical Reality transport: maximally compatible across
+    # v2rayNG / Hiddify / Shadowrocket / sing-box, and matches xray-reality-setup.sh.
+    # XHTTP exists for advanced users (newer transport, some DPI bypass benefits) and is opt-in
+    # via VPNW_PROXY_TRANSPORT=xhttp.
+    DEFAULT_TRANSPORT = "tcp"
+    SUPPORTED_TRANSPORTS = ("tcp", "xhttp")
+    VISION_FLOW = "xtls-rprx-vision"
     # Conservative RU-friendly port list. Some ISPs filter "CDN-ish" ports (2053/2083/2096/etc).
     FALLBACK_PORTS = (443, 8443, 9443, 10443, 4443)
     DEFAULT_SNI_CANDIDATES = _parse_domain_list(
@@ -107,6 +114,10 @@ class ProxyProvisioner:
             "yes",
             "on",
         }
+        transport = (os.getenv("VPNW_PROXY_TRANSPORT") or self.DEFAULT_TRANSPORT).strip().lower()
+        if transport not in self.SUPPORTED_TRANSPORTS:
+            transport = self.DEFAULT_TRANSPORT
+        self.transport_mode = transport
 
     def _validate_name(self, name: Optional[str]) -> str:
         value = (name or "client1").strip()
@@ -486,13 +497,16 @@ class ProxyProvisioner:
         short_id: str,
         path: Optional[str],
         name: str,
-        transport_type: str = "xhttp",
+        transport_type: str = DEFAULT_TRANSPORT,
         flow: Optional[str] = None,
         fingerprint: Optional[str] = None,
     ) -> str:
         fp = (fingerprint or self.fingerprint or "chrome").strip().lower()
         if fp not in self.FINGERPRINT_CANDIDATES:
             fp = "chrome"
+        chosen_transport = (transport_type or self.DEFAULT_TRANSPORT).strip().lower()
+        if chosen_transport not in self.SUPPORTED_TRANSPORTS:
+            chosen_transport = self.DEFAULT_TRANSPORT
         params = {
             "encryption": "none",
             "security": "reality",
@@ -500,12 +514,13 @@ class ProxyProvisioner:
             "fp": fp,
             "pbk": public_key,
             "sid": short_id,
-            "type": transport_type or "xhttp",
+            "type": chosen_transport,
         }
-        if params["type"] == "xhttp":
+        if chosen_transport == "xhttp":
             params["path"] = path or self._random_xhttp_path()
-        elif flow:
-            params["flow"] = flow
+        else:
+            # TCP transport: xtls-rprx-vision is the canonical Reality flow.
+            params["flow"] = flow or self.VISION_FLOW
         query = "&".join(f"{key}={quote(str(value), safe='')}" for key, value in params.items())
         tag = quote(name, safe="-_.")
         return f"vless://{client_uuid}@{host}:{port}?{query}#{tag}"
@@ -522,7 +537,7 @@ class ProxyProvisioner:
         name: str,
         server_names: list[str],
         selected_sni: str,
-        transport_type: str = "xhttp",
+        transport_type: str = DEFAULT_TRANSPORT,
         flow: Optional[str] = None,
     ) -> list[dict]:
         # Provide a few "switch-and-try" alternatives for RU networks.
@@ -850,18 +865,26 @@ class ProxyProvisioner:
             inbound, clients, short_ids, private_key, current_port = self._client_state(config)
             stream = inbound.setdefault("streamSettings", {})
             reality = stream.setdefault("realitySettings", {})
-            xhttp = stream.setdefault("xhttpSettings", {})
             changed = False
 
             changed = self._ensure_stream_sockopt(stream) or changed
-            if stream.get("network") != "xhttp":
-                stream["network"] = "xhttp"
-                changed = True
-            current_path = str(xhttp.get("path") or "").strip()
-            if not current_path:
-                current_path = self._random_xhttp_path()
-                xhttp["path"] = current_path
-                changed = True
+            existing_network = str(stream.get("network") or "").strip().lower()
+            if existing_network in self.SUPPORTED_TRANSPORTS:
+                current_transport = existing_network
+            else:
+                current_transport = self.DEFAULT_TRANSPORT
+                if stream.get("network") != current_transport:
+                    stream["network"] = current_transport
+                    changed = True
+
+            current_path: Optional[str] = None
+            if current_transport == "xhttp":
+                xhttp = stream.setdefault("xhttpSettings", {})
+                current_path = str(xhttp.get("path") or "").strip()
+                if not current_path:
+                    current_path = self._random_xhttp_path()
+                    xhttp["path"] = current_path
+                    changed = True
 
             outbounds = config.setdefault("outbounds", [])
             freedom = None
@@ -939,11 +962,21 @@ class ProxyProvisioner:
             if not str(entry.get("id") or "").strip():
                 entry["id"] = str(uuid.uuid4())
                 changed = True
-            if "flow" in entry:
-                entry.pop("flow", None)
-                changed = True
             if entry.get("email") != name:
                 entry["email"] = name
+                changed = True
+
+            desired_flow = self.VISION_FLOW if current_transport == "tcp" else None
+            for client_entry in clients:
+                if not isinstance(client_entry, dict):
+                    continue
+                current_flow = str(client_entry.get("flow") or "").strip() or None
+                if current_flow == desired_flow:
+                    continue
+                if desired_flow:
+                    client_entry["flow"] = desired_flow
+                else:
+                    client_entry.pop("flow", None)
                 changed = True
 
             while len(short_ids) <= index:
@@ -967,7 +1000,8 @@ class ProxyProvisioner:
             client_uuid = str(entry.get("id") or "").strip()
             public_key = self._derive_public_key(private_key)
             host = self._public_ip()
-            path = self._resolve_path(inbound)
+            link_path = current_path if current_transport == "xhttp" else None
+            link_flow = self.VISION_FLOW if current_transport == "tcp" else None
             link = self._build_link(
                 client_uuid=client_uuid,
                 host=host,
@@ -975,9 +1009,10 @@ class ProxyProvisioner:
                 sni=selected_sni,
                 public_key=public_key,
                 short_id=short_id,
-                path=path,
+                path=link_path,
                 name=name,
-                transport_type="xhttp",
+                transport_type=current_transport,
+                flow=link_flow,
             )
             alternatives = self._build_alternatives(
                 client_uuid=client_uuid,
@@ -985,11 +1020,12 @@ class ProxyProvisioner:
                 port=selected_port,
                 public_key=public_key,
                 short_id=short_id,
-                path=path,
+                path=link_path,
                 name=name,
                 server_names=server_names,
                 selected_sni=selected_sni,
-                transport_type="xhttp",
+                transport_type=current_transport,
+                flow=link_flow,
             )
             return {
                 "name": name,
@@ -1005,6 +1041,40 @@ class ProxyProvisioner:
         client_uuid = str(uuid.uuid4())
         short_id = self._random_short_id()
         server_names = self._build_server_names(server_name)
+        transport = self.transport_mode
+        self.progress(f"Reality transport: {transport}")
+
+        client_entry: dict = {"id": client_uuid, "email": name}
+        if transport == "tcp":
+            client_entry["flow"] = self.VISION_FLOW
+
+        stream_settings: dict = {
+            "network": transport,
+            "security": "reality",
+            "sockopt": {
+                "tcpFastOpen": True,
+                "tcpKeepAliveIdle": 300,
+                "tcpKeepAliveInterval": 60,
+                "tcpUserTimeout": 30000,
+            },
+            "realitySettings": {
+                "show": False,
+                "target": f"{server_name}:443",
+                "dest": f"{server_name}:443",
+                "xver": 0,
+                "serverNames": server_names,
+                "privateKey": private_key,
+                "shortIds": [short_id],
+            },
+        }
+        xhttp_path: Optional[str] = None
+        if transport == "xhttp":
+            xhttp_path = self._random_xhttp_path()
+            stream_settings["xhttpSettings"] = {
+                "path": xhttp_path,
+                "mode": "auto",
+            }
+
         config = {
             "log": {
                 "access": "/var/log/xray/access.log",
@@ -1016,32 +1086,10 @@ class ProxyProvisioner:
                     "port": port,
                     "protocol": "vless",
                     "settings": {
-                        "clients": [{"id": client_uuid, "email": name}],
+                        "clients": [client_entry],
                         "decryption": "none",
                     },
-                    "streamSettings": {
-                        "network": "xhttp",
-                        "security": "reality",
-                        "sockopt": {
-                            "tcpFastOpen": True,
-                            "tcpKeepAliveIdle": 300,
-                            "tcpKeepAliveInterval": 60,
-                            "tcpUserTimeout": 30000,
-                        },
-                        "xhttpSettings": {
-                            "path": self._random_xhttp_path(),
-                            "mode": "auto",
-                        },
-                        "realitySettings": {
-                            "show": False,
-                            "target": f"{server_name}:443",
-                            "dest": f"{server_name}:443",
-                            "xver": 0,
-                            "serverNames": server_names,
-                            "privateKey": private_key,
-                            "shortIds": [short_id],
-                        },
-                    },
+                    "streamSettings": stream_settings,
                     "sniffing": {"enabled": True, "destOverride": ["http", "tls"]},
                 }
             ],
@@ -1057,7 +1105,8 @@ class ProxyProvisioner:
         self.progress("Starting Xray service")
         self._restart_xray()
         host = self._public_ip()
-        path = self._resolve_path(config["inbounds"][0])
+        link_path = xhttp_path if transport == "xhttp" else None
+        link_flow = self.VISION_FLOW if transport == "tcp" else None
         link = self._build_link(
             client_uuid=client_uuid,
             host=host,
@@ -1065,9 +1114,10 @@ class ProxyProvisioner:
             sni=server_name,
             public_key=public_key,
             short_id=short_id,
-            path=path,
+            path=link_path,
             name=name,
-            transport_type="xhttp",
+            transport_type=transport,
+            flow=link_flow,
         )
         alternatives = self._build_alternatives(
             client_uuid=client_uuid,
@@ -1075,11 +1125,12 @@ class ProxyProvisioner:
             port=port,
             public_key=public_key,
             short_id=short_id,
-            path=path,
+            path=link_path,
             name=name,
             server_names=server_names,
             selected_sni=server_name,
-            transport_type="xhttp",
+            transport_type=transport,
+            flow=link_flow,
         )
         return {
             "name": name,

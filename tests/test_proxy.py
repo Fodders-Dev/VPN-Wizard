@@ -21,7 +21,29 @@ class DummySSH:
         return ""
 
 
-def test_build_link_contains_required_reality_params() -> None:
+def test_build_link_default_uses_tcp_with_vision_flow() -> None:
+    prov = ProxyProvisioner(DummySSH())
+    link = prov._build_link(
+        client_uuid="11111111-1111-1111-1111-111111111111",
+        host="1.2.3.4",
+        port=443,
+        sni="www.microsoft.com",
+        public_key="PUBKEY",
+        short_id="abcd1234abcd1234",
+        path=None,
+        name="client1",
+    )
+    assert link.startswith("vless://11111111-1111-1111-1111-111111111111@1.2.3.4:443?")
+    assert "security=reality" in link
+    assert "type=tcp" in link
+    assert "flow=xtls-rprx-vision" in link
+    assert "path=" not in link
+    assert "pbk=PUBKEY" in link
+    assert "sid=abcd1234abcd1234" in link
+    assert link.endswith("#client1")
+
+
+def test_build_link_xhttp_emits_path_and_no_flow() -> None:
     prov = ProxyProvisioner(DummySSH())
     link = prov._build_link(
         client_uuid="11111111-1111-1111-1111-111111111111",
@@ -32,14 +54,11 @@ def test_build_link_contains_required_reality_params() -> None:
         short_id="abcd1234abcd1234",
         path="/vpnw-xh-test",
         name="client1",
+        transport_type="xhttp",
     )
-    assert link.startswith("vless://11111111-1111-1111-1111-111111111111@1.2.3.4:443?")
-    assert "security=reality" in link
     assert "type=xhttp" in link
     assert "path=%2Fvpnw-xh-test" in link
-    assert "pbk=PUBKEY" in link
-    assert "sid=abcd1234abcd1234" in link
-    assert "spx=" not in link
+    assert "flow=" not in link
     assert link.endswith("#client1")
 
 
@@ -270,7 +289,7 @@ def test_setup_adds_client_to_existing_reality_config(monkeypatch) -> None:
     assert restarts == [True]
 
 
-def test_setup_initial_config_uses_ipv4_domain_strategy(monkeypatch) -> None:
+def test_setup_initial_config_uses_tcp_vision_by_default(monkeypatch) -> None:
     prov = ProxyProvisioner(DummySSH())
     writes: list[dict] = []
 
@@ -292,8 +311,89 @@ def test_setup_initial_config_uses_ipv4_domain_strategy(monkeypatch) -> None:
     assert outbounds and outbounds[0].get("protocol") == "freedom"
     assert outbounds[0].get("settings", {}).get("domainStrategy") == "UseIPv4"
     stream = writes[0]["inbounds"][0]["streamSettings"]
+    assert stream.get("network") == "tcp"
+    assert "xhttpSettings" not in stream
+    clients = writes[0]["inbounds"][0]["settings"]["clients"]
+    assert clients and clients[0].get("flow") == "xtls-rprx-vision"
+    assert "type=tcp" in result["link"]
+    assert "flow=xtls-rprx-vision" in result["link"]
+
+
+def test_setup_initial_config_supports_xhttp_via_env(monkeypatch) -> None:
+    monkeypatch.setenv("VPNW_PROXY_TRANSPORT", "xhttp")
+    prov = ProxyProvisioner(DummySSH())
+    writes: list[dict] = []
+
+    monkeypatch.setattr(prov, "_ensure_prereqs", lambda: None)
+    monkeypatch.setattr(prov, "_read_config", lambda: None)
+    monkeypatch.setattr(prov, "_write_config", lambda payload: writes.append(copy.deepcopy(payload)))
+    monkeypatch.setattr(prov, "_restart_xray", lambda: None)
+    monkeypatch.setattr(prov, "_ensure_firewall_port", lambda port: None)
+    monkeypatch.setattr(prov, "_ensure_tcp_tuning", lambda: None)
+    monkeypatch.setattr(prov, "_public_ip", lambda: "1.2.3.4")
+    monkeypatch.setattr(prov, "_choose_best_sni", lambda preferred, existing: "www.microsoft.com")
+    monkeypatch.setattr(prov, "_generate_reality_keypair", lambda: ("PRIV", "PUB"))
+
+    result = prov.setup("client1", listen_port=443)
+    stream = writes[0]["inbounds"][0]["streamSettings"]
     assert stream.get("network") == "xhttp"
     assert (stream.get("xhttpSettings") or {}).get("path")
+    clients = writes[0]["inbounds"][0]["settings"]["clients"]
+    assert clients and "flow" not in clients[0]
+    assert "type=xhttp" in result["link"]
+    assert "flow=" not in result["link"]
+
+
+def test_setup_does_not_migrate_existing_tcp_config_to_xhttp(monkeypatch) -> None:
+    prov = ProxyProvisioner(DummySSH())
+    cfg: dict = {
+        "inbounds": [
+            {
+                "port": 443,
+                "protocol": "vless",
+                "settings": {
+                    "clients": [{"id": "uuid-1", "flow": "xtls-rprx-vision", "email": "client1"}],
+                    "decryption": "none",
+                },
+                "streamSettings": {
+                    "network": "tcp",
+                    "security": "reality",
+                    "realitySettings": {
+                        "target": "www.microsoft.com:443",
+                        "dest": "www.microsoft.com:443",
+                        "serverNames": ["www.microsoft.com"],
+                        "privateKey": "PRIV",
+                        "shortIds": ["sid-1"],
+                    },
+                },
+            }
+        ],
+        "outbounds": [{"protocol": "freedom", "settings": {"domainStrategy": "UseIPv4"}}],
+    }
+    writes: list[dict] = []
+
+    monkeypatch.setattr(prov, "_ensure_prereqs", lambda: None)
+    monkeypatch.setattr(prov, "_read_config", lambda: cfg)
+    monkeypatch.setattr(prov, "_write_config", lambda payload: writes.append(copy.deepcopy(payload)))
+    monkeypatch.setattr(prov, "_restart_xray", lambda: None)
+    monkeypatch.setattr(prov, "_ensure_firewall_port", lambda port: None)
+    monkeypatch.setattr(prov, "_ensure_tcp_tuning", lambda: None)
+    monkeypatch.setattr(prov, "_public_ip", lambda: "1.2.3.4")
+    monkeypatch.setattr(prov, "_derive_public_key", lambda private: "PUBKEY")
+    monkeypatch.setattr(
+        prov,
+        "_generate_reality_keypair",
+        lambda: (_ for _ in ()).throw(AssertionError("must not generate new keys")),
+    )
+
+    result = prov.setup("client1", listen_port=443, sni="www.microsoft.com")
+    stream = cfg["inbounds"][0]["streamSettings"]
+    assert stream.get("network") == "tcp"
+    assert "xhttpSettings" not in stream
+    clients = cfg["inbounds"][0]["settings"]["clients"]
+    assert clients[0].get("flow") == "xtls-rprx-vision"
+    assert "type=tcp" in result["link"]
+    assert "flow=xtls-rprx-vision" in result["link"]
 
 
 def test_singbox_auto_config_keeps_udp_enabled_and_sets_xudp_packet_encoding() -> None:
