@@ -20,6 +20,8 @@ import qrcode
 
 from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
 from vpn_wizard.urls import CANONICAL_MINIAPP_URL, resolve_public_miniapp_url
+from vpn_wizard.whitelist import WhitelistProvisioner
+from vpn_wizard.yandex_cloud import YandexCloudError, provision_wl_gateway
 
 
 STATE_HOST, STATE_USER, STATE_AUTH, STATE_PASSWORD, STATE_KEY, STATE_PORT = range(6)
@@ -414,6 +416,156 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(_t(update, "help"), reply_markup=keyboard or ReplyKeyboardRemove())
 
 
+def _parse_owner_ids(raw: str) -> set[int]:
+    ids: set[int] = set()
+    for chunk in (raw or "").split(","):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        try:
+            ids.add(int(chunk))
+        except ValueError:
+            continue
+    return ids
+
+
+def _is_owner(update: Update) -> bool:
+    user = update.effective_user
+    if not user:
+        return False
+    allowed = _parse_owner_ids(os.getenv("VPNW_OWNER_IDS", ""))
+    if not allowed:
+        return False
+    return user.id in allowed
+
+
+def _wl_ssh_config_from_env() -> Optional[SSHConfig]:
+    host = (os.getenv("VPNW_WL_VPS_HOST") or "").strip()
+    user = (os.getenv("VPNW_WL_VPS_USER") or "").strip() or "root"
+    if not host:
+        return None
+    try:
+        port = int((os.getenv("VPNW_WL_VPS_PORT") or "22").strip() or 22)
+    except ValueError:
+        port = 22
+    password = os.getenv("VPNW_WL_VPS_PASSWORD") or None
+    key_path = os.getenv("VPNW_WL_VPS_KEY_PATH") or None
+    if not (password or key_path):
+        return None
+    return SSHConfig(host=host, user=user, port=port, password=password, key_path=key_path)
+
+
+def _run_wl_provision(client_name: str) -> dict:
+    """Blocking — meant to be called via asyncio.to_thread."""
+    cfg = _wl_ssh_config_from_env()
+    if cfg is None:
+        raise RuntimeError(
+            "VPNW_WL_VPS_HOST/USER/(PASSWORD|KEY_PATH) must be set in env to use /wl_add."
+        )
+    token = (os.getenv("YC_OAUTH_TOKEN") or "").strip()
+    if not token:
+        raise RuntimeError("YC_OAUTH_TOKEN missing in env.")
+    folder_id = os.getenv("YC_FOLDER_ID") or None
+    gateway_name = (os.getenv("VPNW_WL_GATEWAY_NAME") or "vpn-wl").strip() or "vpn-wl"
+
+    progress_log: list[str] = []
+
+    def log(msg: str) -> None:
+        progress_log.append(msg)
+
+    with SSHRunner(cfg) as ssh:
+        wl = WhitelistProvisioner(ssh, progress=log)
+        inbound = wl.setup_inbound(client_name)
+        gateway = provision_wl_gateway(
+            oauth_token=token,
+            backend_url=inbound["backend_url"],
+            name=gateway_name,
+            folder_id=folder_id,
+            progress=log,
+        )
+    if not gateway.get("domain"):
+        raise RuntimeError(f"Yandex API Gateway returned no domain (status={gateway.get('status')!r}).")
+    link = WhitelistProvisioner.build_client_link(
+        gateway_domain=gateway["domain"],
+        client_uuid=inbound["client_uuid"],
+        path=inbound["path"],
+        client_name=inbound["client_name"],
+    )
+    return {
+        "client_name": inbound["client_name"],
+        "gateway_domain": gateway["domain"],
+        "backend_url": inbound["backend_url"] + inbound["path"],
+        "link": link,
+        "log": progress_log,
+    }
+
+
+async def wl_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    if not message:
+        return
+    if not _is_owner(update):
+        # Silently behave as a no-op for non-owners so the command doesn't leak to other users.
+        return
+
+    args = (context.args or [])
+    name = (args[0] if args else "wl1").strip()
+    if not name:
+        await message.reply_text("Usage: /wl_add <client_name> (e.g. /wl_add mom)")
+        return
+
+    await message.reply_text(
+        f"Provisioning WL profile for {name!r}... this can take ~30s on first run.",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    try:
+        result = await asyncio.to_thread(_run_wl_provision, name)
+    except YandexCloudError as exc:
+        await message.reply_text(f"Yandex Cloud error: {exc}")
+        return
+    except Exception as exc:
+        await message.reply_text(f"WL provisioning failed: {exc}")
+        return
+
+    text = (
+        f"WL profile ready for *{result['client_name']}*\n"
+        f"Gateway: `{result['gateway_domain']}`\n"
+        f"Backend: `{result['backend_url']}`\n\n"
+        f"vless link:\n`{result['link']}`"
+    )
+    await message.reply_text(text, parse_mode="Markdown")
+
+    img = qrcode.make(result["link"])
+    tmp_qr = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+    img.save(tmp_qr.name)
+    tmp_qr.close()
+    try:
+        with open(tmp_qr.name, "rb") as fp:
+            await message.reply_photo(photo=fp)
+    finally:
+        Path(tmp_qr.name).unlink(missing_ok=True)
+
+
+async def wl_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    if not message:
+        return
+    if not _is_owner(update):
+        return
+    cfg = _wl_ssh_config_from_env()
+    has_token = bool((os.getenv("YC_OAUTH_TOKEN") or "").strip())
+    lines = [
+        "WL command — owner only",
+        "",
+        f"VPS configured: {'yes' if cfg else 'no (set VPNW_WL_VPS_HOST/USER/PASSWORD or KEY_PATH)'}",
+        f"YC token set:   {'yes' if has_token else 'no (set YC_OAUTH_TOKEN)'}",
+        "",
+        "Usage:",
+        "  /wl_add <name>   # generate or refresh a WL profile, returns vless:// + QR",
+    ]
+    await message.reply_text("\n".join(lines))
+
+
 async def fallback_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _require_subscription(update, context):
         return
@@ -445,6 +597,8 @@ def main(*, in_thread: bool = False) -> None:
     app.add_handler(conv)
     app.add_handler(CommandHandler("miniapp", miniapp))
     app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CommandHandler("wl", wl_cmd))
+    app.add_handler(CommandHandler("wl_add", wl_add_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, fallback_text))
     run_kwargs = {}
     if in_thread:

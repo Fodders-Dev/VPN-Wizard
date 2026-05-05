@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -394,6 +395,78 @@ def client_rotate(
     if qr:
         save_qr_png(config, qr)
         typer.echo(f"Wrote {qr}")
+
+
+@app.command("wl-provision")
+def wl_provision(
+    host: str = typer.Option(..., help="Server hostname or IP"),
+    user: str = typer.Option(..., help="SSH username"),
+    password: Optional[str] = typer.Option(None, help="SSH password"),
+    key: Optional[str] = typer.Option(None, help="SSH private key path"),
+    port: int = typer.Option(22, help="SSH port"),
+    client: str = typer.Option("wl1", help="Client name on the WL profile"),
+    listen_port: int = typer.Option(8443, help="VPS port for the WL inbound (Xray TLS)"),
+    domain: Optional[str] = typer.Option(None, help="Override domain (default: <ip-dashes>.sslip.io)"),
+    yc_oauth_token: Optional[str] = typer.Option(
+        None,
+        envvar="YC_OAUTH_TOKEN",
+        help="Yandex Cloud OAuth token (default: YC_OAUTH_TOKEN env)",
+    ),
+    yc_folder_id: Optional[str] = typer.Option(
+        None,
+        envvar="YC_FOLDER_ID",
+        help="Yandex Cloud folder id (default: auto-resolve first ACTIVE folder)",
+    ),
+    gateway_name: str = typer.Option("vpn-wl", help="Yandex API Gateway name"),
+    quiet: bool = typer.Option(False, help="Less output"),
+) -> None:
+    """Provision a whitelist-friendly profile: VPS-side VLESS-XHTTP+TLS inbound + Yandex API Gateway front."""
+    from vpn_wizard.whitelist import WhitelistProvisioner
+    from vpn_wizard.yandex_cloud import provision_wl_gateway
+
+    token = (yc_oauth_token or os.environ.get("YC_OAUTH_TOKEN", "")).strip()
+    if not token:
+        typer.echo("YC_OAUTH_TOKEN is required (env or --yc-oauth-token).", err=True)
+        raise typer.Exit(code=2)
+
+    def log(msg: str) -> None:
+        if not quiet:
+            typer.echo(msg)
+
+    cfg = SSHConfig(host=host, user=user, port=port, password=password, key_path=key)
+    ssh = SSHRunner(cfg, logger=log)
+    ssh.connect()
+    try:
+        log("== Step 1: WL inbound on VPS ==")
+        wl = WhitelistProvisioner(ssh, progress=log, listen_port=listen_port)
+        inbound_info = wl.setup_inbound(client, domain=domain)
+        log(f"VPS WL inbound ready at {inbound_info['backend_url']}{inbound_info['path']}")
+
+        log("== Step 2: Yandex API Gateway ==")
+        gw = provision_wl_gateway(
+            oauth_token=token,
+            backend_url=inbound_info["backend_url"],
+            name=gateway_name,
+            folder_id=yc_folder_id,
+            progress=log,
+        )
+        log(f"Gateway domain: {gw['domain']} (id={gw['gateway_id']})")
+
+        log("== Step 3: Client link ==")
+        link = WhitelistProvisioner.build_client_link(
+            gateway_domain=gw["domain"],
+            client_uuid=inbound_info["client_uuid"],
+            path=inbound_info["path"],
+            client_name=inbound_info["client_name"],
+        )
+        typer.echo("\n--- WL profile ---")
+        typer.echo(f"client:       {inbound_info['client_name']}")
+        typer.echo(f"gateway:      https://{gw['domain']}")
+        typer.echo(f"backend:      {inbound_info['backend_url']}{inbound_info['path']}")
+        typer.echo(f"vless link:   {link}")
+        typer.echo("------------------")
+    finally:
+        ssh.close()
 
 
 def main() -> None:
