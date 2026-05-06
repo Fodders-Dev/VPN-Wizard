@@ -395,3 +395,105 @@ def test_auto_mode_picks_webroot_during_full_setup_inbound(monkeypatch):
 def test_invalid_acme_mode_falls_back_to_auto():
     prov = WhitelistProvisioner(FakeSSH(), acme_mode="bogus")
     assert prov.acme_mode == "auto"
+
+
+# --- Existing nginx server_name detection (rodnya-tree.ru style) ----------
+
+def test_webroot_reuses_existing_nginx_server_with_acme_location():
+    """An operator-managed nginx vhost already claims the domain AND already serves
+    /.well-known/acme-challenge/ — we leave it alone and proceed to acme.sh."""
+    snippet_writes: list[str] = []
+    nginx_reloads: list[str] = []
+
+    ssh = FakeSSH(scripted=[("is-active nginx", "active"), ("test -s", "no")])
+    original_run = ssh.run
+
+    def tracking_run(command, sudo=False, check=True):
+        if "grep -rlE" in command and "server_name" in command:
+            return "/etc/nginx/sites-enabled/rodnya.conf"
+        if "grep -F '/.well-known/acme-challenge/'" in command:
+            # The existing config already has the location.
+            return "    location ^~ /.well-known/acme-challenge/ {"
+        if "mv" in command and "/conf.d/acme-vpnw-wl-" in command:
+            snippet_writes.append(command)
+            return ""
+        if "systemctl reload nginx" in command:
+            nginx_reloads.append(command)
+            return ""
+        if "acme.sh --issue --webroot" in command:
+            return ""
+        if "acme.sh --install-cert" in command:
+            return ""
+        return original_run(command, sudo=sudo, check=check)
+
+    ssh.run = tracking_run  # type: ignore[assignment]
+    prov = WhitelistProvisioner(ssh, acme_mode="webroot")
+    result = prov.issue_certificate("rodnya-tree.ru")
+    assert result["mode"] == "webroot"
+    # Crucial: we did NOT write a duplicate snippet, and we did NOT reload nginx
+    # (the existing config is already serving the challenge location).
+    assert snippet_writes == [], "must not duplicate server_name when nginx already owns it"
+    assert nginx_reloads == [], "no reload when no config change"
+
+
+def test_webroot_bails_when_existing_server_lacks_acme_location():
+    """An nginx vhost claims the domain but has no acme-challenge location.
+    Writing our snippet would duplicate server_name → silent ignore. Bail loudly."""
+    snippet_writes: list[str] = []
+
+    ssh = FakeSSH(scripted=[("is-active nginx", "active"), ("test -s", "no")])
+    original_run = ssh.run
+
+    def tracking_run(command, sudo=False, check=True):
+        if "grep -rlE" in command and "server_name" in command:
+            return "/etc/nginx/sites-enabled/rodnya.conf"
+        if "grep -F '/.well-known/acme-challenge/'" in command:
+            return ""  # no location present
+        if "mv" in command and "/conf.d/acme-vpnw-wl-" in command:
+            snippet_writes.append(command)
+            return ""
+        if "acme.sh --issue" in command or "acme.sh --install-cert" in command:
+            raise AssertionError("acme.sh issuance must NOT run when nginx isn't routed yet")
+        return original_run(command, sudo=sudo, check=check)
+
+    ssh.run = tracking_run  # type: ignore[assignment]
+    prov = WhitelistProvisioner(ssh, acme_mode="webroot")
+    with pytest.raises(RuntimeError) as exc:
+        prov.issue_certificate("rodnya-tree.ru")
+    msg = str(exc.value)
+    assert "rodnya-tree.ru" in msg
+    assert "duplicate" in msg.lower()
+    assert "rodnya.conf" in msg
+    # The bail-out prints the exact location block to paste.
+    assert "location ^~ /.well-known/acme-challenge/" in msg
+    assert snippet_writes == [], "must not write a duplicate snippet"
+
+
+def test_webroot_writes_fresh_snippet_when_no_conflict():
+    """sslip.io / fresh FQDN with no existing server_name → write+reload as before."""
+    snippet_paths_written: list[str] = []
+    nginx_reloads: list[str] = []
+
+    ssh = FakeSSH(scripted=[("is-active nginx", "active"), ("test -s", "no")])
+    original_run = ssh.run
+
+    def tracking_run(command, sudo=False, check=True):
+        if "grep -rlE" in command and "server_name" in command:
+            return ""  # no existing server_name claims this domain
+        if "nginx -t" in command:
+            return "nginx: the configuration file ... test is successful"
+        if "mv" in command and "/conf.d/acme-vpnw-wl-" in command:
+            snippet_paths_written.append(command)
+            return ""
+        if "systemctl reload nginx" in command:
+            nginx_reloads.append(command)
+            return ""
+        if "acme.sh" in command:
+            return ""
+        return original_run(command, sudo=sudo, check=check)
+
+    ssh.run = tracking_run  # type: ignore[assignment]
+    prov = WhitelistProvisioner(ssh, acme_mode="webroot")
+    prov.issue_certificate("1-2-3-4.sslip.io")
+    assert snippet_paths_written, "should write a fresh snippet when there's no conflict"
+    assert nginx_reloads == ["systemctl reload nginx"], "reload exactly once after fresh snippet"

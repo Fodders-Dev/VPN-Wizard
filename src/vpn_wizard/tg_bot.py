@@ -473,6 +473,10 @@ def _run_wl_provision(client_name: str) -> dict:
         listen_port = 9443
     stop_port80 = (os.getenv("VPNW_WL_STOP_PORT80_SERVICE") or "").strip() or None
     acme_mode = (os.getenv("VPNW_WL_ACME_MODE") or "auto").strip().lower() or "auto"
+    # Override the auto-derived sslip.io domain with an operator-controlled hostname.
+    # Required when Let's Encrypt rate-limits sslip.io (it's a shared public suffix and
+    # global issuance hits the per-tld weekly cap quickly).
+    wl_domain = (os.getenv("VPNW_WL_DOMAIN") or "").strip().lower() or None
 
     progress_log: list[str] = []
 
@@ -487,7 +491,7 @@ def _run_wl_provision(client_name: str) -> dict:
             stop_port80_service=stop_port80,
             acme_mode=acme_mode,
         )
-        inbound = wl.setup_inbound(client_name)
+        inbound = wl.setup_inbound(client_name, domain=wl_domain)
         gateway = provision_wl_gateway(
             oauth_token=token,
             backend_url=inbound["backend_url"],

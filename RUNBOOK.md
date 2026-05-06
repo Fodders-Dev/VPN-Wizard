@@ -121,6 +121,10 @@ VPNW_WL_ACME_MODE=webroot
 # Listening port for the WL Xray inbound (default 9443; pick something free).
 VPNW_WL_LISTEN_PORT=9443
 
+# Domain for the WL cert. Default = <ip-dashes>.sslip.io but Let's Encrypt rate-limits
+# sslip.io aggressively (shared public suffix). Point a domain you control at the VPS.
+VPNW_WL_DOMAIN=rodnya-tree.ru
+
 # DO NOT SET on hosts running nginx for production traffic. webroot mode
 # never reads this anyway, but leave unset to avoid surprises.
 # VPNW_WL_STOP_PORT80_SERVICE=
@@ -133,17 +137,51 @@ After editing: `sudo systemctl restart vpn-wizard`.
 1. Confirms `systemctl is-active nginx` is `active`. If not — bails with a
    clear error. Never falls back to standalone, never stops any service.
 2. Creates `/var/www/acme-webroot/.well-known/acme-challenge/`.
-3. Writes a hostname-scoped server block to
-   `/etc/nginx/conf.d/acme-vpnw-wl-<sslip-domain>.conf` that ONLY answers
-   `/.well-known/acme-challenge/` for the specific sslip.io domain. No
-   `default_server`, no wildcard match — existing vhosts are untouched.
-4. Runs `nginx -t`. If invalid: deletes the snippet, raises an error, does
-   NOT reload nginx.
+3. **Detects existing `server_name <domain>` blocks in nginx config:**
+   - If an existing block claims the domain AND already serves
+     `/.well-known/acme-challenge/` from `/var/www/acme-webroot` → reuses
+     it as-is, does NOT touch nginx config or reload.
+   - If an existing block claims the domain but lacks the ACME location →
+     bails with a clear error and the exact location block to paste in.
+     Writing a new server block here would duplicate `server_name` and
+     nginx would silently ignore one of them.
+   - No conflict (e.g. fresh sslip.io domain) → writes a hostname-scoped
+     server block to `/etc/nginx/conf.d/acme-vpnw-wl-<domain>.conf` that
+     ONLY answers `/.well-known/acme-challenge/` for that hostname. No
+     `default_server`, no wildcard match — existing vhosts untouched.
+4. If a new snippet was written: runs `nginx -t`. If invalid → deletes the
+   snippet, raises an error, does NOT reload nginx.
 5. `systemctl reload nginx` (no restart, zero downtime).
 6. `acme.sh --issue --webroot ...` — Let's Encrypt fetches the challenge
    over plain HTTP from nginx.
 7. Installs cert into `/usr/local/etc/xray/wl-certs/` and registers an Xray
    reload as the renewal hook (so quarterly auto-renewals don't need ops).
+
+### Custom-domain prerequisites (`VPNW_WL_DOMAIN=mydomain.tld`)
+
+When pointing a domain you control at the VPS (recommended over sslip.io to
+avoid LE rate limits):
+
+1. Add an A record `mydomain.tld → <vps_ipv4>` (60s TTL while testing).
+2. The existing nginx :80 server block for that domain MUST include:
+   ```
+   location ^~ /.well-known/acme-challenge/ {
+       default_type "text/plain";
+       root /var/www/acme-webroot;
+       try_files $uri =404;
+   }
+   ```
+   …before any `return 301 https://...` redirect, so the challenge isn't
+   redirected away. Then `sudo nginx -t && sudo systemctl reload nginx`.
+3. Verify externally before `/wl_add`:
+   ```
+   sudo mkdir -p /var/www/acme-webroot/.well-known/acme-challenge
+   echo ok | sudo tee /var/www/acme-webroot/.well-known/acme-challenge/test
+   curl -sS http://mydomain.tld/.well-known/acme-challenge/test   # expect: ok
+   sudo rm /var/www/acme-webroot/.well-known/acme-challenge/test
+   ```
+4. Then `/wl_add <name>` in Telegram. The bot detects the existing config,
+   reuses it, and proceeds straight to `acme.sh`.
 
 ### Verification after deploy
 

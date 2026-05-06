@@ -223,20 +223,78 @@ class WhitelistProvisioner:
         safe = re.sub(r"[^a-z0-9.-]", "-", (domain or "").lower())
         return f"{NGINX_CONFD}/acme-vpnw-wl-{safe}.conf"
 
-    def _setup_nginx_webroot(self, domain: str) -> str:
-        """Write a hostname-scoped server block, validate with nginx -t, reload.
+    def _find_nginx_server_for(self, domain: str) -> Optional[str]:
+        """Return the path of an existing nginx config that already declares
+        server_name <domain>, or None if nothing claims it.
 
-        Idempotent: re-running on an already-configured host is a no-op (same content).
-        Rolls back the snippet file if `nginx -t` fails after the write.
+        Excludes our own managed snippet so re-runs don't see themselves.
         """
-        snippet_path = self._nginx_snippet_path(domain)
-        snippet = _nginx_acme_snippet(domain)
+        domain_re = re.escape(domain)
+        # Match `server_name ... <domain> ...;` as a whole token, skip commented lines.
+        # -P would be cleaner but isn't always available; use ERE with word-ish boundaries.
+        cmd = (
+            f"grep -rlE '^[[:space:]]*server_name[[:space:]][^#;]*(^|[[:space:]]){domain_re}([[:space:]]|;|$)' "
+            f"/etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null "
+            f"| grep -v '/acme-vpnw-wl-' "
+            f"|| true"
+        )
+        out = self.ssh.run(f"bash -lc {shlex.quote(cmd)}", sudo=True, check=False).strip()
+        if not out:
+            return None
+        return out.splitlines()[0].strip() or None
 
+    def _nginx_serves_acme_for(self, config_path: str) -> bool:
+        out = self.ssh.run(
+            f"grep -F '/.well-known/acme-challenge/' {shlex.quote(config_path)} 2>/dev/null || true",
+            sudo=True,
+            check=False,
+        ).strip()
+        return bool(out)
+
+    def _setup_nginx_webroot(self, domain: str) -> str:
+        """Make /.well-known/acme-challenge/ on `domain` reach $ACME_WEBROOT.
+
+        Three cases:
+          1. Some other server block already claims `server_name <domain>` AND already
+             serves /.well-known/acme-challenge/ from /var/www/acme-webroot. We do nothing
+             and proceed to acme.sh — the existing config is correct.
+          2. Some other server block claims `server_name <domain>` but does NOT serve the
+             ACME location. We bail with explicit instructions; writing our own snippet
+             would duplicate server_name and nginx would silently ignore one of them.
+          3. No conflict — write a fresh hostname-scoped snippet, validate, reload.
+        """
         self.progress(f"Preparing nginx ACME webroot at {ACME_WEBROOT}")
         self.ssh.run(f"mkdir -p {ACME_WEBROOT}/.well-known/acme-challenge", sudo=True)
         # nginx default user differs across distros (www-data on Debian/Ubuntu, nginx on RHEL).
         # 0755 + open ownership is enough — challenge files are public by design.
         self.ssh.run(f"chmod -R 755 {ACME_WEBROOT}", sudo=True, check=False)
+
+        existing = self._find_nginx_server_for(domain)
+        if existing:
+            if self._nginx_serves_acme_for(existing):
+                self.progress(
+                    f"Reusing existing nginx server for {domain} at {existing} "
+                    f"(already serves /.well-known/acme-challenge/ from {ACME_WEBROOT})."
+                )
+                return existing
+            raise RuntimeError(
+                f"nginx already declares `server_name {domain}` in {existing}, "
+                f"but no /.well-known/acme-challenge/ location is present there. "
+                f"Adding a separate conf.d snippet would duplicate the server_name and "
+                f"nginx would silently ignore one of the blocks. "
+                f"Add this to the existing :80 server block in {existing}:\n\n"
+                f"  location ^~ /.well-known/acme-challenge/ {{\n"
+                f"      default_type \"text/plain\";\n"
+                f"      root {ACME_WEBROOT};\n"
+                f"      try_files $uri =404;\n"
+                f"  }}\n\n"
+                f"Then `sudo nginx -t && sudo systemctl reload nginx`, and re-run /wl_add."
+            )
+
+        # No conflicting block — write a fresh hostname-scoped snippet (works for
+        # sslip.io-style throwaway domains and any FQDN we control entirely).
+        snippet_path = self._nginx_snippet_path(domain)
+        snippet = _nginx_acme_snippet(domain)
 
         # Atomic write: render to /tmp, then mv into conf.d. Avoids leaving a half-written
         # file that nginx -t could trip on.

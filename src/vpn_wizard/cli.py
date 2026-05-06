@@ -406,7 +406,11 @@ def wl_provision(
     port: int = typer.Option(22, help="SSH port"),
     client: str = typer.Option("wl1", help="Client name on the WL profile"),
     listen_port: int = typer.Option(9443, help="VPS port for the WL inbound (Xray TLS)"),
-    domain: Optional[str] = typer.Option(None, help="Override domain (default: <ip-dashes>.sslip.io)"),
+    domain: Optional[str] = typer.Option(
+        None,
+        envvar="VPNW_WL_DOMAIN",
+        help="Override domain (default: <ip-dashes>.sslip.io). Use a domain you control to avoid Let's Encrypt sslip.io rate limits.",
+    ),
     stop_port80_service: Optional[str] = typer.Option(
         None,
         envvar="VPNW_WL_STOP_PORT80_SERVICE",
