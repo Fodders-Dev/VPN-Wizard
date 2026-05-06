@@ -5,7 +5,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from vpn_wizard.whitelist import WhitelistProvisioner, derive_sslip_domain
+from vpn_wizard.whitelist import (
+    WhitelistProvisioner,
+    _nginx_acme_snippet,
+    derive_sslip_domain,
+)
 
 
 class FakeSSH:
@@ -252,8 +256,142 @@ def test_issue_certificate_does_not_stop_when_service_does_not_match(monkeypatch
             ("ss -ltnpH", 'tcp users:(("apache2",pid=99,fd=8))'),
         ]
     )
-    prov = WhitelistProvisioner(ssh, stop_port80_service="nginx")
+    prov = WhitelistProvisioner(ssh, stop_port80_service="nginx", acme_mode="standalone")
     with pytest.raises(RuntimeError) as exc:
         prov.issue_certificate("1-2-3-4.sslip.io")
     # owner is apache2 but user pinned nginx — bot must not touch apache2
     assert "apache2" in str(exc.value)
+
+
+# --- ACME webroot mode ------------------------------------------------------
+
+def test_nginx_acme_snippet_is_hostname_scoped_and_no_default_server():
+    snippet = _nginx_acme_snippet("1-2-3-4.sslip.io")
+    assert "server_name 1-2-3-4.sslip.io" in snippet
+    # MUST NOT use default_server — that would steal traffic from existing vhosts.
+    assert "default_server" not in snippet
+    # Challenge files must be served from the dedicated webroot.
+    assert "/var/www/acme-webroot" in snippet
+    assert "/.well-known/acme-challenge/" in snippet
+    # Anything else returns 404 (no leakage of /).
+    assert "return 404" in snippet
+
+
+def test_resolve_acme_mode_auto_uses_webroot_when_nginx_active():
+    ssh = FakeSSH(scripted=[("is-active nginx", "active")])
+    prov = WhitelistProvisioner(ssh, acme_mode="auto")
+    assert prov._resolve_acme_mode() == "webroot"
+
+
+def test_resolve_acme_mode_auto_falls_back_to_standalone_without_nginx():
+    ssh = FakeSSH(scripted=[("is-active nginx", "inactive")])
+    prov = WhitelistProvisioner(ssh, acme_mode="auto")
+    assert prov._resolve_acme_mode() == "standalone"
+
+
+def test_resolve_acme_mode_honors_explicit_choice():
+    ssh = FakeSSH(scripted=[("is-active nginx", "active")])  # would be webroot under auto
+    prov = WhitelistProvisioner(ssh, acme_mode="standalone")
+    assert prov._resolve_acme_mode() == "standalone"
+
+
+def test_webroot_aborts_if_nginx_not_active():
+    ssh = FakeSSH(scripted=[("is-active nginx", "inactive"), ("test -s", "no")])
+    prov = WhitelistProvisioner(ssh, acme_mode="webroot")
+    with pytest.raises(RuntimeError) as exc:
+        prov.issue_certificate("1-2-3-4.sslip.io")
+    assert "active nginx" in str(exc.value)
+
+
+def test_webroot_writes_snippet_validates_and_reloads_nginx():
+    runs: list[tuple[str, bool]] = []
+
+    ssh = FakeSSH(scripted=[("is-active nginx", "active"), ("test -s", "no")])
+    original_run = ssh.run
+
+    def tracking_run(command, sudo=False, check=True):
+        if "nginx -t" in command:
+            return "nginx: configuration file /etc/nginx/nginx.conf test is successful"
+        if "acme.sh --issue --webroot" in command:
+            runs.append(("issue", True))
+            return ""
+        if "acme.sh --install-cert" in command:
+            runs.append(("install", True))
+            return ""
+        if "systemctl reload nginx" in command:
+            runs.append(("reload-nginx", True))
+            return ""
+        return original_run(command, sudo=sudo, check=check)
+
+    ssh.run = tracking_run  # type: ignore[assignment]
+    prov = WhitelistProvisioner(ssh, acme_mode="webroot")
+    result = prov.issue_certificate("1-2-3-4.sslip.io")
+    assert result["mode"] == "webroot"
+    # webroot path runs in this exact order: write snippet, validate, reload, then issue.
+    kinds = [k for k, _ in runs]
+    assert kinds == ["reload-nginx", "issue", "install"]
+    # The snippet write must have included the canonical config.d path for our domain.
+    assert any(
+        "acme-vpnw-wl-1-2-3-4.sslip.io.conf" in cmd for cmd in ssh.commands
+    ), "snippet should be written to a hostname-scoped file in conf.d"
+
+
+def test_webroot_rolls_back_snippet_when_nginx_t_fails():
+    rollback_seen = {"hit": False}
+    reloaded = {"hit": False}
+
+    ssh = FakeSSH(scripted=[("is-active nginx", "active"), ("test -s", "no")])
+    original_run = ssh.run
+
+    def tracking_run(command, sudo=False, check=True):
+        if "nginx -t" in command:
+            return "nginx: [emerg] unknown directive in /etc/nginx/conf.d/acme-vpnw-wl-1-2-3-4.sslip.io.conf"
+        if command.startswith("rm -f") and "acme-vpnw-wl-1-2-3-4.sslip.io.conf" in command:
+            rollback_seen["hit"] = True
+            return ""
+        if "systemctl reload nginx" in command:
+            reloaded["hit"] = True
+            return ""
+        if "acme.sh --issue" in command:
+            raise AssertionError("acme.sh must NOT run if nginx -t failed")
+        return original_run(command, sudo=sudo, check=check)
+
+    ssh.run = tracking_run  # type: ignore[assignment]
+    prov = WhitelistProvisioner(ssh, acme_mode="webroot")
+    with pytest.raises(RuntimeError) as exc:
+        prov.issue_certificate("1-2-3-4.sslip.io")
+    assert "validation failed" in str(exc.value)
+    assert rollback_seen["hit"], "snippet must be removed when nginx -t rejects it"
+    assert not reloaded["hit"], "nginx must NOT be reloaded with broken config"
+
+
+def test_auto_mode_picks_webroot_during_full_setup_inbound(monkeypatch):
+    cfg = {"inbounds": []}
+    ssh = FakeSSH(scripted=[("is-active nginx", "active")])
+    prov = WhitelistProvisioner(ssh, listen_port=9443, acme_mode="auto")
+
+    monkeypatch.setattr(prov._proxy, "_read_config", lambda: cfg)
+    monkeypatch.setattr(prov._proxy, "_write_config", lambda payload: None)
+    monkeypatch.setattr(prov._proxy, "_restart_xray", lambda: None)
+    monkeypatch.setattr(prov, "_public_ip", lambda: "1.2.3.4")
+
+    captured: dict = {}
+
+    def fake_issue(domain: str) -> dict:
+        captured["mode"] = prov._resolve_acme_mode()
+        return {
+            "domain": domain,
+            "cert_path": "/etc/wl/cert.pem",
+            "key_path": "/etc/wl/key.pem",
+            "issued": False,
+            "mode": "cached",
+        }
+
+    monkeypatch.setattr(prov, "issue_certificate", fake_issue)
+    prov.setup_inbound("alice")
+    assert captured["mode"] == "webroot"
+
+
+def test_invalid_acme_mode_falls_back_to_auto():
+    prov = WhitelistProvisioner(FakeSSH(), acme_mode="bogus")
+    assert prov.acme_mode == "auto"

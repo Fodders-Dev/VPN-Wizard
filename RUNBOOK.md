@@ -92,6 +92,87 @@ python -m vpn_wizard.tg_bot
 Commands: `/start`, `/help`, `/miniapp`, `/cancel`.
 Default: bot requires subscription to `VPNW_REQUIRED_CHANNEL` (по умолчанию `@fodders_dev`). Set empty to disable.
 
+## Whitelist-friendly profile (`/wl_add` via Yandex API Gateway)
+
+Owner-only Telegram command that mints a `vless://` profile reachable through
+`*.apigw.yandexcloud.net` (whitelisted by RU mobile networks). Adds a second
+Xray inbound on the VPS (`vless+xhttp+tls`) and a Let's Encrypt cert obtained
+via `acme.sh`.
+
+### Production environment (`/etc/vpn-wizard.env` on bot host)
+
+```
+# Owner gating — only these Telegram user IDs can run /wl /wl_add.
+VPNW_OWNER_IDS=<your_telegram_user_id>
+
+# SSH access to the VPS that hosts Reality + WL inbound.
+# Prefer a key over a password (passwordless via VPNW_WL_VPS_KEY_PATH).
+VPNW_WL_VPS_HOST=<vps_ip>
+VPNW_WL_VPS_USER=root
+VPNW_WL_VPS_KEY_PATH=/etc/vpn-wizard/wl_vps_id_ed25519
+
+# Yandex Cloud OAuth token (refresh by re-issuing on oauth.yandex.ru if leaked).
+YC_OAUTH_TOKEN=<y0_...>
+
+# Cert issuance — production hosts running nginx MUST pin "webroot".
+# This guarantees the bot never stops nginx, regardless of other env values.
+VPNW_WL_ACME_MODE=webroot
+
+# Listening port for the WL Xray inbound (default 9443; pick something free).
+VPNW_WL_LISTEN_PORT=9443
+
+# DO NOT SET on hosts running nginx for production traffic. webroot mode
+# never reads this anyway, but leave unset to avoid surprises.
+# VPNW_WL_STOP_PORT80_SERVICE=
+```
+
+After editing: `sudo systemctl restart vpn-wizard`.
+
+### What `webroot` mode does on the VPS
+
+1. Confirms `systemctl is-active nginx` is `active`. If not — bails with a
+   clear error. Never falls back to standalone, never stops any service.
+2. Creates `/var/www/acme-webroot/.well-known/acme-challenge/`.
+3. Writes a hostname-scoped server block to
+   `/etc/nginx/conf.d/acme-vpnw-wl-<sslip-domain>.conf` that ONLY answers
+   `/.well-known/acme-challenge/` for the specific sslip.io domain. No
+   `default_server`, no wildcard match — existing vhosts are untouched.
+4. Runs `nginx -t`. If invalid: deletes the snippet, raises an error, does
+   NOT reload nginx.
+5. `systemctl reload nginx` (no restart, zero downtime).
+6. `acme.sh --issue --webroot ...` — Let's Encrypt fetches the challenge
+   over plain HTTP from nginx.
+7. Installs cert into `/usr/local/etc/xray/wl-certs/` and registers an Xray
+   reload as the renewal hook (so quarterly auto-renewals don't need ops).
+
+### Verification after deploy
+
+```bash
+# 1) Snippet is hostname-scoped, no default_server.
+sudo cat /etc/nginx/conf.d/acme-vpnw-wl-*.conf
+# 2) nginx config valid.
+sudo nginx -t
+# 3) ACME webroot reachable (test file).
+sudo mkdir -p /var/www/acme-webroot/.well-known/acme-challenge
+echo ok | sudo tee /var/www/acme-webroot/.well-known/acme-challenge/test
+curl -sS http://<sslip-domain>/.well-known/acme-challenge/test  # expect: ok
+sudo rm /var/www/acme-webroot/.well-known/acme-challenge/test
+# 4) Service health after reload.
+sudo systemctl status nginx --no-pager | head -10
+sudo systemctl status xray --no-pager | head -10
+# 5) WL inbound listening on the configured port (default 9443).
+sudo ss -ltn | grep ':9443'
+# 6) End-to-end from Telegram: /wl test1 then /wl_add test1.
+```
+
+### Renewals
+
+`acme.sh` schedules itself via cron (or installs into systemd timers if
+configured). Webroot renewals do not require any service stop — challenge
+files are written under `/var/www/acme-webroot/.well-known/acme-challenge/`
+where nginx is already serving. Xray reload is invoked automatically by the
+`--reloadcmd` we register at install time.
+
 ## Tests
 ```
 pytest

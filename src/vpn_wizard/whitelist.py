@@ -14,7 +14,7 @@ sslip.io domain is obtained via acme.sh in standalone mode (port 80, briefly).
 
 from __future__ import annotations
 
-import json
+import base64
 import re
 import shlex
 import uuid
@@ -33,6 +33,35 @@ WL_PATH_PREFIX = "/vpnw-wl-"
 ACME_HOME = "/root/.acme.sh"
 CERT_DIR = "/usr/local/etc/xray/wl-certs"
 ACME_CHALLENGE_PORT = 80
+ACME_WEBROOT = "/var/www/acme-webroot"
+NGINX_CONFD = "/etc/nginx/conf.d"
+ACME_MODES = ("auto", "webroot", "standalone")
+
+
+def _nginx_acme_snippet(domain: str) -> str:
+    """Hostname-scoped server block: ONLY answers requests with Host: <domain>.
+    Existing vhosts (Rodnya etc.) are unaffected because their server_name doesn't
+    match this one, and we deliberately do NOT use default_server.
+    """
+    return (
+        f"# Managed by vpn-wizard for ACME HTTP-01 challenge of {domain}.\n"
+        f"# Hostname-scoped: only answers requests with Host: {domain}.\n"
+        f"server {{\n"
+        f"    listen 80;\n"
+        f"    listen [::]:80;\n"
+        f"    server_name {domain};\n"
+        f"\n"
+        f"    location ^~ /.well-known/acme-challenge/ {{\n"
+        f"        default_type \"text/plain\";\n"
+        f"        root {ACME_WEBROOT};\n"
+        f"        try_files $uri =404;\n"
+        f"    }}\n"
+        f"\n"
+        f"    location / {{\n"
+        f"        return 404;\n"
+        f"    }}\n"
+        f"}}\n"
+    )
 
 
 def derive_sslip_domain(public_ip: str) -> str:
@@ -57,15 +86,22 @@ class WhitelistProvisioner:
         listen_port: int = WL_INBOUND_PORT_DEFAULT,
         *,
         stop_port80_service: Optional[str] = None,
+        acme_mode: str = "auto",
     ) -> None:
         self.ssh = ssh
         self.progress = progress or (lambda _msg: None)
         self.listen_port = int(listen_port)
         self._proxy = ProxyProvisioner(ssh, progress=progress)
         self._name_pattern = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-        # If set, the named systemd unit (e.g. "nginx") will be stopped just before
-        # acme.sh standalone takes :80 and restarted afterwards. Use "auto" to stop
-        # whatever process currently owns :80.
+        # auto:       prefer webroot if nginx is active, fall back to standalone otherwise
+        # webroot:    require nginx, never touch other services on :80
+        # standalone: take :80 directly via acme.sh; needs :80 free or stop_port80_service
+        mode = (acme_mode or "auto").strip().lower()
+        if mode not in ACME_MODES:
+            mode = "auto"
+        self.acme_mode = mode
+        # Standalone-only escape hatch. NOT recommended on hosts where nginx serves
+        # production traffic — webroot is preferred and zero-downtime.
         self.stop_port80_service = (stop_port80_service or "").strip() or None
 
     # ---------- helpers -------------------------------------------------
@@ -166,6 +202,156 @@ class WhitelistProvisioner:
         # Configured unit doesn't match what's actually on :80 — be conservative and bail.
         return None
 
+    def _nginx_active(self) -> bool:
+        state = self.ssh.run(
+            "systemctl is-active nginx 2>/dev/null || true",
+            sudo=True,
+            check=False,
+        ).strip()
+        return state == "active"
+
+    def _resolve_acme_mode(self) -> str:
+        """Pick webroot vs standalone for this run, honoring explicit operator choice."""
+        if self.acme_mode == "webroot":
+            return "webroot"
+        if self.acme_mode == "standalone":
+            return "standalone"
+        # auto: prefer zero-downtime webroot when nginx is around.
+        return "webroot" if self._nginx_active() else "standalone"
+
+    def _nginx_snippet_path(self, domain: str) -> str:
+        safe = re.sub(r"[^a-z0-9.-]", "-", (domain or "").lower())
+        return f"{NGINX_CONFD}/acme-vpnw-wl-{safe}.conf"
+
+    def _setup_nginx_webroot(self, domain: str) -> str:
+        """Write a hostname-scoped server block, validate with nginx -t, reload.
+
+        Idempotent: re-running on an already-configured host is a no-op (same content).
+        Rolls back the snippet file if `nginx -t` fails after the write.
+        """
+        snippet_path = self._nginx_snippet_path(domain)
+        snippet = _nginx_acme_snippet(domain)
+
+        self.progress(f"Preparing nginx ACME webroot at {ACME_WEBROOT}")
+        self.ssh.run(f"mkdir -p {ACME_WEBROOT}/.well-known/acme-challenge", sudo=True)
+        # nginx default user differs across distros (www-data on Debian/Ubuntu, nginx on RHEL).
+        # 0755 + open ownership is enough — challenge files are public by design.
+        self.ssh.run(f"chmod -R 755 {ACME_WEBROOT}", sudo=True, check=False)
+
+        # Atomic write: render to /tmp, then mv into conf.d. Avoids leaving a half-written
+        # file that nginx -t could trip on.
+        encoded = base64.b64encode(snippet.encode()).decode()
+        write_cmd = (
+            f"set -e; "
+            f"tmp=$(mktemp /tmp/acme-vpnw-wl.XXXXXX); "
+            f"echo {shlex.quote(encoded)} | base64 -d > $tmp; "
+            f"chmod 644 $tmp; "
+            f"mv $tmp {shlex.quote(snippet_path)}"
+        )
+        self.ssh.run(f"bash -lc {shlex.quote(write_cmd)}", sudo=True)
+
+        # Validate before touching the running nginx.
+        test_out = self.ssh.run("nginx -t 2>&1", sudo=True, check=False)
+        if "syntax is ok" not in (test_out or "").lower() and "test is successful" not in (test_out or "").lower():
+            self.progress("nginx -t failed; rolling back ACME snippet")
+            self.ssh.run(f"rm -f {shlex.quote(snippet_path)}", sudo=True, check=False)
+            raise RuntimeError(
+                f"nginx config validation failed after writing {snippet_path}. "
+                f"Snippet rolled back. nginx -t output:\n{test_out}"
+            )
+
+        # reload (NOT restart): zero-downtime, existing connections survive.
+        self.ssh.run("systemctl reload nginx", sudo=True)
+        return snippet_path
+
+    def _issue_via_webroot(self, domain: str, cert_path: str, key_path: str) -> dict:
+        if not self._nginx_active():
+            raise RuntimeError(
+                "ACME webroot mode requires an active nginx (systemctl is-active nginx). "
+                "Either start nginx, or set VPNW_WL_ACME_MODE=standalone."
+            )
+        self._setup_nginx_webroot(domain)
+        self.progress(f"Requesting Let's Encrypt cert for {domain} (webroot via nginx)")
+        # acme.sh writes challenge file under <webroot>/.well-known/acme-challenge/<token>;
+        # nginx serves it on http://<domain>/.well-known/acme-challenge/<token>.
+        self.ssh.run(
+            f"{ACME_HOME}/acme.sh --issue --webroot {shlex.quote(ACME_WEBROOT)} "
+            f"-d {shlex.quote(domain)} --keylength ec-256 --home {ACME_HOME}",
+            sudo=True,
+        )
+        self.ssh.run(
+            f"{ACME_HOME}/acme.sh --install-cert -d {shlex.quote(domain)} --ecc "
+            f"--fullchain-file {shlex.quote(cert_path)} --key-file {shlex.quote(key_path)} "
+            # On renewal, reload xray so it picks the freshly rotated cert without restart.
+            f"--reloadcmd 'systemctl reload xray 2>/dev/null || systemctl restart xray' "
+            f"--home {ACME_HOME}",
+            sudo=True,
+        )
+        self.ssh.run(f"chmod 600 {shlex.quote(key_path)}", sudo=True, check=False)
+        return {
+            "domain": domain,
+            "cert_path": cert_path,
+            "key_path": key_path,
+            "issued": True,
+            "mode": "webroot",
+        }
+
+    def _issue_via_standalone(self, domain: str, cert_path: str, key_path: str) -> dict:
+        owner = self._free_port_80_for_acme()
+        stopped_service: Optional[str] = None
+        if owner:
+            unit = self._resolve_port80_service_to_stop(owner)
+            if not unit:
+                raise RuntimeError(
+                    f"Port 80 is currently bound by {owner!r}; stop it before issuing a cert "
+                    f"(e.g. `systemctl stop {owner}`), or set "
+                    f"VPNW_WL_STOP_PORT80_SERVICE={owner} to let the bot stop+restart it. "
+                    f"For zero-downtime, prefer VPNW_WL_ACME_MODE=webroot if nginx is in front."
+                )
+            self.progress(f"Stopping {unit} to free port 80 for acme.sh standalone")
+            self.ssh.run(f"systemctl stop {shlex.quote(unit)}", sudo=True)
+            stopped_service = unit
+
+        try:
+            self.progress(f"Requesting Let's Encrypt cert for {domain} (standalone)")
+            self.ssh.run(
+                f"{ACME_HOME}/acme.sh --issue --standalone -d {shlex.quote(domain)} "
+                f"--httpport {ACME_CHALLENGE_PORT} --keylength ec-256 --home {ACME_HOME}",
+                sudo=True,
+            )
+            self.ssh.run(
+                f"{ACME_HOME}/acme.sh --install-cert -d {shlex.quote(domain)} --ecc "
+                f"--fullchain-file {shlex.quote(cert_path)} --key-file {shlex.quote(key_path)} "
+                f"--reloadcmd 'systemctl reload xray 2>/dev/null || systemctl restart xray' "
+                f"--home {ACME_HOME}",
+                sudo=True,
+            )
+            self.ssh.run(f"chmod 600 {shlex.quote(key_path)}", sudo=True, check=False)
+        finally:
+            # ALWAYS attempt to bring the service back, even if acme.sh failed mid-issue.
+            # We use check=False so a failed restart surfaces in the log but doesn't
+            # mask the original acme error.
+            if stopped_service:
+                self.progress(f"Restarting {stopped_service}")
+                started = self.ssh.run(
+                    f"systemctl start {shlex.quote(stopped_service)}; "
+                    f"systemctl is-active {shlex.quote(stopped_service)} || echo INACTIVE",
+                    sudo=True,
+                    check=False,
+                )
+                if "INACTIVE" in (started or ""):
+                    self.progress(
+                        f"WARNING: {stopped_service} did not come back up — investigate "
+                        f"with `journalctl -u {stopped_service} --since '5 minutes ago'`."
+                    )
+        return {
+            "domain": domain,
+            "cert_path": cert_path,
+            "key_path": key_path,
+            "issued": True,
+            "mode": "standalone",
+        }
+
     def issue_certificate(self, domain: str) -> dict:
         domain = (domain or "").strip().lower()
         if not domain:
@@ -183,44 +369,19 @@ class WhitelistProvisioner:
         ).strip()
         if already == "yes":
             self.progress(f"Reusing existing certificate for {domain}")
-            return {"domain": domain, "cert_path": cert_path, "key_path": key_path, "issued": False}
+            return {
+                "domain": domain,
+                "cert_path": cert_path,
+                "key_path": key_path,
+                "issued": False,
+                "mode": "cached",
+            }
 
-        owner = self._free_port_80_for_acme()
-        stopped_service: Optional[str] = None
-        if owner:
-            unit = self._resolve_port80_service_to_stop(owner)
-            if not unit:
-                raise RuntimeError(
-                    f"Port 80 is currently bound by {owner!r}; stop it before issuing a cert "
-                    f"(e.g. `systemctl stop {owner}`), or set "
-                    f"VPNW_WL_STOP_PORT80_SERVICE={owner} to let the bot stop+restart it."
-                )
-            self.progress(f"Stopping {unit} to free port 80 for acme.sh")
-            self.ssh.run(f"systemctl stop {shlex.quote(unit)}", sudo=True)
-            stopped_service = unit
-
-        try:
-            self.progress(f"Requesting Let's Encrypt cert for {domain}")
-            self.ssh.run(
-                f"{ACME_HOME}/acme.sh --issue --standalone -d {shlex.quote(domain)} "
-                f"--httpport {ACME_CHALLENGE_PORT} --keylength ec-256 --home {ACME_HOME}",
-                sudo=True,
-            )
-            self.ssh.run(
-                f"{ACME_HOME}/acme.sh --install-cert -d {shlex.quote(domain)} --ecc "
-                f"--fullchain-file {cert_path} --key-file {key_path} --home {ACME_HOME}",
-                sudo=True,
-            )
-            self.ssh.run(f"chmod 600 {key_path}", sudo=True, check=False)
-        finally:
-            if stopped_service:
-                self.progress(f"Restarting {stopped_service}")
-                self.ssh.run(
-                    f"systemctl start {shlex.quote(stopped_service)}",
-                    sudo=True,
-                    check=False,
-                )
-        return {"domain": domain, "cert_path": cert_path, "key_path": key_path, "issued": True}
+        mode = self._resolve_acme_mode()
+        self.progress(f"ACME mode: {mode}")
+        if mode == "webroot":
+            return self._issue_via_webroot(domain, cert_path, key_path)
+        return self._issue_via_standalone(domain, cert_path, key_path)
 
     # ---------- xray inbound -------------------------------------------
 

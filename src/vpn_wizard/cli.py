@@ -410,7 +410,12 @@ def wl_provision(
     stop_port80_service: Optional[str] = typer.Option(
         None,
         envvar="VPNW_WL_STOP_PORT80_SERVICE",
-        help='systemd unit to stop while acme.sh holds :80 (e.g. "nginx" or "auto")',
+        help='systemd unit to stop while acme.sh holds :80 (standalone mode only; e.g. "nginx" or "auto")',
+    ),
+    acme_mode: str = typer.Option(
+        "auto",
+        envvar="VPNW_WL_ACME_MODE",
+        help='ACME challenge mode: "auto" (prefer webroot if nginx), "webroot", or "standalone"',
     ),
     yc_oauth_token: Optional[str] = typer.Option(
         None,
@@ -448,6 +453,7 @@ def wl_provision(
             progress=log,
             listen_port=listen_port,
             stop_port80_service=stop_port80_service,
+            acme_mode=acme_mode,
         )
         inbound_info = wl.setup_inbound(client, domain=domain)
         log(f"VPS WL inbound ready at {inbound_info['backend_url']}{inbound_info['path']}")
