@@ -247,6 +247,11 @@ def build_proxy_openapi_spec(
                     "x-yc-apigateway-integration": {
                         "type": "http",
                         "url": f"{base}/{{path}}",
+                        # XHTTP packet-up sends protocol padding through request
+                        # headers/query. Yandex API Gateway does not forward
+                        # original values unless explicitly told to.
+                        "headers": {"*": "*"},
+                        "query": {"*": "*"},
                         "timeouts": {
                             "connect": float(connect_timeout_s),
                             "read": float(read_timeout_s),

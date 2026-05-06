@@ -469,6 +469,145 @@ def test_webroot_bails_when_existing_server_lacks_acme_location():
     assert snippet_writes == [], "must not write a duplicate snippet"
 
 
+# --- Cert key permissions for non-root xray.service ----------------------
+
+def test_xray_runtime_principal_returns_blank_for_root_default():
+    ssh = FakeSSH(scripted=[("show xray -p User", "")])
+    prov = WhitelistProvisioner(ssh)
+    assert prov._xray_runtime_principal() == ("", "")
+
+
+def test_xray_runtime_principal_returns_blank_when_user_is_root():
+    ssh = FakeSSH(scripted=[("show xray -p User", "root")])
+    prov = WhitelistProvisioner(ssh)
+    assert prov._xray_runtime_principal() == ("", "")
+
+
+def test_xray_runtime_principal_resolves_nobody_to_nogroup():
+    ssh = FakeSSH(scripted=[
+        ("show xray -p User", "nobody"),
+        ("id -gn nobody", "nogroup"),
+    ])
+    prov = WhitelistProvisioner(ssh)
+    assert prov._xray_runtime_principal() == ("nobody", "nogroup")
+
+
+def test_apply_perms_for_root_user_uses_chmod_600():
+    ssh = FakeSSH()
+    runs: list[str] = []
+    original_run = ssh.run
+
+    def tracking(command, sudo=False, check=True):
+        if "chmod" in command or "chgrp" in command:
+            runs.append(command)
+        return original_run(command, sudo=sudo, check=check)
+
+    ssh.run = tracking  # type: ignore[assignment]
+    prov = WhitelistProvisioner(ssh)
+    prov._apply_xray_readable_key_perms("/etc/xray/key.pem", "", "")
+    assert runs == ["chmod 600 /etc/xray/key.pem"]
+
+
+def test_apply_perms_for_nobody_uses_chgrp_and_640():
+    ssh = FakeSSH()
+    runs: list[str] = []
+    original_run = ssh.run
+
+    def tracking(command, sudo=False, check=True):
+        if "chmod" in command or "chgrp" in command:
+            runs.append(command)
+        return original_run(command, sudo=sudo, check=check)
+
+    ssh.run = tracking  # type: ignore[assignment]
+    prov = WhitelistProvisioner(ssh)
+    prov._apply_xray_readable_key_perms("/etc/xray/key.pem", "nobody", "nogroup")
+    assert runs == [
+        "chgrp nogroup /etc/xray/key.pem",
+        "chmod 640 /etc/xray/key.pem",
+    ]
+
+
+def test_apply_perms_falls_back_to_600_when_group_unknown():
+    ssh = FakeSSH()
+    runs: list[str] = []
+    progress_msgs: list[str] = []
+    original_run = ssh.run
+
+    def tracking(command, sudo=False, check=True):
+        if "chmod" in command or "chgrp" in command:
+            runs.append(command)
+        return original_run(command, sudo=sudo, check=check)
+
+    ssh.run = tracking  # type: ignore[assignment]
+    prov = WhitelistProvisioner(ssh, progress=progress_msgs.append)
+    prov._apply_xray_readable_key_perms("/etc/xray/key.pem", "weirduser", "")
+    assert runs == ["chmod 600 /etc/xray/key.pem"]
+    assert any("primary group could not be resolved" in m for m in progress_msgs)
+
+
+def test_reloadcmd_embeds_perms_fix_when_group_known():
+    prov = WhitelistProvisioner(FakeSSH())
+    cmd = prov._build_xray_reloadcmd("/etc/xray/key.pem", "nogroup")
+    # Perms re-applied BEFORE reload — acme.sh resets them on every renewal.
+    assert "chgrp nogroup /etc/xray/key.pem" in cmd
+    assert "chmod 640 /etc/xray/key.pem" in cmd
+    assert "systemctl reload xray" in cmd
+    assert cmd.index("chgrp") < cmd.index("systemctl"), "perms must run before reload"
+
+
+def test_reloadcmd_is_bare_reload_when_xray_runs_as_root():
+    prov = WhitelistProvisioner(FakeSSH())
+    cmd = prov._build_xray_reloadcmd("/etc/xray/key.pem", "")
+    assert cmd.startswith("systemctl reload xray")
+    assert "chgrp" not in cmd
+    assert "chmod" not in cmd
+
+
+def test_webroot_install_cert_uses_perms_aware_reloadcmd():
+    """End-to-end: when xray runs as nobody, install-cert must register a reloadcmd
+    that re-applies chgrp+640 on every renewal so renewals don't break Xray."""
+    install_cmds: list[str] = []
+    perms_cmds: list[str] = []
+
+    ssh = FakeSSH(scripted=[
+        ("is-active nginx", "active"),
+        ("test -s", "no"),
+        ("show xray -p User", "nobody"),
+        ("id -gn nobody", "nogroup"),
+    ])
+    original_run = ssh.run
+
+    def tracking(command, sudo=False, check=True):
+        if "grep -rlE" in command and "server_name" in command:
+            return ""  # no conflict, fresh snippet path
+        if "nginx -t" in command:
+            return "syntax is ok\nconfiguration test is successful"
+        if "acme.sh --issue" in command:
+            return ""
+        if "acme.sh --install-cert" in command:
+            install_cmds.append(command)
+            return ""
+        if command.startswith("chgrp ") or command.startswith("chmod "):
+            perms_cmds.append(command)
+            return ""
+        return original_run(command, sudo=sudo, check=check)
+
+    ssh.run = tracking  # type: ignore[assignment]
+    prov = WhitelistProvisioner(ssh, acme_mode="webroot")
+    prov.issue_certificate("rodnya-tree.ru")
+
+    assert install_cmds, "install-cert must be invoked"
+    install = install_cmds[0]
+    # The reloadcmd embedded in --reloadcmd '...' must contain both perms ops.
+    assert "chgrp nogroup" in install
+    assert "chmod 640" in install
+    assert "systemctl reload xray" in install
+    # AND first-time install also chgrp+640 directly (immediate effect; the
+    # reloadcmd only fires on the next renewal).
+    assert any("chgrp nogroup" in c for c in perms_cmds)
+    assert any("chmod 640" in c for c in perms_cmds)
+
+
 def test_webroot_writes_fresh_snippet_when_no_conflict():
     """sslip.io / fresh FQDN with no existing server_name → write+reload as before."""
     snippet_paths_written: list[str] = []

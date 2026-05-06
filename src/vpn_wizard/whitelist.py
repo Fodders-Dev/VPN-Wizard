@@ -174,6 +174,66 @@ class WhitelistProvisioner:
             self.ssh.run(f"firewall-cmd --add-port={port}/tcp --permanent", sudo=True, check=False)
             self.ssh.run("firewall-cmd --reload", sudo=True, check=False)
 
+    def _xray_runtime_principal(self) -> tuple[str, str]:
+        """Return (user, group) the xray.service runs as.
+
+        Returns ("", "") for the default install where xray runs as root — the
+        process can read its own files regardless of mode bits, so callers can
+        skip group-grant logic.
+        """
+        user = self.ssh.run(
+            "systemctl show xray -p User --value 2>/dev/null || true",
+            sudo=True,
+            check=False,
+        ).strip()
+        if not user or user == "root":
+            return ("", "")
+        group = self.ssh.run(
+            f"id -gn {shlex.quote(user)} 2>/dev/null || true",
+            sudo=True,
+            check=False,
+        ).strip()
+        return (user, group)
+
+    def _apply_xray_readable_key_perms(self, key_path: str, user: str, group: str) -> None:
+        """Make the cert key readable by xray.service.
+
+        Default xray installs run as root -> 0600 (root:root) is enough.
+        Hardened installs run as a dedicated user (e.g. `User=nobody` on this
+        operator's VPS) -> 0600 leaves the key unreadable, and Xray fails to
+        load TLS certs at startup. Switch to chgrp <group> + 0640 in that case.
+        """
+        quoted = shlex.quote(key_path)
+        if not user:
+            self.ssh.run(f"chmod 600 {quoted}", sudo=True, check=False)
+            return
+        if not group:
+            self.progress(
+                f"WARNING: xray.service runs as {user!r} but its primary group could "
+                f"not be resolved; leaving {key_path} at 0600. Xray may fail to load "
+                f"the cert. Investigate with `getent passwd {user}`."
+            )
+            self.ssh.run(f"chmod 600 {quoted}", sudo=True, check=False)
+            return
+        self.progress(f"Granting {user}:{group} read on {key_path}")
+        self.ssh.run(f"chgrp {shlex.quote(group)} {quoted}", sudo=True, check=False)
+        self.ssh.run(f"chmod 640 {quoted}", sudo=True, check=False)
+
+    def _build_xray_reloadcmd(self, key_path: str, group: str) -> str:
+        """Renewal hook for acme.sh --install-cert.
+
+        acme.sh OVERWRITES the destination key file on every renewal with default
+        perms (0600 root:root). If xray runs as a non-root user, that breaks cert
+        loading on the next reload. Re-apply chgrp+640 BEFORE reloading xray.
+        """
+        prefix = ""
+        if group:
+            prefix = (
+                f"chgrp {shlex.quote(group)} {shlex.quote(key_path)} && "
+                f"chmod 640 {shlex.quote(key_path)} && "
+            )
+        return f"{prefix}systemctl reload xray 2>/dev/null || systemctl restart xray"
+
     def _free_port_80_for_acme(self) -> Optional[str]:
         """Returns the systemd unit currently bound to :80, if any (so we can resume it)."""
         owner = self.ssh.run(
@@ -329,6 +389,8 @@ class WhitelistProvisioner:
                 "Either start nginx, or set VPNW_WL_ACME_MODE=standalone."
             )
         self._setup_nginx_webroot(domain)
+        user, group = self._xray_runtime_principal()
+        reloadcmd = self._build_xray_reloadcmd(key_path, group)
         self.progress(f"Requesting Let's Encrypt cert for {domain} (webroot via nginx)")
         # acme.sh writes challenge file under <webroot>/.well-known/acme-challenge/<token>;
         # nginx serves it on http://<domain>/.well-known/acme-challenge/<token>.
@@ -340,12 +402,12 @@ class WhitelistProvisioner:
         self.ssh.run(
             f"{ACME_HOME}/acme.sh --install-cert -d {shlex.quote(domain)} --ecc "
             f"--fullchain-file {shlex.quote(cert_path)} --key-file {shlex.quote(key_path)} "
-            # On renewal, reload xray so it picks the freshly rotated cert without restart.
-            f"--reloadcmd 'systemctl reload xray 2>/dev/null || systemctl restart xray' "
+            # On renewal: re-apply key perms (acme.sh overwrites the file) + reload xray.
+            f"--reloadcmd {shlex.quote(reloadcmd)} "
             f"--home {ACME_HOME}",
             sudo=True,
         )
-        self.ssh.run(f"chmod 600 {shlex.quote(key_path)}", sudo=True, check=False)
+        self._apply_xray_readable_key_perms(key_path, user, group)
         return {
             "domain": domain,
             "cert_path": cert_path,
@@ -371,6 +433,8 @@ class WhitelistProvisioner:
             stopped_service = unit
 
         try:
+            user, group = self._xray_runtime_principal()
+            reloadcmd = self._build_xray_reloadcmd(key_path, group)
             self.progress(f"Requesting Let's Encrypt cert for {domain} (standalone)")
             self.ssh.run(
                 f"{ACME_HOME}/acme.sh --issue --standalone -d {shlex.quote(domain)} "
@@ -380,11 +444,11 @@ class WhitelistProvisioner:
             self.ssh.run(
                 f"{ACME_HOME}/acme.sh --install-cert -d {shlex.quote(domain)} --ecc "
                 f"--fullchain-file {shlex.quote(cert_path)} --key-file {shlex.quote(key_path)} "
-                f"--reloadcmd 'systemctl reload xray 2>/dev/null || systemctl restart xray' "
+                f"--reloadcmd {shlex.quote(reloadcmd)} "
                 f"--home {ACME_HOME}",
                 sudo=True,
             )
-            self.ssh.run(f"chmod 600 {shlex.quote(key_path)}", sudo=True, check=False)
+            self._apply_xray_readable_key_perms(key_path, user, group)
         finally:
             # ALWAYS attempt to bring the service back, even if acme.sh failed mid-issue.
             # We use check=False so a failed restart surfaces in the log but doesn't

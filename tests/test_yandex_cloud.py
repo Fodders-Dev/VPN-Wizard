@@ -140,6 +140,8 @@ def test_build_proxy_openapi_spec_targets_backend_with_path_capture():
     integration = paths["/{path+}"]["x-yc-apigateway-any-method"]["x-yc-apigateway-integration"]
     assert integration["type"] == "http"
     assert integration["url"] == "https://1-2-3-4.sslip.io:8443/{path}"
+    assert integration["headers"] == {"*": "*"}
+    assert integration["query"] == {"*": "*"}
     assert integration["timeouts"]["read"] >= 30
 
 
