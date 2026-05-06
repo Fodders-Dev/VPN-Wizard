@@ -544,9 +544,15 @@ async def wl_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
 
     text = (
-        f"WL profile ready for *{result['client_name']}*\n"
+        f"WL profile provisioned for *{result['client_name']}*\n"
         f"Gateway: `{result['gateway_domain']}`\n"
         f"Backend: `{result['backend_url']}`\n\n"
+        "⚠️ Known limitation: Yandex API Gateway buffers upstream "
+        "responses, so XHTTP downlink does NOT stream end-to-end through it. "
+        "The vless link is correct on the wire (uplink reaches Xray), but "
+        "clients will not actually carry traffic until we switch the public "
+        "front to a streaming-capable component (ALB / Compute VM). "
+        "See RUNBOOK → \"KNOWN LIMITATION\".\n\n"
         f"vless link:\n`{result['link']}`"
     )
     await message.reply_text(text, parse_mode="Markdown")

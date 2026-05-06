@@ -234,10 +234,33 @@ def build_proxy_openapi_spec(
     connect_timeout_s: float = 1.0,
     read_timeout_s: float = 60.0,
 ) -> str:
-    """OpenAPI 3 spec that forwards every path/method to backend_url with the same path appended."""
+    """OpenAPI 3 spec that forwards every path/method to backend_url with the same path appended.
+
+    KNOWN LIMITATION (verified empirically 2026-05): Yandex API Gateway's HTTP
+    integration buffers the upstream response body. Streaming-style downlinks
+    (text/event-stream, chunked HTTP/2 server-push) hang until `read` timeout
+    and never deliver bytes back to the client. XHTTP transport needs streaming
+    on the downlink path regardless of mode (packet-up / stream-up / stream-one
+    / auto), so the WL profile generated from this spec DOES NOT carry working
+    end-to-end VPN traffic in its current form.
+
+    Evidence on a working request side:
+      * Direct GET to backend -> HTTP/2 200 + `content-type: text/event-stream`
+        immediately.
+      * Same GET via Gateway -> hangs with no headers/body until `read` timeout.
+      * XHTTP uplink (POST) DOES work through the Gateway: Xray sees the client
+        in access.log; only the response stream is broken.
+
+    A different fronting architecture (Yandex Application Load Balancer, a
+    Compute Cloud VM, or anything that genuinely streams HTTP/2) is needed
+    before WL profiles will carry traffic.
+    """
     base = (backend_url or "").rstrip("/")
     if not base.startswith(("http://", "https://")):
         raise YandexCloudError(0, "backend_url must start with http:// or https://")
+    backend_host = parse.urlsplit(base).hostname or ""
+    if not backend_host:
+        raise YandexCloudError(0, "backend_url is missing a hostname.")
     spec = {
         "openapi": "3.0.0",
         "info": {"title": title, "version": "1.0.0"},
@@ -249,8 +272,10 @@ def build_proxy_openapi_spec(
                         "url": f"{base}/{{path}}",
                         # XHTTP packet-up sends protocol padding through request
                         # headers/query. Yandex API Gateway does not forward
-                        # original values unless explicitly told to.
-                        "headers": {"*": "*"},
+                        # original values unless explicitly told to. Override
+                        # Host so Gateway validates the backend certificate
+                        # against the backend domain, not the public gw domain.
+                        "headers": {"*": "*", "Host": backend_host},
                         "query": {"*": "*"},
                         "timeouts": {
                             "connect": float(connect_timeout_s),

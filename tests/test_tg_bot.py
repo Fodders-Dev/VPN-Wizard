@@ -142,10 +142,16 @@ def test_wl_add_cmd_runs_provisioner_for_owner(monkeypatch) -> None:
     assert captured["name"] == "dad"
     assert any("Provisioning WL profile" in str(item.get("text", "")) for item in sent)
     assert any(
-        "WL profile ready" in str(item.get("text", ""))
+        "WL profile provisioned" in str(item.get("text", ""))
         and "abcd.apigw.yandexcloud.net" in str(item.get("text", ""))
         for item in sent
     )
+    # The success reply must include the streaming-limitation warning so the
+    # operator doesn't mistake bot success for a working VPN profile.
+    assert any(
+        "Yandex API Gateway buffers" in str(item.get("text", ""))
+        for item in sent
+    ), "owner-facing reply should warn about the streaming limitation"
     assert any(item.get("kind") == "photo" for item in sent), "QR image should be sent"
 
 

@@ -140,7 +140,7 @@ def test_build_proxy_openapi_spec_targets_backend_with_path_capture():
     integration = paths["/{path+}"]["x-yc-apigateway-any-method"]["x-yc-apigateway-integration"]
     assert integration["type"] == "http"
     assert integration["url"] == "https://1-2-3-4.sslip.io:8443/{path}"
-    assert integration["headers"] == {"*": "*"}
+    assert integration["headers"] == {"*": "*", "Host": "1-2-3-4.sslip.io"}
     assert integration["query"] == {"*": "*"}
     assert integration["timeouts"]["read"] >= 30
 
@@ -148,6 +148,22 @@ def test_build_proxy_openapi_spec_targets_backend_with_path_capture():
 def test_build_proxy_openapi_spec_rejects_non_http_url():
     with pytest.raises(YandexCloudError):
         build_proxy_openapi_spec(backend_url="ssh://example.com")
+
+
+def test_build_proxy_openapi_spec_rejects_url_without_hostname():
+    # Without a hostname we can't compute the Host header override that
+    # makes the upstream TLS validation pass. Bail loudly.
+    with pytest.raises(YandexCloudError):
+        build_proxy_openapi_spec(backend_url="https:///some/path")
+
+
+def test_build_proxy_openapi_spec_host_header_pins_backend_hostname_not_port():
+    # Host header must be just the hostname (no :port). curl/Go/Node TLS
+    # validation strips the port too, but explicit is safer than implicit.
+    raw = build_proxy_openapi_spec(backend_url="https://rodnya-tree.ru:9443")
+    spec = json.loads(raw)
+    integration = spec["paths"]["/{path+}"]["x-yc-apigateway-any-method"]["x-yc-apigateway-integration"]
+    assert integration["headers"]["Host"] == "rodnya-tree.ru"
 
 
 def test_provision_wl_gateway_creates_when_missing(monkeypatch):
