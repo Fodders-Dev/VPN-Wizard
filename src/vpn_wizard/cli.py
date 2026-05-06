@@ -405,8 +405,13 @@ def wl_provision(
     key: Optional[str] = typer.Option(None, help="SSH private key path"),
     port: int = typer.Option(22, help="SSH port"),
     client: str = typer.Option("wl1", help="Client name on the WL profile"),
-    listen_port: int = typer.Option(8443, help="VPS port for the WL inbound (Xray TLS)"),
+    listen_port: int = typer.Option(9443, help="VPS port for the WL inbound (Xray TLS)"),
     domain: Optional[str] = typer.Option(None, help="Override domain (default: <ip-dashes>.sslip.io)"),
+    stop_port80_service: Optional[str] = typer.Option(
+        None,
+        envvar="VPNW_WL_STOP_PORT80_SERVICE",
+        help='systemd unit to stop while acme.sh holds :80 (e.g. "nginx" or "auto")',
+    ),
     yc_oauth_token: Optional[str] = typer.Option(
         None,
         envvar="YC_OAUTH_TOKEN",
@@ -438,7 +443,12 @@ def wl_provision(
     ssh.connect()
     try:
         log("== Step 1: WL inbound on VPS ==")
-        wl = WhitelistProvisioner(ssh, progress=log, listen_port=listen_port)
+        wl = WhitelistProvisioner(
+            ssh,
+            progress=log,
+            listen_port=listen_port,
+            stop_port80_service=stop_port80_service,
+        )
         inbound_info = wl.setup_inbound(client, domain=domain)
         log(f"VPS WL inbound ready at {inbound_info['backend_url']}{inbound_info['path']}")
 

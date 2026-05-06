@@ -25,7 +25,9 @@ from vpn_wizard.core import SSHRunner
 from vpn_wizard.proxy import ProxyProvisioner
 
 
-WL_INBOUND_PORT_DEFAULT = 8443
+# 8443 is the conventional fallback for Reality on hosts where 443 is taken by
+# nginx/caddy. Default the WL inbound to 9443 so it doesn't collide with that.
+WL_INBOUND_PORT_DEFAULT = 9443
 WL_LOOPBACK_PORT_DEFAULT = 10000
 WL_PATH_PREFIX = "/vpnw-wl-"
 ACME_HOME = "/root/.acme.sh"
@@ -53,12 +55,18 @@ class WhitelistProvisioner:
         ssh: SSHRunner,
         progress: Optional[Callable[[str], None]] = None,
         listen_port: int = WL_INBOUND_PORT_DEFAULT,
+        *,
+        stop_port80_service: Optional[str] = None,
     ) -> None:
         self.ssh = ssh
         self.progress = progress or (lambda _msg: None)
         self.listen_port = int(listen_port)
         self._proxy = ProxyProvisioner(ssh, progress=progress)
         self._name_pattern = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+        # If set, the named systemd unit (e.g. "nginx") will be stopped just before
+        # acme.sh standalone takes :80 and restarted afterwards. Use "auto" to stop
+        # whatever process currently owns :80.
+        self.stop_port80_service = (stop_port80_service or "").strip() or None
 
     # ---------- helpers -------------------------------------------------
 
@@ -145,6 +153,19 @@ class WhitelistProvisioner:
 
     # ---------- cert issuance ------------------------------------------
 
+    def _resolve_port80_service_to_stop(self, owner: str) -> Optional[str]:
+        """Return the systemd unit name to stop (or None if we should leave :80 alone)."""
+        configured = self.stop_port80_service
+        if not configured:
+            return None
+        if configured.lower() in {"auto", "*"}:
+            return owner or None
+        # User pinned a specific unit (e.g. "nginx") — only stop if the actual process matches.
+        if owner and (owner == configured or owner.startswith(configured)):
+            return configured
+        # Configured unit doesn't match what's actually on :80 — be conservative and bail.
+        return None
+
     def issue_certificate(self, domain: str) -> dict:
         domain = (domain or "").strip().lower()
         if not domain:
@@ -165,24 +186,40 @@ class WhitelistProvisioner:
             return {"domain": domain, "cert_path": cert_path, "key_path": key_path, "issued": False}
 
         owner = self._free_port_80_for_acme()
+        stopped_service: Optional[str] = None
         if owner:
-            raise RuntimeError(
-                f"Port 80 is currently bound by {owner!r}; stop it before issuing a cert "
-                f"(e.g. `systemctl stop {owner}`)."
-            )
+            unit = self._resolve_port80_service_to_stop(owner)
+            if not unit:
+                raise RuntimeError(
+                    f"Port 80 is currently bound by {owner!r}; stop it before issuing a cert "
+                    f"(e.g. `systemctl stop {owner}`), or set "
+                    f"VPNW_WL_STOP_PORT80_SERVICE={owner} to let the bot stop+restart it."
+                )
+            self.progress(f"Stopping {unit} to free port 80 for acme.sh")
+            self.ssh.run(f"systemctl stop {shlex.quote(unit)}", sudo=True)
+            stopped_service = unit
 
-        self.progress(f"Requesting Let's Encrypt cert for {domain}")
-        self.ssh.run(
-            f"{ACME_HOME}/acme.sh --issue --standalone -d {shlex.quote(domain)} "
-            f"--httpport {ACME_CHALLENGE_PORT} --keylength ec-256 --home {ACME_HOME}",
-            sudo=True,
-        )
-        self.ssh.run(
-            f"{ACME_HOME}/acme.sh --install-cert -d {shlex.quote(domain)} --ecc "
-            f"--fullchain-file {cert_path} --key-file {key_path} --home {ACME_HOME}",
-            sudo=True,
-        )
-        self.ssh.run(f"chmod 600 {key_path}", sudo=True, check=False)
+        try:
+            self.progress(f"Requesting Let's Encrypt cert for {domain}")
+            self.ssh.run(
+                f"{ACME_HOME}/acme.sh --issue --standalone -d {shlex.quote(domain)} "
+                f"--httpport {ACME_CHALLENGE_PORT} --keylength ec-256 --home {ACME_HOME}",
+                sudo=True,
+            )
+            self.ssh.run(
+                f"{ACME_HOME}/acme.sh --install-cert -d {shlex.quote(domain)} --ecc "
+                f"--fullchain-file {cert_path} --key-file {key_path} --home {ACME_HOME}",
+                sudo=True,
+            )
+            self.ssh.run(f"chmod 600 {key_path}", sudo=True, check=False)
+        finally:
+            if stopped_service:
+                self.progress(f"Restarting {stopped_service}")
+                self.ssh.run(
+                    f"systemctl start {shlex.quote(stopped_service)}",
+                    sudo=True,
+                    check=False,
+                )
         return {"domain": domain, "cert_path": cert_path, "key_path": key_path, "issued": True}
 
     # ---------- xray inbound -------------------------------------------

@@ -467,6 +467,11 @@ def _run_wl_provision(client_name: str) -> dict:
         raise RuntimeError("YC_OAUTH_TOKEN missing in env.")
     folder_id = os.getenv("YC_FOLDER_ID") or None
     gateway_name = (os.getenv("VPNW_WL_GATEWAY_NAME") or "vpn-wl").strip() or "vpn-wl"
+    try:
+        listen_port = int((os.getenv("VPNW_WL_LISTEN_PORT") or "9443").strip() or 9443)
+    except ValueError:
+        listen_port = 9443
+    stop_port80 = (os.getenv("VPNW_WL_STOP_PORT80_SERVICE") or "").strip() or None
 
     progress_log: list[str] = []
 
@@ -474,7 +479,12 @@ def _run_wl_provision(client_name: str) -> dict:
         progress_log.append(msg)
 
     with SSHRunner(cfg) as ssh:
-        wl = WhitelistProvisioner(ssh, progress=log)
+        wl = WhitelistProvisioner(
+            ssh,
+            progress=log,
+            listen_port=listen_port,
+            stop_port80_service=stop_port80,
+        )
         inbound = wl.setup_inbound(client_name)
         gateway = provision_wl_gateway(
             oauth_token=token,
