@@ -3,6 +3,10 @@
 ## Goal
 Turn a rented VPS into a fast VPN and anti-block proxy with ready configs/links/QR codes.
 
+The managed product uses the same Telegram bot for the original Fodders VPN 1
+wizard and a paid subscription. Remnawave owns entitlement and VLESS node state;
+Telegram Stars stay on the Telegram bot balance.
+
 ## Stack
 - Python 3.10+
 - Paramiko for SSH control
@@ -29,6 +33,12 @@ Turn a rented VPS into a fast VPN and anti-block proxy with ready configs/links/
 - miniapp: QR для профилей открывается прямо в списке, с отдельной кнопкой скачивания (включая Telegram WebApp)
 - miniapp: расширенный безопасный режим (только precheck), подробный FAQ о действиях на сервере
 - bot: онбординг и ограничение доступа только для подписчиков канала
+- managed bot: trial, Telegram Stars plans, preserved Fodders VPN 1, and `/awg`
+- managed subscription: one URL with selectable NL/FI/TR/US Reality locations
+- managed AmneziaWG: issue only for an ACTIVE Remnawave user; suspend the server
+  peer on expiry and restore the same keys/config on renewal
+- managed AmneziaWG reliability: signed links, HMAC webhook, and a two-minute
+  reconciliation timer for missed lifecycle events
 - distribution: API server + Telegram bot + miniapp wizard UI
 - distribution: async job queue + progress polling for miniapp
 

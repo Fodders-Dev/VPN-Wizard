@@ -1,0 +1,222 @@
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+from pathlib import Path
+
+from vpn_wizard.account import AccountStore
+from vpn_wizard.awg_fallback import (
+    AwgFallbackService,
+    issue_token,
+    peer_name,
+    verify_issue_token,
+)
+from vpn_wizard.awg_reconcile import reconcile_awg_peers
+from vpn_wizard.remnawave import (
+    event_action,
+    parse_event,
+    telegram_id_of,
+    user_is_active,
+    verify_webhook_signature,
+)
+
+
+def _store(tmp_path: Path) -> AccountStore:
+    return AccountStore(tmp_path / "state.db", secret_key="unit-test-secret")
+
+
+# --- webhook signature --------------------------------------------------------
+
+def test_verify_webhook_signature_roundtrip() -> None:
+    secret = "s3cr3t"
+    body = b'{"event":"user.disabled","data":{}}'
+    good = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    assert verify_webhook_signature(secret, body, good) is True
+    assert verify_webhook_signature(secret, body, good.upper()) is False
+    assert verify_webhook_signature(secret, body, "deadbeef") is False
+    assert verify_webhook_signature(secret, body, None) is False
+    assert verify_webhook_signature("", body, good) is False
+
+
+def test_parse_event_and_action() -> None:
+    body = json.dumps({"event": "user.expired", "data": {"telegramId": "42", "status": "EXPIRED"}}).encode()
+    event, user = parse_event(body)
+    assert event == "user.expired"
+    assert telegram_id_of(user) == 42
+    assert event_action("user.expired") == "disable"
+    assert event_action("user.enabled") == "enable"
+    assert event_action("user.bandwidth_usage_threshold_reached") is None
+
+
+# --- entitlement --------------------------------------------------------------
+
+def test_user_is_active_variants() -> None:
+    assert user_is_active({"status": "ACTIVE"}) is True
+    assert user_is_active({"status": "DISABLED"}) is False
+    assert user_is_active({"status": "LIMITED"}) is False
+    assert user_is_active({"status": "ACTIVE", "expireAt": "2000-01-01T00:00:00Z"}) is False
+    assert user_is_active({"status": "ACTIVE", "expireAt": "2999-01-01T00:00:00.000Z"}) is True
+
+
+# --- link token ---------------------------------------------------------------
+
+def test_issue_token_roundtrip() -> None:
+    secret = "link-secret"
+    token = issue_token(secret, 777)
+    assert verify_issue_token(secret, 777, token) is True
+    assert verify_issue_token(secret, 778, token) is False
+    assert verify_issue_token(secret, 777, "nope") is False
+    assert verify_issue_token("", 777, token) is False
+
+
+def test_peer_name() -> None:
+    assert peer_name(12345) == "sub-12345"
+
+
+# --- service orchestration ----------------------------------------------------
+
+def test_issue_provisions_once_then_reuses(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    calls: list[str] = []
+
+    def provision(name: str) -> str:
+        calls.append(name)
+        return f"[Interface]\n# {name}\n"
+
+    service = AwgFallbackService(store, provision=provision, deprovision=lambda n: True)
+
+    first = service.issue(999, remnawave_uuid="uuid-1")
+    assert first["reused"] is False
+    assert "sub-999" in first["config"]
+    assert calls == ["sub-999"]
+
+    second = service.issue(999)
+    assert second["reused"] is True
+    assert second["config"] == first["config"]
+    assert calls == ["sub-999"]  # not provisioned again
+
+    peer = store.awg_get_peer(999)
+    assert peer is not None
+    assert peer["client_name"] == "sub-999"
+    assert peer["remnawave_uuid"] == "uuid-1"
+    assert peer["status"] == "active"
+
+
+def test_revoke_removes_peer(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    removed: list[str] = []
+    service = AwgFallbackService(
+        store,
+        provision=lambda n: f"[Interface]\n# {n}\n",
+        deprovision=lambda n: removed.append(n) or True,
+    )
+
+    service.issue(555)
+    assert store.awg_get_peer(555) is not None
+
+    assert service.revoke(555) is True
+    assert removed == ["sub-555"]
+    assert store.awg_get_peer(555) is None
+
+    # idempotent: revoking an unknown user is a no-op
+    assert service.revoke(555) is False
+
+
+def test_suspend_and_resume_keep_the_same_config(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    suspended: list[str] = []
+    resumed: list[str] = []
+    service = AwgFallbackService(
+        store,
+        provision=lambda n: f"[Interface]\n# {n}\nPrivateKey = SAME\n",
+        deprovision=lambda n: True,
+        suspend=lambda n: suspended.append(n) or True,
+        resume=lambda n: resumed.append(n) or True,
+    )
+    original = service.issue(808)["config"]
+
+    assert service.suspend(808) is True
+    assert store.awg_get_peer(808)["status"] == "suspended"
+    assert suspended == ["sub-808"]
+
+    restored = service.issue(808, remnawave_uuid="renewed")
+    assert restored["config"] == original
+    assert restored["reused"] is True
+    assert restored["resumed"] is True
+    assert resumed == ["sub-808"]
+    assert store.awg_get_peer(808)["status"] == "active"
+
+
+def test_reconcile_matches_remnawave_entitlements(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    suspended: list[str] = []
+    resumed: list[str] = []
+    service = AwgFallbackService(
+        store,
+        provision=lambda n: f"[Interface]\n# {n}\n",
+        deprovision=lambda n: True,
+        suspend=lambda n: suspended.append(n) or True,
+        resume=lambda n: resumed.append(n) or True,
+    )
+    service.issue(1)
+    service.issue(2)
+    service.suspend(2)
+    suspended.clear()
+
+    class Entitlements:
+        @staticmethod
+        def active_user(telegram_id: int):
+            return {"uuid": "active"} if telegram_id == 2 else None
+
+    result = reconcile_awg_peers(store, Entitlements(), service)
+    assert result == {
+        "checked": 2,
+        "suspended": 1,
+        "resumed": 1,
+        "unchanged": 0,
+        "errors": [],
+    }
+    assert suspended == ["sub-1"]
+    assert resumed == ["sub-2"]
+    assert store.awg_get_peer(1)["status"] == "suspended"
+    assert store.awg_get_peer(2)["status"] == "active"
+
+
+def test_reconcile_circuit_breaker_skips_mass_suspend_on_panel_outage(tmp_path: Path) -> None:
+    # Panel 404 / wrong URL / schema drift makes active_user() None for everyone.
+    # The reconcile pass must NOT suspend every paying customer.
+    store = _store(tmp_path)
+    suspended: list[str] = []
+    service = AwgFallbackService(
+        store,
+        provision=lambda n: f"[Interface]\n# {n}\n",
+        deprovision=lambda n: True,
+        suspend=lambda n: suspended.append(n) or True,
+        resume=lambda n: True,
+    )
+    for tid in (1, 2, 3):
+        service.issue(tid)  # all active
+
+    class DeadPanel:
+        @staticmethod
+        def active_user(telegram_id: int):
+            return None  # panel confirms nobody -> looks like an outage, not mass expiry
+
+    result = reconcile_awg_peers(store, DeadPanel(), service)
+    assert result["checked"] == 3
+    assert result["suspended"] == 0  # circuit breaker held
+    assert suspended == []
+    assert result["errors"]  # recorded why it skipped
+    for tid in (1, 2, 3):
+        assert store.awg_get_peer(tid)["status"] == "active"  # untouched
+
+
+def test_config_stored_encrypted_at_rest(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    service = AwgFallbackService(
+        store, provision=lambda n: "SECRET-PRIVATE-KEY", deprovision=lambda n: True
+    )
+    service.issue(111)
+    raw = (tmp_path / "state.db").read_bytes()
+    assert b"SECRET-PRIVATE-KEY" not in raw  # Fernet-encrypted, not plaintext

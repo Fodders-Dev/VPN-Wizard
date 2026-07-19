@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Как подключиться · Fodder VPN</title>
+<style>
+  :root{
+    --ink:#101a3c; --ink-soft:#36406b; --muted:#5b6690;
+    --glass:rgba(255,255,255,.62);
+    --glass-strong:rgba(255,255,255,.8);
+    --glass-chrome:rgba(255,255,255,.5);
+    --ctrl:rgba(255,255,255,.66);
+    --edge:rgba(255,255,255,.8);
+    --edge-soft:rgba(255,255,255,.55);
+    --go1:#10c48a; --go2:#0bb6c6; --on-go:#04150f;
+    --accent:#4b5cff;
+    --warn-ink:#8a5a12; --warn-bg:rgba(255,196,92,.24); --warn-edge:rgba(212,150,40,.42);
+    --shadow:0 1px 1px rgba(16,26,60,.05), 0 14px 34px rgba(16,26,60,.13);
+    --sheen: inset 0 1px 0 rgba(255,255,255,.7);
+    --radius:1.5rem;
+    --frost: saturate(150%) blur(12px);
+    --sans:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"SF Pro Text",Roboto,sans-serif;
+    --mono:"SF Mono","Cascadia Mono",Consolas,ui-monospace,monospace;
+    --b1:#7aa8ff; --b2:#b98cff; --b3:#5fe6cf; --b4:#ff92c2; --base-a:#eaf1ff; --base-b:#f3edff;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --ink:#eef1fb; --ink-soft:#c2cae6; --muted:#95a0c8;
+      --glass:rgba(24,31,58,.56); --glass-strong:rgba(28,36,66,.72); --glass-chrome:rgba(30,38,70,.46); --ctrl:rgba(40,49,84,.6);
+      --edge:rgba(255,255,255,.2); --edge-soft:rgba(255,255,255,.1);
+      --warn-ink:#f0c070; --warn-bg:rgba(224,169,85,.15); --warn-edge:rgba(224,169,85,.32);
+      --shadow:0 1px 1px rgba(0,0,0,.3), 0 18px 40px rgba(0,0,0,.5);
+      --sheen: inset 0 1px 0 rgba(255,255,255,.16);
+      --b1:#2f45c9; --b2:#7a34e6; --b3:#0f9f8c; --b4:#c73f8e; --base-a:#0a0f22; --base-b:#150a26;
+    }
+  }
+  *{box-sizing:border-box}
+  html{font-size:100%}
+  body{margin:0; min-height:100dvh; color:var(--ink); font-family:var(--sans);
+    font-size:1.0625rem; line-height:1.55; -webkit-font-smoothing:antialiased;
+    padding:max(1rem,env(safe-area-inset-top)) 1rem calc(2.5rem + env(safe-area-inset-bottom));
+    background:
+      radial-gradient(60vw 60vw at 12% 6%, color-mix(in srgb,var(--b1),transparent 42%), transparent 62%),
+      radial-gradient(56vw 56vw at 94% 12%, color-mix(in srgb,var(--b2),transparent 44%), transparent 62%),
+      radial-gradient(66vw 66vw at 6% 98%, color-mix(in srgb,var(--b3),transparent 42%), transparent 64%),
+      radial-gradient(46vw 46vw at 92% 94%, color-mix(in srgb,var(--b4),transparent 52%), transparent 62%),
+      linear-gradient(160deg,var(--base-a),var(--base-b));
+    background-attachment:fixed;}
+  .wrap{max-width:29rem; margin:0 auto}
+
+  header{text-align:center; padding:.5rem .25rem .25rem}
+  .logo{display:inline-flex; align-items:center; gap:.55rem; font-weight:700; font-size:.94rem; letter-spacing:.02em}
+  .logo .mark{width:2rem;height:2rem;border-radius:.66rem;background:linear-gradient(150deg,var(--go1),var(--accent));display:grid;place-items:center;color:#fff;font-size:1rem;box-shadow:var(--sheen), 0 6px 16px rgba(75,92,255,.35)}
+  h1{font-size:clamp(1.5rem,6.2vw,1.85rem); line-height:1.12; margin:1rem 0 .35rem; letter-spacing:-.02em; text-wrap:balance}
+  .sub{color:var(--ink-soft); margin:0 auto; max-width:34ch; font-size:.98rem}
+
+  /* only a few large panels use backdrop-filter; they stay legible even without it */
+  .glass{background:var(--glass); border:1px solid var(--edge); border-radius:var(--radius);
+    box-shadow:var(--sheen), var(--shadow); contain:layout style paint}
+  @supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+    .glass, .seg{-webkit-backdrop-filter:var(--frost); backdrop-filter:var(--frost)}
+    :root{--glass:rgba(255,255,255,.5); --glass-chrome:rgba(255,255,255,.4)}
+    @media (prefers-color-scheme:dark){:root{--glass:rgba(24,31,58,.46); --glass-chrome:rgba(30,38,70,.36)}}
+  }
+
+  .seg{display:flex; gap:.3rem; padding:.32rem; margin:1.25rem 0 .4rem; position:sticky; top:.5rem; z-index:5;
+    background:var(--glass-chrome); border:1px solid var(--edge); border-radius:1.05rem; box-shadow:var(--sheen), var(--shadow)}
+  .seg button{flex:1; appearance:none; border:0; background:transparent; color:var(--ink-soft); font-family:inherit; font-size:.94rem; font-weight:600; padding:.7rem .5rem; border-radius:.78rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:.45rem; transition:color .15s}
+  .seg button[aria-selected="true"]{background:var(--glass-strong); color:var(--ink); box-shadow:var(--sheen), 0 2px 8px rgba(16,26,60,.14)}
+  .seg button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  .steps{display:flex; flex-direction:column; gap:.9rem; margin-top:.9rem}
+  .step{padding:1.15rem 1rem 1rem; display:grid; grid-template-columns:2.1rem 1fr; gap:.1rem .8rem}
+  .num{grid-row:1/3; width:2.1rem;height:2.1rem;border-radius:50%; background:linear-gradient(150deg,var(--go1),var(--go2)); color:var(--on-go); font-weight:800; display:grid; place-items:center; font-variant-numeric:tabular-nums; box-shadow:var(--sheen), 0 4px 12px rgba(11,182,198,.35)}
+  .step h2{grid-column:2; margin:.28rem 0 0; font-size:1.1rem; letter-spacing:-.01em}
+  .step .body{grid-column:2; color:var(--ink-soft); font-size:.97rem; margin-top:.3rem}
+  .step .body p{margin:0 0 .55rem} .step .body p:last-child{margin-bottom:0}
+  .platform{display:none} .platform.on{display:block}
+  b{color:var(--ink)}
+
+  .btn{display:flex; align-items:center; justify-content:center; gap:.55rem; width:100%; text-decoration:none; text-align:center;
+    font-family:inherit; font-size:1.02rem; font-weight:650; padding:.95rem 1rem; border-radius:.92rem; border:1px solid transparent; cursor:pointer; margin-top:.7rem; -webkit-tap-highlight-color:transparent; transition:transform .08s}
+  .btn:active{transform:scale(.985)}
+  .btn-go{background:linear-gradient(150deg,var(--go1),var(--go2)); color:var(--on-go); border-color:rgba(255,255,255,.4); box-shadow:var(--sheen), 0 8px 22px rgba(11,182,198,.4)}
+  .btn-out{background:var(--ctrl); color:var(--ink); border-color:var(--edge); box-shadow:var(--sheen)}
+  .btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .btn[hidden]{display:none}
+
+  .applist{display:grid; grid-template-columns:1fr 1fr; gap:.5rem; margin-top:.7rem}
+  .applist a{display:flex; align-items:center; justify-content:center; text-decoration:none; font-weight:600; font-size:.9rem; padding:.7rem .5rem; border-radius:.78rem; border:1px solid var(--edge-soft); background:var(--ctrl); color:var(--ink); box-shadow:var(--sheen)}
+  .applist a:active{transform:scale(.98)}
+
+  .callout{margin-top:.7rem; background:var(--warn-bg); border:1px solid var(--warn-edge); border-radius:.85rem; padding:.75rem .8rem; font-size:.9rem}
+  .callout b{color:var(--warn-ink)}
+  .tip{margin-top:.6rem; font-size:.87rem; color:var(--muted)}
+
+  .pastebox{margin-top:.7rem}
+  .pastebox label{display:block; font-size:.85rem; color:var(--muted); margin-bottom:.35rem}
+  .pastebox input{width:100%; font-family:var(--mono); font-size:.85rem; padding:.75rem .8rem; border-radius:.78rem; border:1px solid var(--edge); background:var(--glass-strong); color:var(--ink)}
+  .pastebox input:focus{outline:2px solid var(--accent); outline-offset:1px}
+  .linkline{margin-top:.55rem; display:flex; gap:.5rem; align-items:center}
+  .linkline code{flex:1; font-family:var(--mono); font-size:.78rem; color:var(--muted); background:var(--ctrl); border:1px solid var(--edge-soft); border-radius:.6rem; padding:.55rem .6rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; overflow-wrap:anywhere}
+  .copybtn{flex:none; font-family:inherit; font-size:.82rem; font-weight:600; border:1px solid var(--edge); background:var(--glass-strong); color:var(--ink); border-radius:.6rem; padding:.55rem .75rem; cursor:pointer}
+  .copybtn:active{transform:scale(.97)}
+
+  .help{margin-top:1.35rem; padding:1rem}
+  .help h3{margin:0 0 .35rem; font-size:1rem}
+  .help p{margin:0; font-size:.95rem; color:var(--ink-soft)}
+  footer{margin-top:1.5rem; text-align:center; color:var(--muted); font-size:.8rem; line-height:1.6}
+  footer .dot{opacity:.5; margin:0 .35rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <span class="logo"><span class="mark" aria-hidden="true">🛡</span> Fodder VPN</span>
+    <h1>Подключение за 3 шага</h1>
+    <p class="sub">Спокойный и быстрый интернет без блокировок. Российские сайты и банки работают как обычно.</p>
+  </header>
+
+  <div class="seg" role="tablist" aria-label="Выберите телефон">
+    <button id="tab-ios" role="tab" aria-selected="true" aria-controls="p-ios">🍎 iPhone</button>
+    <button id="tab-android" role="tab" aria-selected="false" aria-controls="p-android">🤖 Android</button>
+  </div>
+
+  <div class="steps">
+
+    <section class="step glass">
+      <div class="num">1</div>
+      <h2>Установите приложение</h2>
+      <div class="body">
+        <div class="platform on" id="p-ios" role="tabpanel" aria-labelledby="tab-ios">
+          <p>На iPhone нужен один из клиентов: <b>Hiddify</b>, <b>Happ</b>, <b>Streisand</b> или <b>v2RayTun</b>. Найдите любой из них в App Store.</p>
+          <a class="btn btn-out" href="https://apps.apple.com/search?term=hiddify" target="_blank" rel="noopener">Открыть App Store →</a>
+          <div class="callout">
+            <b>Не находится в App Store?</b> Apple убрала часть VPN-приложений из российского App Store. Тогда нужен Apple ID другой страны — напишите тому, кто дал вам ссылку, поможем за пару минут.
+          </div>
+        </div>
+        <div class="platform" id="p-android" role="tabpanel" aria-labelledby="tab-android">
+          <p>На Android поставьте <b>Hiddify</b> (или <b>Happ</b> / <b>v2rayNG</b>) из Google Play или RuStore. Если магазин недоступен — попросите у нас файл приложения (APK).</p>
+          <a class="btn btn-out" href="https://play.google.com/store/search?q=hiddify&c=apps" target="_blank" rel="noopener">Открыть Google Play →</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="step glass">
+      <div class="num">2</div>
+      <h2>Добавьте свой профиль</h2>
+      <div class="body">
+        <div id="have-link" hidden>
+          <p>Нажмите — профиль сам добавится в приложение:</p>
+          <a class="btn btn-go" id="open-profile" href="#">Открыть мой профиль</a>
+          <div class="applist" id="applist">
+            <a id="imp-hiddify" href="#">Hiddify</a>
+            <a id="imp-happ" href="#">Happ</a>
+            <a id="imp-v2raytun" href="#">v2RayTun</a>
+            <a id="imp-streisand" href="#">Streisand</a>
+          </div>
+          <div class="linkline">
+            <code id="link-text"></code>
+            <button class="copybtn" id="copy">Копировать</button>
+          </div>
+          <p class="tip">Если кнопки не сработали — скопируйте ссылку и вставьте в приложении: «Добавить подписку из буфера».</p>
+        </div>
+        <div id="no-link">
+          <p>Персональную ссылку вам пришлёт тот, кто пригласил. Откройте её <b>на этом телефоне</b> — или вставьте сюда:</p>
+          <div class="pastebox">
+            <label for="sub-input">Ваша ссылка-подписка</label>
+            <input id="sub-input" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://…">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="step glass">
+      <div class="num">3</div>
+      <h2>Нажмите «Подключить»</h2>
+      <div class="body">
+        <p>Откройте приложение и нажмите большую кнопку включения. Значок VPN вверху экрана — значит всё работает. 🎉</p>
+        <p class="tip">Первый раз телефон спросит разрешение на VPN — согласитесь.</p>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="help glass">
+    <h3>Что-то не получается?</h3>
+    <p>Напишите тому, кто дал вам эту ссылку — поможем подключиться. Это займёт пару минут.</p>
+  </div>
+
+  <footer>
+    Fodder VPN<span class="dot">·</span>без рекламы и лимитов<span class="dot">·</span>работает, пока активна подписка
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var $=function(id){return document.getElementById(id);};
+  var tabs={ios:$("tab-ios"),android:$("tab-android")};
+  var panels={ios:$("p-ios"),android:$("p-android")};
+  function select(p){for(var k in tabs){var on=k===p;tabs[k].setAttribute("aria-selected",on?"true":"false");panels[k].classList.toggle("on",on);}}
+  tabs.ios.addEventListener("click",function(){select("ios");});
+  tabs.android.addEventListener("click",function(){select("android");});
+  var ua=navigator.userAgent||"";
+  if(/android/i.test(ua)) select("android"); else select("ios");
+
+  function getSub(){
+    try{
+      var p=new URLSearchParams(location.search);
+      var s=(p.get("sub")||p.get("url")||"").trim();
+      if(!s && location.hash.indexOf("sub=")>=0){ s=decodeURIComponent(location.hash.split("sub=")[1].split("&")[0]); }
+      return s;
+    }catch(e){return "";}
+  }
+  function isHttp(u){return /^https?:\/\//i.test(u);}
+  function wire(sub){
+    if(!isHttp(sub)) return false;
+    $("have-link").hidden=false; $("no-link").hidden=true;
+    $("open-profile").href=sub;
+    $("imp-hiddify").href="hiddify://import/"+sub;
+    $("imp-happ").href="happ://add/"+sub;
+    $("imp-v2raytun").href="v2raytun://import/"+sub;
+    $("imp-streisand").href="streisand://import/"+sub;
+    $("link-text").textContent=sub; return true;
+  }
+  $("copy").addEventListener("click",function(){
+    var t=$("link-text").textContent;
+    var done=function(){var b=$("copy");b.textContent="Готово";setTimeout(function(){b.textContent="Копировать";},1500);};
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done,done);}
+    else{try{var r=document.createRange();r.selectNode($("link-text"));var s=getSelection();s.removeAllRanges();s.addRange(r);document.execCommand("copy");s.removeAllRanges();done();}catch(e){}}
+  });
+  $("sub-input").addEventListener("input",function(e){var v=(e.target.value||"").trim();if(isHttp(v))wire(v);});
+  var initial=getSub(); if(initial) wire(initial);
+})();
+</script>
+</body>
+</html>

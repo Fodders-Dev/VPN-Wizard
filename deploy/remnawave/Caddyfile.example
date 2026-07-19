@@ -1,0 +1,26 @@
+# Fodder VPN 2 — Caddy reverse proxy for the Remnawave panel host.
+# Caddy fetches TLS certs automatically. Point both A-records at this VPS first.
+# Install Caddy, drop this at /etc/caddy/Caddyfile (edit the two domains), then:
+#   sudo systemctl reload caddy
+#
+# Same style as the existing deploy/vpn-wizard.Caddyfile in this repo.
+
+# Admin panel UI  (matches PANEL_DOMAIN in panel.env)
+panel.example.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3000
+}
+
+# Client-facing subscription page  (matches SUB_PUBLIC_DOMAIN in panel.env)
+sub.example.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3010
+}
+
+# If you add a blanket hidden-file deny rule, explicitly allow Remnawave's
+# authenticated runtime config:
+#
+# @hidden {
+# 	path_regexp hidden (^|/)\.
+# 	not path /assets/.app-config-v2.json
+# }

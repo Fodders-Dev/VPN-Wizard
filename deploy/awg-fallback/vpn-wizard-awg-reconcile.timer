@@ -1,0 +1,12 @@
+[Unit]
+Description=Reconcile Fodder VPN AmneziaWG access every two minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+RandomizedDelaySec=15s
+Persistent=true
+Unit=vpn-wizard-awg-reconcile.service
+
+[Install]
+WantedBy=timers.target

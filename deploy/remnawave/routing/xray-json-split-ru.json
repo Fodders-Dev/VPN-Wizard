@@ -1,0 +1,118 @@
+{
+    "dns": {
+        "servers": [
+            "1.1.1.1",
+            "1.0.0.1"
+        ]
+    },
+    "routing": {
+        "domainStrategy": "IPIfNonMatch",
+        "rules": [
+            {
+                "protocol": ["bittorrent"],
+                "outboundTag": "direct"
+            },
+            {
+                "ip": ["geoip:private"],
+                "outboundTag": "direct"
+            },
+            {
+                "domain": ["geosite:private"],
+                "outboundTag": "direct"
+            },
+            {
+                "domain": [
+                    "domain:gosuslugi.ru",
+                    "domain:mos.ru",
+                    "domain:mosreg.ru",
+                    "domain:gov.ru",
+                    "domain:nalog.ru",
+                    "domain:nalog.gov.ru",
+                    "domain:pfr.gov.ru",
+                    "domain:sberbank.ru",
+                    "domain:sber.ru",
+                    "domain:sberbank.com",
+                    "domain:vtb.ru",
+                    "domain:tinkoff.ru",
+                    "domain:tbank.ru",
+                    "domain:alfabank.ru",
+                    "domain:gazprombank.ru",
+                    "domain:raiffeisen.ru",
+                    "domain:open.ru",
+                    "domain:psbank.ru",
+                    "domain:rshb.ru",
+                    "domain:mkb.ru",
+                    "domain:sovcombank.ru",
+                    "domain:nspk.ru",
+                    "domain:mironline.ru",
+                    "domain:ozon.ru",
+                    "domain:wildberries.ru",
+                    "domain:wb.ru",
+                    "domain:megamarket.ru",
+                    "domain:avito.ru",
+                    "domain:hh.ru",
+                    "domain:drom.ru",
+                    "domain:2gis.ru",
+                    "domain:2gis.com",
+                    "domain:kinopoisk.ru",
+                    "domain:yandex.ru",
+                    "domain:ya.ru",
+                    "domain:yandex.net",
+                    "domain:dzen.ru",
+                    "domain:vk.com",
+                    "domain:vk.ru",
+                    "domain:userapi.com",
+                    "domain:vk-cdn.net",
+                    "domain:mail.ru",
+                    "domain:rutube.ru",
+                    "domain:rt.ru",
+                    "domain:mts.ru",
+                    "domain:beeline.ru",
+                    "domain:megafon.ru",
+                    "domain:tele2.ru",
+                    "domain:gismeteo.ru"
+                ],
+                "outboundTag": "direct"
+            },
+            {
+                "ip": ["geoip:ru"],
+                "outboundTag": "direct"
+            }
+        ]
+    },
+    "inbounds": [
+        {
+            "tag": "socks",
+            "port": 10808,
+            "listen": "127.0.0.1",
+            "protocol": "socks",
+            "settings": {
+                "udp": true
+            },
+            "sniffing": {
+                "enabled": true,
+                "destOverride": ["http", "tls", "quic"]
+            }
+        },
+        {
+            "tag": "http",
+            "port": 10809,
+            "listen": "127.0.0.1",
+            "protocol": "http",
+            "sniffing": {
+                "enabled": true,
+                "destOverride": ["http", "tls", "quic"]
+            }
+        }
+    ],
+    "outbounds": [
+        {
+            "tag": "direct",
+            "protocol": "freedom"
+        },
+        {
+            "tag": "block",
+            "protocol": "blackhole"
+        }
+    ]
+}

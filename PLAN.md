@@ -12,5 +12,10 @@
 - [x] Add anti-block proxy mode (ShadowTLS + SS2022 via sing-box) as primary
 - [x] Keep legacy proxy mode (VLESS Reality via Xray) as fallback
 - [x] Redact secrets in SSH progress logs (multiline commands / x25519 -i)
+- [x] Preserve Fodders VPN 1 inside the managed Bedolaga subscription bot
+- [x] Tie managed AmneziaWG peers to Remnawave expiry with suspend/resume
+- [x] Add webhook plus periodic entitlement reconciliation for AmneziaWG
+- [x] Publish NL/FI/TR/US as selectable nodes in one subscription
+- [x] Enable Telegram Stars billing without giving Remnawave payment custody
 
-Next: Добавить e2e-тесты miniapp сценариев для ShadowTLS multi-port failover (auto URL import в Hiddify + проверка переключения VPN/System proxy).
+Next: Провести финальный мобильный e2e: импорт AmneziaWG, подключение к NL/FI/TR/US и одна реальная покупка Telegram Stars с проверкой продления.

@@ -8,13 +8,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_miniapp_uses_canonical_api_fallback_and_test_hooks() -> None:
     js = (ROOT / "web" / "miniapp" / "app.js").read_text(encoding="utf-8")
-    assert 'const CANONICAL_API_BASE = "https://vpn-wizard-production.up.railway.app";' in js
+    assert 'const CANONICAL_API_BASE = "https://212-69-84-167.nip.io";' in js
     assert "function resolveApiBaseFrom" in js
     assert "window.__VPNW_TEST__" in js
     config_js = (ROOT / "web" / "miniapp" / "config.js").read_text(encoding="utf-8")
     assert "vercel" in config_js
     assert "window.location.hostname" in config_js
-    assert 'window.API_BASE = "https://vpn-wizard-production.up.railway.app";' in config_js
+    assert 'window.API_BASE = "https://212-69-84-167.nip.io";' in config_js
 
 
 def test_miniapp_shell_is_single_flow_and_has_diagnostics_panel() -> None:

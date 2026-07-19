@@ -1,0 +1,31 @@
+# Fodder VPN 2 — Remnawave node. Runs on EACH VPS that carries traffic
+# (including your existing VPS). Pinned from upstream on 2026-07-16:
+#   https://raw.githubusercontent.com/remnawave/node/main/docker-compose-prod.yml
+#
+# SECRET_KEY is issued by the PANEL when you add this node in the dashboard
+# (Nodes → Create node). Copy the value the panel shows into SECRET_KEY below.
+# See README.md in this folder.
+#
+# Uses host networking + NET_ADMIN so Xray can bind the inbound ports directly.
+
+services:
+  remnanode:
+    image: remnawave/node:latest
+    container_name: remnanode
+    hostname: remnanode
+    network_mode: host
+    restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    cap_add:
+      - NET_ADMIN
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+    environment:
+      - NODE_PORT=2222
+      - SECRET_KEY=PASTE_SECRET_KEY_FROM_PANEL   # <<< SET (from panel → Nodes)

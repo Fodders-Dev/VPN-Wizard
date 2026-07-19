@@ -36,8 +36,18 @@ from vpn_wizard.account import (
     verify_telegram_webapp_init_data,
 )
 from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
+from vpn_wizard.awg_fallback import AwgFallbackConfig, AwgFallbackService, verify_issue_token
 from vpn_wizard.proxy import ProxyProvisioner, rewrite_vless_alternatives, rewrite_vless_endpoint
 from vpn_wizard.relay import RelayProvisioner
+from vpn_wizard.remnawave import (
+    RemnawaveClient,
+    RemnawaveConfig,
+    RemnawaveError,
+    event_action,
+    parse_event,
+    telegram_id_of,
+    verify_webhook_signature,
+)
 from vpn_wizard.shadowtls import ShadowTLSSSProvisioner
 from vpn_wizard.urls import resolve_public_miniapp_url
 
@@ -856,11 +866,11 @@ def _account_store():
 
 
 def _browser_login_enabled() -> bool:
-    return bool((os.getenv("VPNW_BOT_TOKEN") or "").strip() and (os.getenv("VPNW_BOT_USERNAME") or "").strip())
+    return bool(_telegram_bot_token(required=False) and (os.getenv("VPNW_BOT_USERNAME") or "").strip())
 
 
 def _miniapp_login_enabled() -> bool:
-    return bool((os.getenv("VPNW_BOT_TOKEN") or "").strip())
+    return bool(_telegram_bot_token(required=False))
 
 
 def _telegram_bot_username() -> Optional[str]:
@@ -1005,9 +1015,11 @@ def api_version() -> Response:
     return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
 
-def _telegram_bot_token() -> str:
-    token = (os.getenv("VPNW_BOT_TOKEN") or "").strip()
-    if not token:
+def _telegram_bot_token(*, required: bool = True) -> str:
+    # A combined deployment may hand polling to another process while this API
+    # still validates Telegram Login Widget and Mini App initData signatures.
+    token = (os.getenv("VPNW_TELEGRAM_AUTH_TOKEN") or os.getenv("VPNW_BOT_TOKEN") or "").strip()
+    if not token and required:
         raise HTTPException(status_code=503, detail="Telegram auth is not configured.")
     return token
 
@@ -2580,11 +2592,99 @@ async def run_repair(payload: RollbackRequest, background_tasks: BackgroundTasks
     return JobCreateResponse(job_id=job.job_id)
 
 
+# --- AmneziaWG fallback (tied to a Remnawave subscription) -----------------
+
+
+def _awg_service() -> AwgFallbackService:
+    return AwgFallbackService(build_account_store(), AwgFallbackConfig.from_env())
+
+
+def _awg_issue_config(telegram_id: int, token: str) -> str:
+    """Verify the link token + active subscription, then return the AWG config."""
+    awg_cfg = AwgFallbackConfig.from_env()
+    if not awg_cfg.configured:
+        raise HTTPException(status_code=503, detail="AWG fallback is not configured.")
+    if not verify_issue_token(awg_cfg.link_secret, telegram_id, token):
+        raise HTTPException(status_code=403, detail="Invalid or missing token.")
+    try:
+        user = RemnawaveClient(RemnawaveConfig.from_env()).active_user(telegram_id)
+    except RemnawaveError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    if not user:
+        raise HTTPException(status_code=403, detail="No active subscription.")
+    try:
+        result = _awg_service().issue(telegram_id, remnawave_uuid=user.get("uuid"))
+    except Exception as exc:  # provisioning/SSH failure
+        raise HTTPException(status_code=502, detail=f"AWG provisioning failed: {_error_message(exc)}") from exc
+    return result["config"]
+
+
+@app.post("/api/integrations/remnawave/webhook")
+async def remnawave_webhook(request: Request) -> JSONResponse:
+    cfg = RemnawaveConfig.from_env()
+    raw = await request.body()
+    signature = request.headers.get("x-remnawave-signature")
+    if not verify_webhook_signature(cfg.webhook_secret, raw, signature):
+        raise HTTPException(status_code=401, detail="Invalid signature.")
+    try:
+        event, user = parse_event(raw)
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise HTTPException(status_code=400, detail="Malformed payload.") from exc
+    action = event_action(event)
+    telegram_id = telegram_id_of(user)
+    # Keep the peer keys/config on disk. Disabling only removes its public key from
+    # the live interface; enabling restores the same key so imported configs recover.
+    if action in {"disable", "enable"} and telegram_id is not None:
+        try:
+            service = _awg_service()
+            if action == "disable":
+                service.suspend(telegram_id)
+            else:
+                service.resume(telegram_id)
+        except Exception as exc:
+            logger.warning(
+                "awg.webhook.sync_failed action=%s tid=%s err=%s",
+                action,
+                telegram_id,
+                _error_message(exc),
+            )
+    return JSONResponse({"ok": True, "event": event, "action": action})
+
+
+@app.get("/api/awg/{telegram_id}/config")
+async def awg_config(telegram_id: int, token: str) -> Response:
+    config_text = _awg_issue_config(telegram_id, token)
+    # The body carries a private key: never let a proxy/browser/link-preview cache it.
+    return Response(
+        content=config_text,
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="fodder-awg-{telegram_id}.conf"',
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
+        },
+    )
+
+
+@app.get("/api/awg/{telegram_id}/qr")
+async def awg_qr(telegram_id: int, token: str) -> Response:
+    config_text = _awg_issue_config(telegram_id, token)
+    return Response(
+        content=_build_qr_png(config_text),
+        media_type="image/png",
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
+
+
 def _mount_miniapp() -> None:
     root = Path(__file__).resolve().parents[2]
     miniapp_dir = root / "web" / "miniapp"
     if miniapp_dir.exists():
         app.mount("/miniapp", StaticFiles(directory=str(miniapp_dir), html=True), name="miniapp")
+    # Public "how to connect" page — reachable without Telegram, safe to send to new users.
+    connect_dir = root / "web" / "connect"
+    if connect_dir.exists():
+        app.mount("/connect", StaticFiles(directory=str(connect_dir), html=True), name="connect")
 
 
 _mount_miniapp()

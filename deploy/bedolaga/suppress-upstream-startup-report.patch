@@ -1,0 +1,14 @@
+diff --git a/main.py b/main.py
+--- a/main.py
++++ b/main.py
+@@ -761,8 +761,1 @@ async def main() -> None:
+-        # Отправляем стартовое уведомление в админский чат
+-        try:
+-            from app.services.startup_notification_service import send_bot_startup_notification
+-
+-            await send_bot_startup_notification(bot)
+-        except Exception as startup_notify_error:
+-            logger.warning('Не удалось отправить стартовое уведомление', startup_notify_error=startup_notify_error)
+-
++        logger.info('Стартовый технический отчёт отключён для Fodder VPN')
+ 

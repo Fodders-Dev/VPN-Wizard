@@ -149,3 +149,49 @@ def test_list_clients_includes_file_timestamps() -> None:
     assert clients[0]["name"] == "alice"
     assert clients[0]["created_at"] == 1710000000
     assert clients[0]["updated_at"] == 1710001234
+
+
+def test_suspend_client_retains_keys_and_rebuilds_interface() -> None:
+    ssh = FakeSSH(
+        {
+            "/etc/amnezia/amneziawg/awg0.conf": "yes",
+            "/etc/wireguard/wg0.conf": "no",
+            "/etc/amnezia/amneziawg/clients/sub-42.conf &&": "yes",
+        }
+    )
+    prov = WireGuardProvisioner(ssh)
+    assert prov.suspend_client("sub-42") is True
+    assert _has_command(
+        ssh.commands,
+        "mv /etc/amnezia/amneziawg/clients/sub-42.conf "
+        "/etc/amnezia/amneziawg/clients/sub-42.conf.suspended",
+    )
+    assert not _has_command(ssh.commands, "rm -f")
+    assert _has_command(ssh.commands, "systemctl restart awg-quick@awg0")
+
+
+def test_resume_client_restores_same_config_file() -> None:
+    ssh = FakeSSH(
+        {
+            "/etc/amnezia/amneziawg/awg0.conf": "yes",
+            "/etc/wireguard/wg0.conf": "no",
+            "/etc/amnezia/amneziawg/clients/sub-42.conf &&": "no",
+            "/etc/amnezia/amneziawg/clients_tyumen/sub-42.conf &&": "no",
+            "/etc/amnezia/amneziawg/clients/sub-42.conf.suspended &&": "yes",
+        }
+    )
+    prov = WireGuardProvisioner(ssh)
+    assert prov.resume_client("sub-42") is True
+    assert _has_command(
+        ssh.commands,
+        "mv /etc/amnezia/amneziawg/clients/sub-42.conf.suspended "
+        "/etc/amnezia/amneziawg/clients/sub-42.conf",
+    )
+    assert _has_command(ssh.commands, "systemctl restart awg-quick@awg0")
+
+
+def test_next_client_ip_reserves_addresses_of_suspended_peers() -> None:
+    ssh = FakeSSH({"*.conf.suspended": "10.10.0.2\n10.10.0.3\n"})
+    prov = WireGuardProvisioner(ssh)
+    assert prov.next_client_ip() == "10.10.0.4/32"
+    assert _has_command(ssh.commands, "/clients/*.conf.suspended")

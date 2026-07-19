@@ -1,0 +1,31 @@
+diff --git a/src/vpn_wizard/server.py b/src/vpn_wizard/server.py
+--- a/src/vpn_wizard/server.py
++++ b/src/vpn_wizard/server.py
+@@ -856,11 +856,11 @@ def _account_store():
+ 
+ 
+ def _browser_login_enabled() -> bool:
+-    return bool((os.getenv("VPNW_BOT_TOKEN") or "").strip() and (os.getenv("VPNW_BOT_USERNAME") or "").strip())
++    return bool(_telegram_bot_token(required=False) and (os.getenv("VPNW_BOT_USERNAME") or "").strip())
+ 
+ 
+ def _miniapp_login_enabled() -> bool:
+-    return bool((os.getenv("VPNW_BOT_TOKEN") or "").strip())
++    return bool(_telegram_bot_token(required=False))
+ 
+ 
+ def _telegram_bot_username() -> Optional[str]:
+@@ -1005,8 +1005,10 @@ def version() -> JSONResponse:
+     return JSONResponse(payload, headers={"Cache-Control": "no-store"})
+ 
+ 
+-def _telegram_bot_token() -> str:
+-    token = (os.getenv("VPNW_BOT_TOKEN") or "").strip()
+-    if not token:
++def _telegram_bot_token(*, required: bool = True) -> str:
++    # Polling may be owned by the storefront bot while this API still needs the
++    # same secret to validate Telegram Login Widget and Mini App signatures.
++    token = (os.getenv("VPNW_TELEGRAM_AUTH_TOKEN") or os.getenv("VPNW_BOT_TOKEN") or "").strip()
++    if not token and required:
+         raise HTTPException(status_code=503, detail="Telegram auth is not configured.")
+     return token

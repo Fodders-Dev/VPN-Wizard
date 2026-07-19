@@ -58,6 +58,7 @@ def test_build_singbox_client_config_contains_shadowtls_and_ss_chain() -> None:
             handshake_sni="www.microsoft.com",
             server_password="SERVERPASS",
             user_password="USER1",
+            include_tun=True,
         )
     )
     outbounds = cfg.get("outbounds") or []

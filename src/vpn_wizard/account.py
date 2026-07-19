@@ -126,6 +126,16 @@ class AccountStore:
 
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_saved_servers_identity
                     ON saved_servers(user_id, host, ssh_user, ssh_port, COALESCE(mode, ''));
+
+                CREATE TABLE IF NOT EXISTS awg_fallback_peers (
+                    telegram_id INTEGER PRIMARY KEY,
+                    client_name TEXT NOT NULL,
+                    remnawave_uuid TEXT,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    config_enc TEXT,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );
                 """
             )
             self._ensure_saved_server_columns(conn)
@@ -559,6 +569,95 @@ class AccountStore:
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
             return self._serialize_user(row)
+
+    # --- AmneziaWG fallback peers -----------------------------------------
+    def _serialize_awg_peer(self, row: sqlite3.Row | None) -> Optional[dict[str, Any]]:
+        if row is None:
+            return None
+        return {
+            "telegram_id": int(row["telegram_id"]),
+            "client_name": row["client_name"],
+            "remnawave_uuid": row["remnawave_uuid"],
+            "status": row["status"],
+            "config": self._decrypt(row["config_enc"]),
+            "created_at": int(row["created_at"]),
+            "updated_at": int(row["updated_at"]),
+        }
+
+    def awg_get_peer(self, telegram_id: int) -> Optional[dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM awg_fallback_peers WHERE telegram_id = ?",
+                (int(telegram_id),),
+            ).fetchone()
+            return self._serialize_awg_peer(row)
+
+    def awg_list_peers(self) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM awg_fallback_peers ORDER BY telegram_id"
+            ).fetchall()
+            return [
+                peer
+                for row in rows
+                if (peer := self._serialize_awg_peer(row)) is not None
+            ]
+
+    def awg_save_peer(
+        self,
+        telegram_id: int,
+        *,
+        client_name: str,
+        remnawave_uuid: Optional[str],
+        config: Optional[str],
+        status: str = "active",
+    ) -> dict[str, Any]:
+        now = _now()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO awg_fallback_peers
+                    (telegram_id, client_name, remnawave_uuid, status, config_enc, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(telegram_id) DO UPDATE SET
+                    client_name = excluded.client_name,
+                    remnawave_uuid = excluded.remnawave_uuid,
+                    status = excluded.status,
+                    config_enc = excluded.config_enc,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    int(telegram_id),
+                    client_name,
+                    remnawave_uuid,
+                    status,
+                    self._encrypt(config),
+                    now,
+                    now,
+                ),
+            )
+            row = conn.execute(
+                "SELECT * FROM awg_fallback_peers WHERE telegram_id = ?",
+                (int(telegram_id),),
+            ).fetchone()
+        peer = self._serialize_awg_peer(row)
+        assert peer is not None
+        return peer
+
+    def awg_set_status(self, telegram_id: int, status: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE awg_fallback_peers SET status = ?, updated_at = ? WHERE telegram_id = ?",
+                (status, _now(), int(telegram_id)),
+            )
+
+    def awg_delete_peer(self, telegram_id: int) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM awg_fallback_peers WHERE telegram_id = ?",
+                (int(telegram_id),),
+            )
+            return cur.rowcount > 0
 
     def _serialize_saved_server(self, row: sqlite3.Row | None) -> dict[str, Any]:
         if row is None:

@@ -1267,7 +1267,9 @@ class WireGuardProvisioner:
             iface_name = "awg1" if use_alt_iface else "awg0"
         return {"name": name, "ip": ip, "config": config, "interface": iface_name}
 
-    def _locate_client(self, client_name: str) -> Optional[tuple[str, Callable[[], None], str]]:
+    def _locate_client_file(
+        self, client_name: str, suffix: str
+    ) -> Optional[tuple[str, Callable[[], None], str]]:
         self._auto_detect_protocol()
         if self.protocol == "amneziawg":
             candidates = [
@@ -1279,7 +1281,7 @@ class WireGuardProvisioner:
 
         for clients_dir, rebuild_cmd, iface in candidates:
             exists = self.ssh.run(
-                f"test -f {clients_dir}/{client_name}.conf && echo yes || echo no",
+                f"test -f {clients_dir}/{client_name}{suffix} && echo yes || echo no",
                 sudo=True,
                 check=False,
             ).strip()
@@ -1287,15 +1289,58 @@ class WireGuardProvisioner:
                 return clients_dir, rebuild_cmd, iface
         return None
 
-    def remove_client(self, client_name: str) -> bool:
+    def _locate_client(self, client_name: str) -> Optional[tuple[str, Callable[[], None], str]]:
+        return self._locate_client_file(client_name, ".conf")
+
+    def _locate_suspended_client(
+        self, client_name: str
+    ) -> Optional[tuple[str, Callable[[], None], str]]:
+        return self._locate_client_file(client_name, ".conf.suspended")
+
+    def suspend_client(self, client_name: str) -> bool:
+        """Disable a peer while retaining its keys and reusable client config."""
         self._validate_client_name(client_name)
         location = self._locate_client(client_name)
+        if not location:
+            return self._locate_suspended_client(client_name) is not None
+        clients_dir, rebuild_cmd, _iface = location
+        self.ssh.run(
+            f"mv {clients_dir}/{client_name}.conf "
+            f"{clients_dir}/{client_name}.conf.suspended",
+            sudo=True,
+        )
+        self.backup_config()
+        rebuild_cmd()
+        return True
+
+    def resume_client(self, client_name: str) -> bool:
+        """Restore a suspended peer without changing the user's client config."""
+        self._validate_client_name(client_name)
+        if self._locate_client(client_name):
+            return True
+        location = self._locate_suspended_client(client_name)
+        if not location:
+            return False
+        clients_dir, rebuild_cmd, _iface = location
+        self.ssh.run(
+            f"mv {clients_dir}/{client_name}.conf.suspended "
+            f"{clients_dir}/{client_name}.conf",
+            sudo=True,
+        )
+        self.backup_config()
+        rebuild_cmd()
+        return True
+
+    def remove_client(self, client_name: str) -> bool:
+        self._validate_client_name(client_name)
+        location = self._locate_client(client_name) or self._locate_suspended_client(client_name)
         if not location:
             return False
         clients_dir, rebuild_cmd, _iface = location
             
         self.ssh.run(
             f"rm -f {clients_dir}/{client_name}.conf "
+            f"{clients_dir}/{client_name}.conf.suspended "
             f"{clients_dir}/{client_name}.key "
             f"{clients_dir}/{client_name}.pub",
             sudo=True,
@@ -1441,7 +1486,8 @@ class WireGuardProvisioner:
         # Output format: "Address = 10.10.0.2/32" -> "10.10.0.2"
         # We cut by space to handle "Address = 10.10..."
         cmd = (
-            f"grep -h '^Address' {conf_dir}/*.conf 2>/dev/null "
+            f"grep -h '^Address' {conf_dir}/*.conf "
+            f"{conf_dir}/*.conf.suspended 2>/dev/null "
             "| cut -d= -f2 "
             "| tr -d ' ' "
             "| tr -d '\\r' "

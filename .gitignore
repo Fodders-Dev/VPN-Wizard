@@ -22,3 +22,14 @@ tumen-logs/
 tyumen-*.conf
 tyumen-*.png
 tmp_current_config.json
+
+# Real client profiles / secrets / operational artifacts — NEVER commit (repo is PUBLIC).
+# These are third parties' private keys and DB dumps; keep them out of git entirely.
+/*.conf
+*-usa.conf
+*-planb.conf
+planb-profiles/
+planb-profiles.zip
+backups/
+output/
+.playwright-cli/

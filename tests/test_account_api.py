@@ -66,6 +66,24 @@ def test_browser_and_miniapp_auth_endpoints_accept_valid_telegram_payloads(monke
     assert mini_response.json()["authenticated"] is True
 
 
+def test_miniapp_auth_works_without_legacy_bot_poller(monkeypatch, tmp_path) -> None:
+    _configure_env(monkeypatch, tmp_path)
+    monkeypatch.delenv("VPNW_BOT_TOKEN")
+    monkeypatch.setenv("VPNW_TELEGRAM_AUTH_TOKEN", "123456:telegram-test-token")
+    client = TestClient(server.app)
+
+    config = client.get("/api/auth/config")
+    assert config.status_code == 200
+    assert config.json()["miniapp_login_enabled"] is True
+
+    response = client.post(
+        "/api/auth/telegram/miniapp",
+        json={"init_data": _miniapp_init_data("123456:telegram-test-token")},
+    )
+    assert response.status_code == 200
+    assert response.json()["authenticated"] is True
+
+
 def test_saved_server_roundtrip_works_for_authenticated_user(monkeypatch, tmp_path) -> None:
     _configure_env(monkeypatch, tmp_path)
     client = TestClient(server.app)

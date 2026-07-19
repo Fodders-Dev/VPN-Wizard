@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+umask 077
+backup_dir=/var/backups/remnawave
+install -d -m 700 "$backup_dir"
+
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+remnawave_sql_tmp="$backup_dir/remnawave-$stamp.sql.gz.tmp"
+remnawave_sql_final="${remnawave_sql_tmp%.tmp}"
+bedolaga_sql_tmp="$backup_dir/bedolaga-$stamp.sql.gz.tmp"
+bedolaga_sql_final="${bedolaga_sql_tmp%.tmp}"
+config_tmp="$backup_dir/vpn-stack-$stamp-config.tgz.tmp"
+config_final="${config_tmp%.tmp}"
+
+cleanup() {
+    rm -f \
+        "$remnawave_sql_tmp" \
+        "$bedolaga_sql_tmp" \
+        "$config_tmp"
+}
+trap cleanup EXIT
+
+docker exec remnawave-db \
+    pg_dump -U postgres -d postgres --clean --if-exists |
+    gzip -9 > "$remnawave_sql_tmp"
+gzip -t "$remnawave_sql_tmp"
+mv "$remnawave_sql_tmp" "$remnawave_sql_final"
+
+docker exec remnawave_bot_db \
+    pg_dump -U remnawave_user -d remnawave_bot --clean --if-exists |
+    gzip -9 > "$bedolaga_sql_tmp"
+gzip -t "$bedolaga_sql_tmp"
+mv "$bedolaga_sql_tmp" "$bedolaga_sql_final"
+
+config_paths=(
+    opt/remnawave/.env
+    opt/remnawave/subpage.env
+    opt/remnawave/docker-compose.yml
+    opt/remnanode/.env
+    opt/remnanode/docker-compose.yml
+    opt/bedolaga/.env
+    opt/bedolaga/README.md
+    opt/bedolaga/docker-compose.yml
+    opt/bedolaga/vpn_logo.png
+    opt/bedolaga/main.py
+    opt/bedolaga/app/handlers/fodders_vpn1.py
+    opt/bedolaga/scripts/configure_fodders_vpn1_menu.py
+    opt/bedolaga/scripts/configure_trial_tariff.py
+    opt/bedolaga/cutover-existing-bot.sh
+    opt/bedolaga/suppress-upstream-startup-report.patch
+    opt/bedolaga/migrations/alembic/versions/0021_landing_localized_texts.py
+    opt/vpn-wizard/app/src/vpn_wizard/server.py
+    opt/vpn-wizard/app/web/miniapp/index.html
+    opt/vpn-wizard/shared/state.db
+    etc/vpn-wizard.env
+    etc/systemd/system/vpn-wizard.service
+    etc/caddy/Caddyfile
+    etc/caddy/fodder-vpn-subpage.caddy
+    var/www/fodder-vpn/fodder-vpn-logo.svg
+    root/.remnawave-admin-credentials
+    root/.remnawave-service-token
+)
+
+if [[ -f /etc/caddy/fodder-vpn-bot.caddy ]]; then
+    config_paths+=(etc/caddy/fodder-vpn-bot.caddy)
+fi
+
+tar -C / -czf "$config_tmp" "${config_paths[@]}"
+mv "$config_tmp" "$config_final"
+
+find "$backup_dir" -maxdepth 1 -type f \
+    \( -name 'remnawave-*.sql.gz' -o -name 'bedolaga-*.sql.gz' -o -name 'vpn-stack-*-config.tgz' \) \
+    -mtime +7 -delete
+
+trap - EXIT
+printf 'remnawave_db=%s\nbedolaga_db=%s\nconfig=%s\n' \
+    "$remnawave_sql_final" \
+    "$bedolaga_sql_final" \
+    "$config_final"

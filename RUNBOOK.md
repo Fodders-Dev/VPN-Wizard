@@ -123,6 +123,7 @@ Client config expectations:
 - Miniapp is served at `http://<host>:8000/miniapp` when running the API server.
 - Miniapp UI calls client configs "profiles" to reduce confusion for end users.
 - Telegram miniapp requires a public HTTPS URL configured in BotFather.
+- If Telegram widget shows `Bot domain invalid`, add the exact miniapp/web domain in BotFather (/setdomain) for your bot. Domains like `*.nip.io` must match what users open in browser.
 - В Telegram WebApp скачивание конфигов/QR идет через data: ссылки (если загрузка не стартует, нажмите еще раз или используйте десктоп).
 - В расширенных полях миниаппа есть безопасный режим (только проверка/precheck) — он не меняет сервер.
 - Prefer the Railway-hosted miniapp in production so the Telegram WebApp and API share one origin.

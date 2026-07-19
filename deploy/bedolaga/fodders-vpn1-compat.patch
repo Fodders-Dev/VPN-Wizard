@@ -1,0 +1,24 @@
+diff --git a/app/bot.py b/app/bot.py
+index 805dfba..2555a51 100644
+--- a/app/bot.py
++++ b/app/bot.py
+@@ -8,8 +8,9 @@ from app.handlers import (
+ from app.handlers import (
+     balance,
+     common,
+     contests as user_contests,
++    fodders_vpn1,
+     menu,
+     polls as user_polls,
+     promocode,
+     referral,
+@@ -180,8 +181,9 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
+     dp.message.middleware(SubscriptionStatusMiddleware())
+     dp.callback_query.middleware(SubscriptionStatusMiddleware())
+     dp.pre_checkout_query.middleware(SubscriptionStatusMiddleware())
+     start.register_handlers(dp)
++    fodders_vpn1.register_handlers(dp)
+     menu.register_handlers(dp)
+     subscription.register_handlers(dp)
+     balance.register_balance_handlers(dp)
+     promocode.register_handlers(dp)

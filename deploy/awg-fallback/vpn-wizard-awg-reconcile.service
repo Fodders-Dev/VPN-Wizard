@@ -1,0 +1,11 @@
+[Unit]
+Description=Reconcile Fodder VPN AmneziaWG peers with Remnawave subscriptions
+After=network-online.target vpn-wizard.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/vpn-wizard/app
+EnvironmentFile=/etc/vpn-wizard.env
+ExecStart=/opt/vpn-wizard/venv/bin/python -m vpn_wizard.awg_reconcile

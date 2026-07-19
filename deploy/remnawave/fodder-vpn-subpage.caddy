@@ -1,0 +1,22 @@
+# Block hidden files while allowing Remnawave's authenticated runtime config.
+@hidden {
+	path_regexp hidden (^|/)\.
+	not path /assets/.app-config-v2.json
+}
+handle @hidden {
+	respond 404
+}
+
+handle / {
+	redir https://212-69-84-167.nip.io/miniapp 302
+}
+
+handle /fodder-vpn-logo.svg {
+	root * /var/www/fodder-vpn
+	header Cache-Control "public, max-age=86400"
+	file_server
+}
+
+handle {
+	reverse_proxy 127.0.0.1:3010
+}
