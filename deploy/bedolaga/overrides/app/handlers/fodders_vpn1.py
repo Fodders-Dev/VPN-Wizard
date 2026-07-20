@@ -64,37 +64,57 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
     config_url, qr_url = links
     if _is_russian(message):
         text = (
-            '🛡 <b>AmneziaWG — стабильное подключение</b>\n\n'
+            '🛡 <b>AmneziaWG — основной режим для РФ</b>\n\n'
+            'Этот профиль работает через обфусцированный UDP/443 и предназначен '
+            'для сетей, где Happ/Reality не подключается.\n\n'
             'Доступ работает только при активной подписке. Если срок закончится, '
             'сервер приостановит ключ; после продления уже установленный профиль '
             'заработает снова.\n\n'
-            '1. Установите AmneziaWG.\n'
-            '2. Скачайте конфиг и импортируйте файл в приложение — либо откройте QR.'
+            '1. Установите официальное приложение AmneziaWG для своего телефона.\n'
+            '2. Нажмите «Скачать мой конфиг» и откройте файл в AmneziaWG.\n'
+            '3. Включите появившийся профиль Fodder VPN.'
         )
-        download_text = '📲 Скачать AmneziaWG'
-        config_text = '🧩 Скачать конфиг'
-        qr_text = '▦ Открыть QR'
+        config_text = '🧩 Скачать мой конфиг'
+        qr_text = '▦ QR для второго экрана'
+        android_text = '🤖 Android'
+        ios_text = '🍎 iPhone'
+        windows_text = '🪟 Windows'
     else:
         text = (
-            '🛡 <b>AmneziaWG — stable connection</b>\n\n'
+            '🛡 <b>AmneziaWG — primary mode for restricted networks</b>\n\n'
+            'This profile uses obfuscated UDP/443 for networks where Happ/Reality '
+            'does not connect.\n\n'
             'Access follows your subscription. When it expires the server suspends '
             'the key; renewing restores the already imported profile.\n\n'
-            'Install AmneziaWG, then import the config file or scan the QR code.'
+            'Install the official AmneziaWG app, download your config, open it in '
+            'the app, and enable the Fodder VPN profile.'
         )
-        download_text = '📲 Download AmneziaWG'
-        config_text = '🧩 Download config'
-        qr_text = '▦ Open QR'
+        config_text = '🧩 Download my config'
+        qr_text = '▦ QR for another screen'
+        android_text = '🤖 Android'
+        ios_text = '🍎 iPhone'
+        windows_text = '🪟 Windows'
     keyboard = types.InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 types.InlineKeyboardButton(text=config_text, url=config_url),
-                types.InlineKeyboardButton(text=qr_text, url=qr_url),
             ],
             [
                 types.InlineKeyboardButton(
-                    text=download_text,
-                    url='https://amnezia.org/downloads',
-                )
+                    text=android_text,
+                    url='https://play.google.com/store/apps/details?id=org.amnezia.awg',
+                ),
+                types.InlineKeyboardButton(
+                    text=ios_text,
+                    url='https://apps.apple.com/app/amneziawg/id6478942365',
+                ),
+            ],
+            [
+                types.InlineKeyboardButton(
+                    text=windows_text,
+                    url='https://github.com/amnezia-vpn/amneziawg-windows-client/releases/latest',
+                ),
+                types.InlineKeyboardButton(text=qr_text, url=qr_url),
             ],
         ]
     )

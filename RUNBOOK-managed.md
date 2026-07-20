@@ -3,7 +3,8 @@
 Managed VPN-by-subscription on **your** servers: users are profiles with an expiry
 date, auto-disabled when unpaid, sold through a Telegram bot with a 14-day trial for
 subscribing to `@fodders_dev`. Stack: **Remnawave** panel + nodes, **Bedolaga**
-shop-bot, **VLESS+Reality** as the paid protocol.
+shop-bot, **AmneziaWG/UDP 443** as the primary RF protocol and
+**VLESS+Reality/TCP 3478** as the selectable fallback.
 
 > This is a different product from the old `vpn_wizard` self-host hub (which
 > provisions a whole server per user over SSH). That tool stays useful as the
@@ -143,9 +144,12 @@ Then, in Telegram:
 
 - [ ] Fresh Telegram account → `/start` → prompted to subscribe to `@fodders_dev`.
 - [ ] After subscribing → 14-day trial issued, a subscription link appears.
-- [ ] Open the link on an **Android** phone (Hiddify/Happ) → connects, traffic flows.
-- [ ] Open the link on an **iPhone** → connects (note which client is currently in
-      the RU App Store; keep the foreign-Apple-ID guide ready).
+- [ ] On **Android**, send `/awg`, install the official AmneziaWG app, import the
+      personal `.conf` and verify that traffic flows through UDP 443.
+- [ ] On **iPhone**, send `/awg`, install the official AmneziaWG app, import the
+      personal `.conf` and verify that traffic flows.
+- [ ] Check Hiddify/Happ Reality separately as a fallback; failure on a filtered RF
+      network must not block the primary AWG onboarding.
 - [ ] Buy the 30-day plan with **Telegram Stars** → subscription extends.
 - [ ] Let a test profile expire (or expire it manually) → access is **cut off**.
 - [ ] Unsubscribe from the channel during a trial → trial is disabled.
@@ -154,15 +158,15 @@ When all boxes pass, you have the "paid → works, unpaid → off" loop. That's 
 
 ---
 
-## 7. After MVP — differentiation & resilience
+## 7. Primary RF resilience
 
-- **AmneziaWG fallback (WIRED — see [`deploy/awg-fallback/`](deploy/awg-fallback/)):**
+- **AmneziaWG primary (WIRED — see [`deploy/awg-fallback/`](deploy/awg-fallback/)):**
   `vpn_wizard` now exposes an entitlement-checked AWG issue endpoint + a Remnawave
   webhook for teardown, so AWG peers are tied to the same subscription. Set the
   `VPNW_REMNAWAVE_*` / `VPNW_AWG_FALLBACK_*` env, enable the panel webhook
-  (`WEBHOOK_URL=…/api/integrations/remnawave/webhook`), and add a "Premium stability
-  (AmneziaWG)" button in Bedolaga linking to `/api/awg/<tid>/config?token=<hmac>`.
-  Still needs a provisioned AWG VPS (existing `vpn_wizard` tooling) behind it.
+  (`WEBHOOK_URL=…/api/integrations/remnawave/webhook`), and put the AmneziaWG button
+  first in Bedolaga. It links to `/api/awg/<tid>/config?token=<hmac>`.
+  This still needs a provisioned AWG VPS (existing `vpn_wizard` tooling) behind it.
 - **Split-routing (DONE — see [`deploy/remnawave/routing/`](deploy/remnawave/routing/)):**
   RF sites (bank, Gosuslugi, Ozon, Kinopoisk) go direct, only the rest is tunneled —
   since Apr 2026 RF platforms block VPN users, and "my bank doesn't work with VPN on"

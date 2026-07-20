@@ -17,5 +17,6 @@
 - [x] Add webhook plus periodic entitlement reconciliation for AmneziaWG
 - [x] Publish NL/FI/TR/US as selectable nodes in one subscription
 - [x] Enable Telegram Stars billing without giving Remnawave payment custody
+- [x] Prove managed AmneziaWG over UDP 443 end-to-end and make it the primary RF action
 
-Next: Обновить подписку в Happ на реальном телефоне и проверить NL/FI/TR/US через новый TCP 3478, затем провести одну реальную покупку Telegram Stars с проверкой продления.
+Next: Импортировать персональный `/awg`-конфиг на реальном телефоне в РФ, проверить трафик, затем провести одну реальную покупку Telegram Stars с проверкой продления и восстановления AWG-профиля.

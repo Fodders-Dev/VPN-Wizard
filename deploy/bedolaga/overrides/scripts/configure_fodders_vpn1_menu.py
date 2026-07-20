@@ -32,8 +32,8 @@ async def main() -> None:
             'type': 'callback',
             'builtin_id': None,
             'text': {
-                'ru': '🛡 AmneziaWG',
-                'en': '🛡 AmneziaWG',
+                'ru': '🛡 Подключиться · AmneziaWG',
+                'en': '🛡 Connect · AmneziaWG',
             },
             'icon': None,
             'action': 'fodders_awg',
@@ -46,6 +46,24 @@ async def main() -> None:
             'dynamic_text': False,
             'description': 'Managed AmneziaWG profile tied to the subscription',
         }
+        legacy_connect = buttons.get('connect')
+        if legacy_connect:
+            legacy_connect.setdefault('text', {})
+            legacy_connect['text'].update(
+                {
+                    'ru': '🌐 Happ / Reality · резерв',
+                    'en': '🌐 Happ / Reality · fallback',
+                }
+            )
+        happ_download = buttons.get('happ_download')
+        if happ_download:
+            happ_download.setdefault('text', {})
+            happ_download['text'].update(
+                {
+                    'ru': '⬇️ Скачать Happ · резерв',
+                    'en': '⬇️ Download Happ · fallback',
+                }
+            )
         buttons[BUTTON_ID] = {
             'type': 'mini_app',
             'builtin_id': None,
@@ -73,17 +91,17 @@ async def main() -> None:
                 }
             )
         else:
-            row = {
+            awg_row = {
                 'id': AWG_ROW_ID,
                 'buttons': [AWG_BUTTON_ID],
                 'conditions': None,
                 'max_per_row': 1,
             }
-            insert_at = next(
-                (index for index, item in enumerate(rows) if item.get('id') == 'support_info_row'),
-                len(rows),
-            )
-            rows.insert(insert_at, row)
+            rows.append(awg_row)
+        # The proven RF-safe path is the first action. The original Reality/Happ
+        # connection remains directly below it as a fully preserved fallback.
+        rows[:] = [row for row in rows if row.get('id') != AWG_ROW_ID]
+        rows.insert(0, awg_row)
 
         legacy_row = next((row for row in rows if row.get('id') == ROW_ID), None)
         if legacy_row:
@@ -120,7 +138,7 @@ async def main() -> None:
     try:
         current = await bot.get_my_commands()
         descriptions = {command.command: command.description for command in current}
-        descriptions['awg'] = 'AmneziaWG для активной подписки'
+        descriptions['awg'] = 'Подключиться из РФ через AmneziaWG'
         order = ['start', 'awg', 'miniapp', 'vpn1', 'help']
         commands = [
             BotCommand(command=command, description=descriptions[command])

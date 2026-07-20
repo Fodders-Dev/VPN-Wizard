@@ -34,12 +34,14 @@ Telegram Stars stay on the Telegram bot balance.
 - miniapp: расширенный безопасный режим (только precheck), подробный FAQ о действиях на сервере
 - bot: онбординг и ограничение доступа только для подписчиков канала
 - managed bot: trial, Telegram Stars plans, preserved Fodders VPN 1, and `/awg`
-- managed subscription: one URL with selectable NL/FI/TR/US Reality locations
-  over TCP 3478 (chosen for better reachability on filtered mobile/RF networks)
+- managed subscription: AmneziaWG over UDP 443 is the primary RF connection;
+  selectable NL/FI/TR/US Reality locations over TCP 3478 remain available as fallback
 - managed AmneziaWG: issue only for an ACTIVE Remnawave user; suspend the server
   peer on expiry and restore the same keys/config on renewal
 - managed AmneziaWG reliability: signed links, HMAC webhook, and a two-minute
   reconciliation timer for missed lifecycle events
+- managed bot UX: put the entitlement-checked AmneziaWG action first; label
+  Happ/Reality honestly as fallback without removing any Fodders VPN 1 features
 - distribution: API server + Telegram bot + miniapp wizard UI
 - distribution: async job queue + progress polling for miniapp
 
