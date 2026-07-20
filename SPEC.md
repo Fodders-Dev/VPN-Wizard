@@ -35,6 +35,7 @@ Telegram Stars stay on the Telegram bot balance.
 - bot: онбординг и ограничение доступа только для подписчиков канала
 - managed bot: trial, Telegram Stars plans, preserved Fodders VPN 1, and `/awg`
 - managed subscription: one URL with selectable NL/FI/TR/US Reality locations
+  over TCP 3478 (chosen for better reachability on filtered mobile/RF networks)
 - managed AmneziaWG: issue only for an ACTIVE Remnawave user; suspend the server
   peer on expiry and restore the same keys/config on renewal
 - managed AmneziaWG reliability: signed links, HMAC webhook, and a two-minute

@@ -148,25 +148,30 @@
 
     <section class="step glass">
       <div class="num">2</div>
-      <h2>Добавьте свой профиль</h2>
+      <h2>Передайте VPN в приложение</h2>
       <div class="body">
         <div id="have-link" hidden>
-          <p>Нажмите — профиль сам добавится в приложение:</p>
-          <a class="btn btn-go" id="open-profile" href="#">Открыть мой профиль</a>
+          <p>Нажмите кнопку — персональные настройки <b>Fodder VPN</b> автоматически добавятся в Happ:</p>
+          <a class="btn btn-go" id="open-profile" href="#">Добавить Fodder VPN в Happ</a>
           <div class="applist" id="applist">
-            <a id="imp-hiddify" href="#">Hiddify</a>
-            <a id="imp-happ" href="#">Happ</a>
-            <a id="imp-v2raytun" href="#">v2RayTun</a>
-            <a id="imp-streisand" href="#">Streisand</a>
+            <a id="imp-hiddify" href="#">Добавить в Hiddify</a>
+            <a id="imp-happ" href="#">Добавить в Happ</a>
+            <a id="imp-v2raytun" href="#">Добавить в v2RayTun</a>
+            <a id="imp-streisand" href="#">Добавить в Streisand</a>
+          </div>
+          <div class="callout">
+            <b>Это личная ссылка.</b> Не пересылайте её: другой человек увидит вашу подписку и подключит ваши серверы. Каждый пользователь получает свою ссылку в боте.
           </div>
           <div class="linkline">
-            <code id="link-text"></code>
+            <code id="link-text">Персональная ссылка готова</code>
             <button class="copybtn" id="copy">Копировать</button>
           </div>
           <p class="tip">Если кнопки не сработали — скопируйте ссылку и вставьте в приложении: «Добавить подписку из буфера».</p>
         </div>
         <div id="no-link">
-          <p>Персональную ссылку вам пришлёт тот, кто пригласил. Откройте её <b>на этом телефоне</b> — или вставьте сюда:</p>
+          <p><b>Не используйте чужую подписку.</b> Откройте бота со своего Telegram-аккаунта, получите личный триал или тариф и вернитесь по кнопке «Подключиться».</p>
+          <a class="btn btn-go" href="https://t.me/foddervpnbot?start=connect" target="_blank" rel="noopener">Получить мой VPN в Telegram</a>
+          <p class="tip">Если бот уже прислал вам персональную ссылку, вставьте её ниже:</p>
           <div class="pastebox">
             <label for="sub-input">Ваша ссылка-подписка</label>
             <input id="sub-input" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://…">
@@ -220,15 +225,17 @@
   function wire(sub){
     if(!isHttp(sub)) return false;
     $("have-link").hidden=false; $("no-link").hidden=true;
-    $("open-profile").href=sub;
+    $("open-profile").href="happ://add/"+sub;
     $("imp-hiddify").href="hiddify://import/"+sub;
     $("imp-happ").href="happ://add/"+sub;
     $("imp-v2raytun").href="v2raytun://import/"+sub;
     $("imp-streisand").href="streisand://import/"+sub;
-    $("link-text").textContent=sub; return true;
+    $("link-text").textContent="Персональная ссылка готова";
+    $("link-text").dataset.url=sub; return true;
   }
   $("copy").addEventListener("click",function(){
-    var t=$("link-text").textContent;
+    var t=$("link-text").dataset.url||"";
+    if(!t) return;
     var done=function(){var b=$("copy");b.textContent="Готово";setTimeout(function(){b.textContent="Копировать";},1500);};
     if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done,done);}
     else{try{var r=document.createRange();r.selectNode($("link-text"));var s=getSelection();s.removeAllRanges();s.addRange(r);document.execCommand("copy");s.removeAllRanges();done();}catch(e){}}

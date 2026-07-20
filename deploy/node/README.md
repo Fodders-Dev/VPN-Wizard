@@ -17,12 +17,12 @@ your existing VPS boxes as nodes.
    sudo docker compose up -d && sudo docker compose logs -f
    ```
 3. Open the node's inbound ports in the firewall (whatever ports your Reality /
-   SS2022 inbounds use — e.g. 443). Port `2222` only needs to be reachable from the
+   SS2022 inbounds use — Fodder Reality defaults to TCP `3478`). Port `2222` only needs to be reachable from the
    panel. The included persistent rule restricts it:
    ```bash
    sudo install -m 0755 remnanode-firewall.sh /usr/local/sbin/remnanode-firewall
    sudo install -m 0644 remnanode-firewall.service /etc/systemd/system/
-   printf 'PANEL_IP=%s\nNODE_PORT=2222\nINBOUND_TCP_PORTS="11443"\n' '203.0.113.10' |
+   printf 'PANEL_IP=%s\nNODE_PORT=2222\nINBOUND_TCP_PORTS="3478"\n' '203.0.113.10' |
      sudo tee /etc/default/remnanode-firewall >/dev/null
    sudo systemctl daemon-reload
    sudo systemctl enable --now remnanode-firewall.service

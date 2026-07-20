@@ -91,7 +91,7 @@ For each traffic VPS (including your existing ones): follow
    generated `SECRET_KEY`.
 2. On the VPS: drop `deploy/node/docker-compose.yml`, paste the `SECRET_KEY`,
    `docker compose up -d`.
-3. Open the inbound port(s) (443) in the firewall. Assign the node's inbounds to the
+3. Open the Reality inbound (`3478/tcp`) in the firewall. Assign the node's inbounds to the
    `paid` squad. Node should show **online**.
 
 ---

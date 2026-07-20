@@ -33,3 +33,13 @@ def test_miniapp_shell_is_single_flow_and_has_diagnostics_panel() -> None:
     assert 'value="shadowtls_ss"' not in html
     assert 'value="vless_reality"' not in html
     assert 'id="faq-sheet"' not in html
+
+
+def test_connect_page_explains_personal_subscription_and_opens_happ_directly() -> None:
+    html = (ROOT / "web" / "connect" / "index.html").read_text(encoding="utf-8")
+    assert "Это личная ссылка." in html
+    assert "Не используйте чужую подписку." in html
+    assert "Добавить Fodder VPN в Happ" in html
+    assert '$("open-profile").href="happ://add/"+sub;' in html
+    assert '$("link-text").dataset.url=sub;' in html
+    assert 'var t=$("link-text").dataset.url||"";' in html

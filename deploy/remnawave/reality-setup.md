@@ -84,8 +84,13 @@ curl -sv -o /dev/null --tls-max 1.3 https://www.nvidia.com 2>&1 | grep -Ei "TLS1
 Open the inbound port on every node:
 
 ```bash
-sudo ufw allow 443/tcp
+sudo ufw allow 3478/tcp
 ```
+
+Fodder VPN uses TCP `3478` for Reality because mobile/RF networks are more likely
+to pass it than a random high TCP port. AmneziaWG may use UDP `3478` on the same
+node; TCP and UDP are separate sockets, so both protocols can safely share the
+port number.
 
 Node port `2222` only needs to be reachable from the panel — restrict it to the panel
 IP if you can.

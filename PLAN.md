@@ -18,4 +18,4 @@
 - [x] Publish NL/FI/TR/US as selectable nodes in one subscription
 - [x] Enable Telegram Stars billing without giving Remnawave payment custody
 
-Next: Провести финальный мобильный e2e: импорт AmneziaWG, подключение к NL/FI/TR/US и одна реальная покупка Telegram Stars с проверкой продления.
+Next: Обновить подписку в Happ на реальном телефоне и проверить NL/FI/TR/US через новый TCP 3478, затем провести одну реальную покупку Telegram Stars с проверкой продления.
