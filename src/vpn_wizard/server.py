@@ -2798,7 +2798,13 @@ _mount_miniapp()
 def main() -> None:
     host = os.getenv("VPNW_HOST", "0.0.0.0")
     port = int(os.getenv("VPNW_PORT") or os.getenv("PORT", "8000"))
-    uvicorn.run("vpn_wizard.server:app", host=host, port=port, reload=False)
+    uvicorn.run(
+        "vpn_wizard.server:app",
+        host=host,
+        port=port,
+        reload=False,
+        access_log=False,
+    )
 
 
 if __name__ == "__main__":

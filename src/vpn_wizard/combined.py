@@ -13,7 +13,16 @@ from vpn_wizard.tg_bot import main as bot_main
 def _run_api() -> None:
     host = os.getenv("VPNW_HOST", "0.0.0.0")
     port = int(os.getenv("VPNW_PORT") or os.getenv("PORT", "8000"))
-    uvicorn.run("vpn_wizard.server:app", host=host, port=port, reload=False)
+    # Signed AWG download links carry a private token in the query string.
+    # Uvicorn's access log records the full URL, which turns journalctl into a
+    # long-lived credential store. Application warnings/errors remain enabled.
+    uvicorn.run(
+        "vpn_wizard.server:app",
+        host=host,
+        port=port,
+        reload=False,
+        access_log=False,
+    )
 
 
 def _run_bot_loop() -> None:
