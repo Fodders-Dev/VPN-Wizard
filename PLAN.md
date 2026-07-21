@@ -18,5 +18,6 @@
 - [x] Publish NL/FI/TR/US as selectable nodes in one subscription
 - [x] Enable Telegram Stars billing without giving Remnawave payment custody
 - [x] Prove managed AmneziaWG over UDP 443 end-to-end and make it the primary RF action
+- [x] Replace the vague two-column "Партнёрка" entry with an explicit full-width sharing action
 
-Next: Импортировать персональный `/awg`-конфиг на реальном телефоне в РФ, проверить трафик, затем провести одну реальную покупку Telegram Stars с проверкой продления и восстановления AWG-профиля.
+Next: Сделать одноразовую семейную web-ссылку для выдачи отдельного AWG-профиля без Telegram; затем провести одну реальную покупку Telegram Stars.

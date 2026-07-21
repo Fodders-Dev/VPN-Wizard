@@ -17,6 +17,8 @@ BUTTON_ID = 'fodders_vpn1'
 ROW_ID = 'fodders_vpn1_row'
 AWG_BUTTON_ID = 'fodders_awg'
 AWG_ROW_ID = 'fodders_awg_row'
+INVITE_BUTTON_ID = 'referrals'
+INVITE_ROW_ID = 'fodders_invite_row'
 DEFAULT_URL = 'https://212-69-84-167.nip.io/miniapp'
 
 
@@ -46,6 +48,18 @@ async def main() -> None:
             'dynamic_text': False,
             'description': 'Managed AmneziaWG profile tied to the subscription',
         }
+        invite_button = buttons.get(INVITE_BUTTON_ID)
+        if invite_button:
+            invite_button.setdefault('text', {})
+            invite_button['text'].update(
+                {
+                    'ru': '🎁 Поделиться VPN · получить бонус',
+                    'en': '🎁 Share VPN · earn a bonus',
+                }
+            )
+            invite_button['description'] = (
+                'Create a personal invite link and view referral rewards'
+            )
         legacy_connect = buttons.get('connect')
         if legacy_connect:
             legacy_connect.setdefault('text', {})
@@ -102,6 +116,49 @@ async def main() -> None:
         # connection remains directly below it as a fully preserved fallback.
         rows[:] = [row for row in rows if row.get('id') != AWG_ROW_ID]
         rows.insert(0, awg_row)
+
+        # A two-column "Партнёрка" button looked like an internal sales
+        # tool and hid the sharing action. Keep Bedolaga's complete referral
+        # implementation, but expose it as one explicit full-width action.
+        for row in rows:
+            if row.get('id') == INVITE_ROW_ID:
+                continue
+            row['buttons'] = [
+                button_id
+                for button_id in row.get('buttons', [])
+                if button_id != INVITE_BUTTON_ID
+            ]
+        rows[:] = [row for row in rows if row.get('buttons')]
+
+        invite_row = next((row for row in rows if row.get('id') == INVITE_ROW_ID), None)
+        if invite_row:
+            invite_row.update(
+                {
+                    'buttons': [INVITE_BUTTON_ID],
+                    'conditions': {'referral_enabled': True},
+                    'max_per_row': 1,
+                }
+            )
+        else:
+            invite_row = {
+                'id': INVITE_ROW_ID,
+                'buttons': [INVITE_BUTTON_ID],
+                'conditions': {'referral_enabled': True},
+                'max_per_row': 1,
+            }
+        rows[:] = [row for row in rows if row.get('id') != INVITE_ROW_ID]
+        promo_index = next(
+            (index for index, row in enumerate(rows) if row.get('id') == 'promo_referral_row'),
+            None,
+        )
+        if promo_index is not None:
+            rows.insert(promo_index + 1, invite_row)
+        else:
+            insert_at = next(
+                (index for index, row in enumerate(rows) if row.get('id') == 'support_info_row'),
+                len(rows),
+            )
+            rows.insert(insert_at, invite_row)
 
         legacy_row = next((row for row in rows if row.get('id') == ROW_ID), None)
         if legacy_row:

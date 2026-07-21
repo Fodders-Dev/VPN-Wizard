@@ -42,6 +42,8 @@ Telegram Stars stay on the Telegram bot balance.
   reconciliation timer for missed lifecycle events
 - managed bot UX: put the entitlement-checked AmneziaWG action first; label
   Happ/Reality honestly as fallback without removing any Fodders VPN 1 features
+- managed bot growth UX: expose Bedolaga's existing one-level referral flow as
+  a full-width "Share VPN" action; do not present it as a multi-level pyramid
 - distribution: API server + Telegram bot + miniapp wizard UI
 - distribution: async job queue + progress polling for miniapp
 
