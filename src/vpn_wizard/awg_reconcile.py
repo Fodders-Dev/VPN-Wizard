@@ -6,12 +6,18 @@ import sys
 from typing import Any
 
 from vpn_wizard.account import build_account_store
-from vpn_wizard.awg_fallback import AwgFallbackService
+from vpn_wizard.awg_fallback import AwgFallbackConfig, AwgFallbackService
+from vpn_wizard.awg_servers import AwgRegistry
 from vpn_wizard.remnawave import RemnawaveClient, RemnawaveConfig
 
 
 def reconcile_awg_peers(
-    account: Any, remnawave: Any, awg: Any, *, max_suspend_ratio: float = 0.5
+    account: Any,
+    remnawave: Any,
+    awg: Any,
+    *,
+    server_services: dict[str, Any] | None = None,
+    max_suspend_ratio: float = 0.5,
 ) -> dict[str, Any]:
     """Bring retained AWG peers in line with Remnawave entitlements.
 
@@ -30,32 +36,53 @@ def reconcile_awg_peers(
         "unchanged": 0,
         "errors": [],
     }
-    to_suspend: list[int] = []
-    to_resume: list[int] = []
+    to_suspend: list[tuple[int, Any, str | None]] = []
+    to_resume: list[tuple[int, Any, str | None]] = []
     active_seen = 0
+    server_services = server_services or {}
+    peers = [(peer, awg, None) for peer in account.awg_list_peers()]
+    peers.extend(
+        (peer, server_services.get(str(peer["server_id"])), str(peer["server_id"]))
+        for peer in account.awg_list_server_peers()
+    )
+    entitlement_cache: dict[int, bool | Exception] = {}
 
-    for peer in account.awg_list_peers():
+    for peer, service, server_id in peers:
         telegram_id = int(peer["telegram_id"])
         result["checked"] += 1
         status = str(peer.get("status") or "")
-        try:
-            entitled = remnawave.active_user(telegram_id) is not None
-        except Exception as exc:
-            # A per-peer lookup failure (network/5xx/decrypt) must never be read as
-            # "not entitled" — leave the peer as-is and record it.
+        if service is None:
             result["errors"].append(
-                {"telegram_id": telegram_id, "error": f"{type(exc).__name__}: {exc}"}
+                {
+                    "telegram_id": telegram_id,
+                    "server_id": server_id,
+                    "error": "server_not_configured",
+                }
             )
             continue
-        if entitled:
+        if telegram_id not in entitlement_cache:
+            try:
+                entitlement_cache[telegram_id] = remnawave.active_user(telegram_id) is not None
+            except Exception as exc:
+                entitlement_cache[telegram_id] = exc
+        entitlement = entitlement_cache[telegram_id]
+        if isinstance(entitlement, Exception):
+            # A per-peer lookup failure (network/5xx/decrypt) must never be read as
+            # "not entitled" — leave the peer as-is and record it.
+            error = {"telegram_id": telegram_id, "error": f"{type(entitlement).__name__}: {entitlement}"}
+            if server_id is not None:
+                error["server_id"] = server_id
+            result["errors"].append(error)
+            continue
+        if entitlement:
             active_seen += 1
             if status == "suspended":
-                to_resume.append(telegram_id)
+                to_resume.append((telegram_id, service, server_id))
             else:
                 result["unchanged"] += 1
         else:
             if status == "active":
-                to_suspend.append(telegram_id)
+                to_suspend.append((telegram_id, service, server_id))
             else:
                 result["unchanged"] += 1
 
@@ -78,31 +105,47 @@ def reconcile_awg_peers(
             result["skipped_suspends"] = len(to_suspend)
             to_suspend = []
 
-    for telegram_id in to_resume:
+    for telegram_id, service, server_id in to_resume:
         try:
-            awg.resume(telegram_id)
+            service.resume(telegram_id)
             result["resumed"] += 1
         except Exception as exc:
-            result["errors"].append(
-                {"telegram_id": telegram_id, "error": f"{type(exc).__name__}: {exc}"}
-            )
-    for telegram_id in to_suspend:
+            error = {"telegram_id": telegram_id, "error": f"{type(exc).__name__}: {exc}"}
+            if server_id is not None:
+                error["server_id"] = server_id
+            result["errors"].append(error)
+    for telegram_id, service, server_id in to_suspend:
         try:
-            awg.suspend(telegram_id)
+            service.suspend(telegram_id)
             result["suspended"] += 1
         except Exception as exc:
-            result["errors"].append(
-                {"telegram_id": telegram_id, "error": f"{type(exc).__name__}: {exc}"}
-            )
+            error = {"telegram_id": telegram_id, "error": f"{type(exc).__name__}: {exc}"}
+            if server_id is not None:
+                error["server_id"] = server_id
+            result["errors"].append(error)
     return result
 
 
 def main() -> int:
     account = build_account_store()
+    legacy_config = AwgFallbackConfig.from_env()
+    legacy_service = AwgFallbackService(account, legacy_config)
+    server_services: dict[str, AwgFallbackService] = {}
+    registry = AwgRegistry.from_env()
+    default = registry.default_server
+    for server in registry.servers:
+        if default is not None and server.id == default.id:
+            continue
+        server_services[server.id] = AwgFallbackService(
+            account,
+            AwgFallbackConfig.from_server(server, link_secret=legacy_config.link_secret),
+            server_id=server.id,
+        )
     result = reconcile_awg_peers(
         account,
         RemnawaveClient(RemnawaveConfig.from_env()),
-        AwgFallbackService(account),
+        legacy_service,
+        server_services=server_services,
     )
     print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
     return 1 if result["errors"] else 0

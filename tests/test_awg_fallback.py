@@ -72,6 +72,7 @@ def test_issue_token_roundtrip() -> None:
 
 def test_peer_name() -> None:
     assert peer_name(12345) == "sub-12345"
+    assert peer_name(12345, "fi") == "sub-12345-fi"
 
 
 # --- service orchestration ----------------------------------------------------
@@ -220,3 +221,100 @@ def test_config_stored_encrypted_at_rest(tmp_path: Path) -> None:
     service.issue(111)
     raw = (tmp_path / "state.db").read_bytes()
     assert b"SECRET-PRIVATE-KEY" not in raw  # Fernet-encrypted, not plaintext
+
+
+def test_same_user_gets_independent_configs_on_multiple_servers(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    calls: list[tuple[str, str]] = []
+
+    def service(server_id: str) -> AwgFallbackService:
+        return AwgFallbackService(
+            store,
+            server_id=server_id,
+            provision=lambda name: calls.append((server_id, name)) or f"CONFIG-{server_id}-{name}",
+            deprovision=lambda name: True,
+        )
+
+    fi = service("fi")
+    us = service("us")
+    fi_config = fi.issue(449066726)["config"]
+    us_config = us.issue(449066726)["config"]
+
+    assert fi_config != us_config
+    assert calls == [
+        ("fi", "sub-449066726-fi"),
+        ("us", "sub-449066726-us"),
+    ]
+    assert store.awg_get_server_peer(449066726, "fi")["config"] == fi_config
+    assert store.awg_get_server_peer(449066726, "us")["config"] == us_config
+    assert len(store.awg_list_server_peers()) == 2
+
+
+def test_server_peer_suspend_resume_keeps_keys(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    suspended: list[str] = []
+    resumed: list[str] = []
+    service = AwgFallbackService(
+        store,
+        server_id="tr",
+        provision=lambda name: f"CONFIG-{name}",
+        deprovision=lambda name: True,
+        suspend=lambda name: suspended.append(name) or True,
+        resume=lambda name: resumed.append(name) or True,
+    )
+    original = service.issue(77)["config"]
+
+    assert service.suspend(77) is True
+    assert store.awg_get_server_peer(77, "tr")["status"] == "suspended"
+    restored = service.issue(77)["config"]
+
+    assert restored == original
+    assert suspended == ["sub-77-tr"]
+    assert resumed == ["sub-77-tr"]
+    assert store.awg_get_server_peer(77, "tr")["status"] == "active"
+
+
+def test_reconcile_applies_entitlement_to_every_installed_server(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    default_suspended: list[str] = []
+    fi_suspended: list[str] = []
+    default = AwgFallbackService(
+        store,
+        provision=lambda name: f"DEFAULT-{name}",
+        deprovision=lambda name: True,
+        suspend=lambda name: default_suspended.append(name) or True,
+        resume=lambda name: True,
+    )
+    fi = AwgFallbackService(
+        store,
+        server_id="fi",
+        provision=lambda name: f"FI-{name}",
+        deprovision=lambda name: True,
+        suspend=lambda name: fi_suspended.append(name) or True,
+        resume=lambda name: True,
+    )
+    for telegram_id in (1, 2):
+        default.issue(telegram_id)
+        fi.issue(telegram_id)
+
+    class Entitlements:
+        @staticmethod
+        def active_user(telegram_id: int):
+            return {"uuid": "active"} if telegram_id == 2 else None
+
+    result = reconcile_awg_peers(
+        store,
+        Entitlements(),
+        default,
+        server_services={"fi": fi},
+    )
+
+    assert result == {
+        "checked": 4,
+        "suspended": 2,
+        "resumed": 0,
+        "unchanged": 2,
+        "errors": [],
+    }
+    assert default_suspended == ["sub-1"]
+    assert fi_suspended == ["sub-1-fi"]

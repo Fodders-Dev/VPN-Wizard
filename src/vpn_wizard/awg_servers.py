@@ -1,0 +1,302 @@
+"""Registry of AmneziaWG exit servers and per-operator obfuscation presets.
+
+The AWG fallback started as a single box wired through ``VPNW_AWG_FALLBACK_*``
+env vars. Users now pick an exit country, and RF mobile operators need different
+obfuscation parameters, so both dimensions live here:
+
+    server  -> WHERE the traffic exits (a VPS we provision peers on over SSH)
+    preset  -> HOW the tunnel is obfuscated (client-side AWG junk/mimicry params)
+
+A config is therefore identified by ``(server_id, preset_id)``. The server decides
+which machine holds the peer keys; the preset only re-renders the client file, so
+switching presets never touches the server.
+
+Both are configured from the environment:
+
+    VPNW_AWG_SERVERS   JSON list, e.g.
+        [{"id":"nl","label":"Нидерланды","flag":"🇳🇱","host":"1.2.3.4",
+          "user":"root","password":"...","listen_port":443}]
+    VPNW_AWG_PRESETS   JSON list, optional; defaults to DEFAULT_PRESETS below.
+
+If ``VPNW_AWG_SERVERS`` is absent we synthesise a one-entry registry from the
+legacy ``VPNW_AWG_FALLBACK_*`` vars, so an existing deployment keeps working
+untouched and its already-issued configs keep resolving to the same machine.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+import json
+import os
+import re
+from typing import Any, Optional
+
+# Ids end up in filenames, peer bookkeeping and URLs — keep them boring.
+_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,15}$")
+
+LEGACY_SERVER_ID = "main"
+
+
+class AwgRegistryError(ValueError):
+    """Raised when the configured registry is malformed."""
+
+
+def _clean(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _opt_int(value: Any) -> Optional[int]:
+    text = _clean(value)
+    return int(text) if text.isdigit() else None
+
+
+def _require_id(raw: Any, *, kind: str) -> str:
+    value = _clean(raw).lower()
+    if not _ID_RE.match(value):
+        raise AwgRegistryError(
+            f"Invalid {kind} id {value!r}: use 1-16 chars of a-z, 0-9 or '-'."
+        )
+    return value
+
+
+# Which AWG knobs a preset may touch. Verified against the source of all three
+# official implementations (amneziawg-go, amneziawg-tools, the kernel module):
+#
+#   S1-S4, H1-H4 live on the *device*, not the peer. The receiver identifies a
+#   packet by an exact size match against its OWN padding plus a header-range
+#   check, so a client that differs on any of them is dropped before any crypto
+#   runs. There is no error and no log the user can see — it looks like a dead
+#   server. awg-tools also refuses these keys outside [Interface], and the
+#   per-peer `AdvancedSecurity` flag that once hinted otherwise is dead code in
+#   AWG 2.0. Varying them needs a SEPARATE interface: own port, keypair, subnet.
+#
+#   Jc/Jmin/Jmax and I1-I5 are sender-side-only instructions. The receiver drops
+#   those packets as unrecognized, so they may differ freely per client — this is
+#   the whole reason per-operator presets are possible on one shared interface.
+INTERFACE_WIDE_PARAMS = frozenset({"s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4"})
+PER_CLIENT_PARAMS = ("jc", "jmin", "jmax", "i1", "i2", "i3", "i4", "i5")
+
+
+@dataclass(frozen=True)
+class AwgPreset:
+    """Per-client obfuscation parameters. ``None`` means 'keep server default'.
+
+    Restricted by construction to parameters that are safe to vary per client;
+    see INTERFACE_WIDE_PARAMS for why the rest cannot live here.
+    """
+
+    id: str
+    label: str
+    jc: Optional[int] = None
+    jmin: Optional[int] = None
+    jmax: Optional[int] = None
+    # I1-I5: scripted "signature" packets (<b 0x..>, <r n>, <rd n>, <rc n>, <t>)
+    # sent before the handshake to mimic QUIC/DNS/STUN. The real per-operator
+    # lever, and free — the server never parses them.
+    i1: Optional[str] = None
+    i2: Optional[str] = None
+    i3: Optional[str] = None
+    i4: Optional[str] = None
+    i5: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AwgPreset":
+        unsafe = sorted(INTERFACE_WIDE_PARAMS.intersection(key.lower() for key in data))
+        if unsafe:
+            raise AwgRegistryError(
+                f"Preset {data.get('id')!r} sets interface-wide parameter(s) "
+                f"{', '.join(unsafe)}. These must match the server byte-for-byte; "
+                "a client-side override silently fails to connect. Run a separate "
+                "AWG interface on its own port instead."
+            )
+        return cls(
+            id=_require_id(data.get("id"), kind="preset"),
+            label=_clean(data.get("label")) or _clean(data.get("id")),
+            jc=_opt_int(data.get("jc")),
+            jmin=_opt_int(data.get("jmin")),
+            jmax=_opt_int(data.get("jmax")),
+            i1=_clean(data.get("i1")) or None,
+            i2=_clean(data.get("i2")) or None,
+            i3=_clean(data.get("i3")) or None,
+            i4=_clean(data.get("i4")) or None,
+            i5=_clean(data.get("i5")) or None,
+        )
+
+    @property
+    def overrides(self) -> dict[str, Any]:
+        """Only the parameters this preset actually pins.
+
+        Empty values are dropped rather than emitted: ``awg-quick`` strips empty
+        ``I1=``..``I5=`` lines and then fails at ``awg setconf`` (amneziawg-tools
+        issue #40), so a blank key is worse than an absent one.
+        """
+        pairs = {key: getattr(self, key) for key in PER_CLIENT_PARAMS}
+        return {key: value for key, value in pairs.items() if value not in (None, "")}
+
+
+# Field-reported presets from deploy/remnawave/awg-hardening.md. "default" must
+# stay first: it is what everyone gets until they tell us their network is broken.
+DEFAULT_PRESETS: tuple[AwgPreset, ...] = (
+    AwgPreset(id="default", label="Обычный"),
+    AwgPreset(id="mts", label="МТС", jc=3, i1="<r 48>"),
+    AwgPreset(id="tele2", label="Tele2", jc=3, jmin=40, jmax=70, i1="<r 48>"),
+    AwgPreset(id="megafon", label="Мегафон", jc=3, jmin=80, jmax=268),
+    AwgPreset(id="yota", label="Yota", jmax=261, i1="<b 0xce>"),
+)
+
+
+@dataclass(frozen=True)
+class AwgServer:
+    """One AWG exit box we can provision peers on."""
+
+    id: str
+    label: str
+    flag: str
+    host: str
+    user: str
+    port: int
+    password: Optional[str]
+    key_path: Optional[str]
+    key_content: Optional[str]
+    listen_port: Optional[int]
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AwgServer":
+        host = _clean(data.get("host"))
+        if not host:
+            raise AwgRegistryError(f"AWG server {data.get('id')!r} has no host.")
+        server_id = _require_id(data.get("id"), kind="server")
+        return cls(
+            id=server_id,
+            # Never fall back to the host: labels are served unauthenticated by
+            # /api/awg/servers, so a missing label must not publish the IP.
+            label=_clean(data.get("label")) or server_id,
+            flag=_clean(data.get("flag")),
+            host=host,
+            user=_clean(data.get("user")) or "root",
+            port=_opt_int(data.get("port")) or 22,
+            password=_clean(data.get("password")) or None,
+            key_path=_clean(data.get("key_path")) or None,
+            key_content=_clean(data.get("key_content")) or None,
+            listen_port=_opt_int(data.get("listen_port")),
+        )
+
+    @property
+    def usable(self) -> bool:
+        """SSH provisioning needs some credential."""
+        return bool(self.host and (self.password or self.key_path or self.key_content))
+
+    @property
+    def display(self) -> str:
+        return f"{self.flag} {self.label}".strip()
+
+    def public(self) -> dict[str, Any]:
+        """Safe to expose to the bot/website — never leaks host or credentials."""
+        return {"id": self.id, "label": self.label, "flag": self.flag, "display": self.display}
+
+
+def _legacy_server() -> Optional[AwgServer]:
+    """One-entry registry built from the original single-server env vars."""
+    host = _clean(os.getenv("VPNW_AWG_FALLBACK_HOST"))
+    if not host:
+        return None
+    server_id = _clean(os.getenv("VPNW_AWG_FALLBACK_ID")).lower() or LEGACY_SERVER_ID
+    return AwgServer(
+        id=server_id,
+        # Same rule as AwgServer.from_dict: an unlabelled server must not leak its IP.
+        label=_clean(os.getenv("VPNW_AWG_FALLBACK_LABEL")) or server_id,
+        flag=_clean(os.getenv("VPNW_AWG_FALLBACK_FLAG")),
+        host=host,
+        user=_clean(os.getenv("VPNW_AWG_FALLBACK_SSH_USER")) or "root",
+        port=_opt_int(os.getenv("VPNW_AWG_FALLBACK_SSH_PORT")) or 22,
+        password=_clean(os.getenv("VPNW_AWG_FALLBACK_SSH_PASSWORD")) or None,
+        key_path=_clean(os.getenv("VPNW_AWG_FALLBACK_SSH_KEY")) or None,
+        key_content=_clean(os.getenv("VPNW_AWG_FALLBACK_SSH_KEY_CONTENT")) or None,
+        listen_port=_opt_int(os.getenv("VPNW_AWG_FALLBACK_LISTEN_PORT")),
+    )
+
+
+def _parse_json_list(raw: str, *, var: str) -> list[dict[str, Any]]:
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AwgRegistryError(f"{var} is not valid JSON: {exc}") from exc
+    if not isinstance(parsed, list) or not all(isinstance(item, dict) for item in parsed):
+        raise AwgRegistryError(f"{var} must be a JSON list of objects.")
+    return parsed
+
+
+@dataclass(frozen=True)
+class AwgRegistry:
+    servers: tuple[AwgServer, ...]
+    presets: tuple[AwgPreset, ...]
+    default_server_id: Optional[str]
+
+    @classmethod
+    def from_env(cls) -> "AwgRegistry":
+        raw_servers = _clean(os.getenv("VPNW_AWG_SERVERS"))
+        if raw_servers:
+            servers = tuple(AwgServer.from_dict(item) for item in _parse_json_list(raw_servers, var="VPNW_AWG_SERVERS"))
+        else:
+            legacy = _legacy_server()
+            servers = (legacy,) if legacy else ()
+
+        seen: set[str] = set()
+        for server in servers:
+            if server.id in seen:
+                raise AwgRegistryError(f"Duplicate AWG server id {server.id!r}.")
+            seen.add(server.id)
+
+        raw_presets = _clean(os.getenv("VPNW_AWG_PRESETS"))
+        if raw_presets:
+            presets = tuple(AwgPreset.from_dict(item) for item in _parse_json_list(raw_presets, var="VPNW_AWG_PRESETS"))
+        else:
+            presets = DEFAULT_PRESETS
+
+        requested_default = _clean(os.getenv("VPNW_AWG_DEFAULT_SERVER")).lower() or None
+        return cls(servers=servers, presets=presets, default_server_id=requested_default)
+
+    # --- lookups ----------------------------------------------------------
+    @property
+    def configured(self) -> bool:
+        return any(server.usable for server in self.servers)
+
+    @property
+    def default_server(self) -> Optional[AwgServer]:
+        """The server used when a caller does not name one.
+
+        Old links (and the pre-multi-server bot) carry no ``server`` parameter,
+        so this must stay stable: it decides where those users land.
+        """
+        if self.default_server_id:
+            picked = self.get_server(self.default_server_id)
+            if picked is not None:
+                return picked
+        return self.servers[0] if self.servers else None
+
+    def get_server(self, server_id: Optional[str]) -> Optional[AwgServer]:
+        if not _clean(server_id):
+            return self.default_server
+        wanted = _clean(server_id).lower()
+        for server in self.servers:
+            if server.id == wanted:
+                return server
+        return None
+
+    def get_preset(self, preset_id: Optional[str]) -> Optional[AwgPreset]:
+        if not _clean(preset_id):
+            return self.presets[0] if self.presets else None
+        wanted = _clean(preset_id).lower()
+        for preset in self.presets:
+            if preset.id == wanted:
+                return preset
+        return None
+
+    def public(self) -> dict[str, Any]:
+        """Payload for the bot/website server picker."""
+        default = self.default_server
+        return {
+            "servers": [server.public() for server in self.servers if server.usable],
+            "presets": [{"id": preset.id, "label": preset.label} for preset in self.presets],
+            "default_server": default.id if default else None,
+            "default_preset": self.presets[0].id if self.presets else None,
+        }

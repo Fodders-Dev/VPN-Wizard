@@ -6,18 +6,18 @@ stability"** layer for users whose Reality gets throttled — no panel manages A
 subscription Bedolaga sells:
 
 ```
-   user taps "Premium stability (AmneziaWG)" in Bedolaga
-        │  signed link:  /api/awg/<tid>/config?token=<hmac>
+   user taps an exit country in Bedolaga
+        │  signed link:  /api/awg/<tid>/config?token=<hmac>&server=<id>
         ▼
    vpn_wizard  ──(1) pull: is <tid>'s subscription ACTIVE?──►  Remnawave API
         │                                                      (/api/users/by-telegram-id)
-        │  yes → add/reuse AWG peer "sub-<tid>" over SSH, return .conf + QR
+        │  yes → add/reuse AWG peer "sub-<tid>-<server>" over SSH, return .conf + QR
         ▼
-   AWG VPS  (provisioned by the existing vpn_wizard AWG tooling)
+   selected AWG VPS  (NL / FI / TR / US)
 
    Remnawave ──(2) push: user.disabled / user.expired / user.revoked──►  vpn_wizard
                      POST /api/integrations/remnawave/webhook (HMAC-signed)
-                     → suspends peer "sub-<tid>", retaining its keys
+                     → suspends that user's peers on every installed exit, retaining keys
 
    systemd timer ──(3) every 2 minutes re-checks all retained peers
                      → repairs missed disable/enable webhooks
@@ -42,7 +42,8 @@ VPNW_REMNAWAVE_API_URL="https://panel.example.com"
 VPNW_REMNAWAVE_API_KEY="<panel API token>"          # Settings → API Tokens
 VPNW_REMNAWAVE_WEBHOOK_SECRET="<64-char a-zA-Z0-9>"  # MUST equal the panel's WEBHOOK_SECRET_HEADER
 
-# AWG fallback server (where peers are added over SSH)
+# Legacy/default AWG server. Keep this block: old links and already-imported
+# default profiles continue to use its original encrypted row and private key.
 VPNW_AWG_FALLBACK_HOST="203.0.113.10"
 VPNW_AWG_FALLBACK_SSH_USER="root"
 VPNW_AWG_FALLBACK_SSH_PORT="22"
@@ -53,6 +54,17 @@ VPNW_AWG_FALLBACK_SSH_PASSWORD="..."        # or use a key instead:
 
 # Secret used to sign per-user AWG links (share with whatever builds the link)
 VPNW_AWG_LINK_SECRET="<random string>"
+
+# Multi-exit registry. Use one dedicated SSH key which every AWG node authorizes.
+# The first/default server reuses the legacy peer table; other ids get independent
+# encrypted profiles, so one Telegram user can install all countries at once.
+VPNW_AWG_DEFAULT_SERVER="nl"
+VPNW_AWG_SERVERS='[
+  {"id":"nl","label":"Нидерланды","flag":"🇳🇱","host":"127.0.0.1","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":443},
+  {"id":"fi","label":"Финляндия","flag":"🇫🇮","host":"203.0.113.20","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":3478},
+  {"id":"tr","label":"Турция","flag":"🇹🇷","host":"203.0.113.30","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":3478},
+  {"id":"us","label":"США","flag":"🇺🇸","host":"203.0.113.40","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":3478}
+]'
 ```
 
 ## Turn on the Remnawave webhook (panel `.env`)
@@ -76,12 +88,13 @@ button for users with an active subscription. Give the Bedolaga container the sa
 ```
 VPNW_AWG_LINK_SECRET=<same secret as vpn-wizard>
 VPNW_AWG_PUBLIC_URL=https://<vpn-wizard-domain>
+VPNW_AWG_PUBLIC_SERVERS='[{"id":"nl","display":"🇳🇱 Нидерланды"},{"id":"fi","display":"🇫🇮 Финляндия"},{"id":"tr","display":"🇹🇷 Турция"},{"id":"us","display":"🇺🇸 США"}]'
 ```
 
 The handler links to:
 
 ```
-https://<vpn-wizard-domain>/api/awg/<telegram_id>/config?token=<token>
+https://<vpn-wizard-domain>/api/awg/<telegram_id>/config?token=<token>&server=<id>
 ```
 
 where `token = HMAC_SHA256(str(telegram_id), VPNW_AWG_LINK_SECRET)` in hex. It also
@@ -94,14 +107,16 @@ offers `/qr` and the official AmneziaWG downloads page.
 | `POST` | `/api/integrations/remnawave/webhook` | `X-Remnawave-Signature` | suspend/resume on subscription changes |
 | `GET`  | `/api/awg/{telegram_id}/config` | link token + active sub | issue/reuse `.conf` |
 | `GET`  | `/api/awg/{telegram_id}/qr` | link token + active sub | same config as PNG QR |
+| `GET`  | `/api/awg/servers` | public labels only | list exit choices without IPs/SSH secrets |
 
 ## Behaviour notes
 
 - **Lazy provisioning:** a peer is created on the first `/config` request (which
   re-checks the subscription), not eagerly for every payer. `user.enabled` webhooks
   resume an existing retained peer but don't provision a new one — issuance does.
-- **Idempotent:** the peer `sub-<tid>` and its config are stored (Fernet-encrypted, like
-  other secrets), so repeat requests return the same config without touching SSH.
+- **Idempotent:** the default peer `sub-<tid>` and extra peers
+  `sub-<tid>-<server>` are stored (Fernet-encrypted, like other secrets), so repeat
+  requests return the same config without touching SSH.
 - **Teardown:** on `user.disabled` / `user.expired` / `user.revoked` / `user.limited` /
   `user.deleted`, its public key is removed from the live interface but its keys and
   encrypted config are retained. A renewal restores the same peer, so the user's

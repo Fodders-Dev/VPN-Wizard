@@ -37,6 +37,7 @@ from vpn_wizard.account import (
 )
 from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
 from vpn_wizard.awg_fallback import AwgFallbackConfig, AwgFallbackService, verify_issue_token
+from vpn_wizard.awg_servers import AwgRegistry, AwgRegistryError
 from vpn_wizard.proxy import ProxyProvisioner, rewrite_vless_alternatives, rewrite_vless_endpoint
 from vpn_wizard.relay import RelayProvisioner
 from vpn_wizard.remnawave import (
@@ -2596,16 +2597,86 @@ async def run_repair(payload: RollbackRequest, background_tasks: BackgroundTasks
 
 
 def _awg_service() -> AwgFallbackService:
+    """Original single-server service retained for already-issued NL profiles."""
     return AwgFallbackService(build_account_store(), AwgFallbackConfig.from_env())
 
 
-def _awg_issue_config(telegram_id: int, token: str) -> str:
-    """Verify the link token + active subscription, then return the AWG config."""
+def _awg_service_for(server: object, registry: AwgRegistry) -> AwgFallbackService:
+    """Route an exit server to either legacy or per-server peer storage."""
+    legacy = AwgFallbackConfig.from_env()
+    config = AwgFallbackConfig.from_server(server, link_secret=legacy.link_secret)
+    default = registry.default_server
+    storage_server_id = None if default is not None and server.id == default.id else server.id
+    return AwgFallbackService(
+        build_account_store(),
+        config,
+        server_id=storage_server_id,
+    )
+
+
+def _awg_all_services() -> list[AwgFallbackService]:
+    """Every configured exit, with the default mapped to the legacy peer row."""
+    registry = _awg_registry()
+    return [
+        _awg_service_for(server, registry)
+        for server in registry.servers
+        if server.usable
+    ]
+
+
+# The AmneziaWG Android client takes the tunnel name from the file's base name and
+# validates it against [a-zA-Z0-9_=+.-]{1,15}. It raises instead of truncating, so an
+# over-long name makes the config unimportable on the most common client.
+_AWG_UNSAFE_NAME_RE = re.compile(r"[^A-Za-z0-9_=+.-]")
+_AWG_NAME_MAX = 15
+
+
+def _awg_file_slug(server_id: Optional[str]) -> str:
+    """Base filename == the tunnel name the user will see in the app."""
+    suffix = _AWG_UNSAFE_NAME_RE.sub("", (server_id or "").strip())[: _AWG_NAME_MAX - 5]
+    return f"FVPN-{suffix}" if suffix else "FVPN"
+
+
+def _awg_label_config(config_text: str, server: Optional[object]) -> str:
+    """Stamp which exit server issued this config.
+
+    Whole-line ``#`` comments only, and only above ``[Interface]``: clients strip
+    them, but an inline comment would be swallowed by the ``grep '^Address'``
+    parsing that rebuilds server-side peer blocks. A non-comment key such as
+    ``Name =`` would make the whole import fail, so never add one.
+    """
+    if server is None:
+        return config_text
+    display = getattr(server, "display", "") or getattr(server, "id", "")
+    header = f"# Fodder VPN — {display}\n# server: {getattr(server, 'id', '')}\n"
+    return header + config_text.lstrip("\n")
+
+
+def _awg_registry() -> AwgRegistry:
+    try:
+        return AwgRegistry.from_env()
+    except AwgRegistryError as exc:
+        # A typo in the registry must not read as "no servers configured".
+        raise HTTPException(status_code=500, detail=f"AWG registry is invalid: {exc}") from exc
+
+
+def _awg_issue_config(
+    telegram_id: int,
+    token: str,
+    server_id: Optional[str] = None,
+) -> tuple[str, Optional[object]]:
+    """Verify the link token + active subscription, then return (config, server)."""
     awg_cfg = AwgFallbackConfig.from_env()
-    if not awg_cfg.configured:
+    if not awg_cfg.link_secret:
         raise HTTPException(status_code=503, detail="AWG fallback is not configured.")
     if not verify_issue_token(awg_cfg.link_secret, telegram_id, token):
         raise HTTPException(status_code=403, detail="Invalid or missing token.")
+    registry = _awg_registry()
+    server = registry.get_server(server_id)
+    if server_id and server is None:
+        raise HTTPException(status_code=404, detail="Unknown AWG server.")
+    if server is None or not server.usable:
+        raise HTTPException(status_code=503, detail="AWG fallback is not configured.")
     try:
         user = RemnawaveClient(RemnawaveConfig.from_env()).active_user(telegram_id)
     except RemnawaveError as exc:
@@ -2613,10 +2684,13 @@ def _awg_issue_config(telegram_id: int, token: str) -> str:
     if not user:
         raise HTTPException(status_code=403, detail="No active subscription.")
     try:
-        result = _awg_service().issue(telegram_id, remnawave_uuid=user.get("uuid"))
+        result = _awg_service_for(server, registry).issue(
+            telegram_id,
+            remnawave_uuid=user.get("uuid"),
+        )
     except Exception as exc:  # provisioning/SSH failure
         raise HTTPException(status_code=502, detail=f"AWG provisioning failed: {_error_message(exc)}") from exc
-    return result["config"]
+    return _awg_label_config(result["config"], server), server
 
 
 @app.post("/api/integrations/remnawave/webhook")
@@ -2636,30 +2710,44 @@ async def remnawave_webhook(request: Request) -> JSONResponse:
     # the live interface; enabling restores the same key so imported configs recover.
     if action in {"disable", "enable"} and telegram_id is not None:
         try:
-            service = _awg_service()
-            if action == "disable":
-                service.suspend(telegram_id)
-            else:
-                service.resume(telegram_id)
+            services = _awg_all_services()
         except Exception as exc:
+            services = []
             logger.warning(
-                "awg.webhook.sync_failed action=%s tid=%s err=%s",
+                "awg.webhook.registry_failed action=%s tid=%s err=%s",
                 action,
                 telegram_id,
                 _error_message(exc),
             )
+        for service in services:
+            try:
+                if action == "disable":
+                    service.suspend(telegram_id)
+                else:
+                    service.resume(telegram_id)
+            except Exception as exc:
+                logger.warning(
+                    "awg.webhook.sync_failed action=%s tid=%s server=%s err=%s",
+                    action,
+                    telegram_id,
+                    service.server_id or "default",
+                    _error_message(exc),
+                )
     return JSONResponse({"ok": True, "event": event, "action": action})
 
 
 @app.get("/api/awg/{telegram_id}/config")
-async def awg_config(telegram_id: int, token: str) -> Response:
-    config_text = _awg_issue_config(telegram_id, token)
+async def awg_config(telegram_id: int, token: str, server: Optional[str] = None) -> Response:
+    config_text, selected_server = _awg_issue_config(telegram_id, token, server)
     # The body carries a private key: never let a proxy/browser/link-preview cache it.
+    # octet-stream (not text/plain) so browsers/Telegram keep the ".conf" name as-is
+    # instead of appending ".txt" (which breaks "open with AmneziaWG" on Android).
+    slug = _awg_file_slug(getattr(selected_server, "id", None))
     return Response(
         content=config_text,
-        media_type="text/plain; charset=utf-8",
+        media_type="application/octet-stream",
         headers={
-            "Content-Disposition": f'attachment; filename="fodder-awg-{telegram_id}.conf"',
+            "Content-Disposition": f'attachment; filename="{slug}.conf"',
             "Cache-Control": "no-store",
             "Referrer-Policy": "no-referrer",
         },
@@ -2667,13 +2755,30 @@ async def awg_config(telegram_id: int, token: str) -> Response:
 
 
 @app.get("/api/awg/{telegram_id}/qr")
-async def awg_qr(telegram_id: int, token: str) -> Response:
-    config_text = _awg_issue_config(telegram_id, token)
+async def awg_qr(telegram_id: int, token: str, server: Optional[str] = None) -> Response:
+    config_text, _server = _awg_issue_config(telegram_id, token, server)
     return Response(
         content=_build_qr_png(config_text),
         media_type="image/png",
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
     )
+
+
+@app.get("/api/awg/servers")
+async def awg_servers() -> JSONResponse:
+    """Exit servers and obfuscation profiles offered to the bot/website picker.
+
+    Public on purpose: it carries labels only. ``AwgRegistry.public()`` is what
+    keeps hostnames and SSH credentials out of the response.
+    """
+    try:
+        registry = AwgRegistry.from_env()
+    except AwgRegistryError as exc:
+        # Misconfigured registry: say so instead of pretending we have no servers.
+        raise HTTPException(status_code=500, detail=f"AWG registry is invalid: {exc}") from exc
+    if not registry.configured:
+        raise HTTPException(status_code=503, detail="AWG fallback is not configured.")
+    return JSONResponse(registry.public())
 
 
 def _mount_miniapp() -> None:

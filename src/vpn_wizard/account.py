@@ -136,6 +136,21 @@ class AccountStore:
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS awg_fallback_server_peers (
+                    server_id TEXT NOT NULL,
+                    telegram_id INTEGER NOT NULL,
+                    client_name TEXT NOT NULL,
+                    remnawave_uuid TEXT,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    config_enc TEXT,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    PRIMARY KEY (server_id, telegram_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_awg_server_peers_telegram
+                    ON awg_fallback_server_peers(telegram_id);
                 """
             )
             self._ensure_saved_server_columns(conn)
@@ -656,6 +671,109 @@ class AccountStore:
             cur = conn.execute(
                 "DELETE FROM awg_fallback_peers WHERE telegram_id = ?",
                 (int(telegram_id),),
+            )
+            return cur.rowcount > 0
+
+    # Multi-exit peers intentionally live beside the original single-exit table.
+    # Keeping the legacy row untouched means an already-imported NL profile retains
+    # its private key while the same Telegram user can also own FI/TR/US profiles.
+    def _serialize_awg_server_peer(self, row: sqlite3.Row | None) -> Optional[dict[str, Any]]:
+        peer = self._serialize_awg_peer(row)
+        if peer is not None:
+            peer["server_id"] = str(row["server_id"])
+        return peer
+
+    def awg_get_server_peer(self, telegram_id: int, server_id: str) -> Optional[dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM awg_fallback_server_peers
+                WHERE server_id = ? AND telegram_id = ?
+                """,
+                (str(server_id), int(telegram_id)),
+            ).fetchone()
+            return self._serialize_awg_server_peer(row)
+
+    def awg_list_server_peers(self) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM awg_fallback_server_peers
+                ORDER BY telegram_id, server_id
+                """
+            ).fetchall()
+            return [
+                peer
+                for row in rows
+                if (peer := self._serialize_awg_server_peer(row)) is not None
+            ]
+
+    def awg_save_server_peer(
+        self,
+        telegram_id: int,
+        server_id: str,
+        *,
+        client_name: str,
+        remnawave_uuid: Optional[str],
+        config: Optional[str],
+        status: str = "active",
+    ) -> dict[str, Any]:
+        now = _now()
+        server_id = str(server_id)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO awg_fallback_server_peers
+                    (server_id, telegram_id, client_name, remnawave_uuid, status, config_enc, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(server_id, telegram_id) DO UPDATE SET
+                    client_name = excluded.client_name,
+                    remnawave_uuid = excluded.remnawave_uuid,
+                    status = excluded.status,
+                    config_enc = excluded.config_enc,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    server_id,
+                    int(telegram_id),
+                    client_name,
+                    remnawave_uuid,
+                    status,
+                    self._encrypt(config),
+                    now,
+                    now,
+                ),
+            )
+            row = conn.execute(
+                """
+                SELECT * FROM awg_fallback_server_peers
+                WHERE server_id = ? AND telegram_id = ?
+                """,
+                (server_id, int(telegram_id)),
+            ).fetchone()
+        peer = self._serialize_awg_server_peer(row)
+        assert peer is not None
+        return peer
+
+    def awg_set_server_status(self, telegram_id: int, server_id: str, status: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE awg_fallback_server_peers
+                SET status = ?, updated_at = ?
+                WHERE server_id = ? AND telegram_id = ?
+                """,
+                (status, _now(), str(server_id), int(telegram_id)),
+            )
+
+    def awg_delete_server_peer(self, telegram_id: int, server_id: str) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                DELETE FROM awg_fallback_server_peers
+                WHERE server_id = ? AND telegram_id = ?
+                """,
+                (str(server_id), int(telegram_id)),
             )
             return cur.rowcount > 0
 

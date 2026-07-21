@@ -22,15 +22,27 @@ import hashlib
 import hmac
 import os
 from pathlib import Path
+import re
 import tempfile
 from typing import Any, Callable, Optional
 
 from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
 
 
-def peer_name(telegram_id: int) -> str:
+_SERVER_ID_RE = re.compile(r"[^a-z0-9-]")
+
+
+def peer_name(telegram_id: int, server_id: Optional[str] = None) -> str:
     """Deterministic peer name. Matches core's ``^[a-zA-Z0-9_-]{1,32}$``."""
-    return f"sub-{int(telegram_id)}"
+    base = f"sub-{int(telegram_id)}"
+    if not server_id:
+        return base
+    clean = _SERVER_ID_RE.sub("", str(server_id).strip().lower())[:16]
+    candidate = f"{base}-{clean}" if clean else base
+    if len(candidate) <= 32:
+        return candidate
+    digest = hashlib.sha256(candidate.encode("utf-8")).hexdigest()[:6]
+    return f"{candidate[:25]}-{digest}"
 
 
 def issue_token(secret: str, telegram_id: int) -> str:
@@ -77,6 +89,20 @@ class AwgFallbackConfig:
             link_secret=(os.getenv("VPNW_AWG_LINK_SECRET") or "").strip(),
         )
 
+    @classmethod
+    def from_server(cls, server: Any, *, link_secret: str) -> "AwgFallbackConfig":
+        """Build a provisioning config from one registry entry."""
+        return cls(
+            host=str(server.host),
+            user=str(server.user),
+            port=int(server.port),
+            password=server.password,
+            key_path=server.key_path,
+            key_content=server.key_content,
+            listen_port=server.listen_port,
+            link_secret=link_secret,
+        )
+
     @property
     def configured(self) -> bool:
         return bool(self.host and (self.password or self.key_path or self.key_content))
@@ -90,6 +116,7 @@ class AwgFallbackService:
         account: Any,
         config: Optional[AwgFallbackConfig] = None,
         *,
+        server_id: Optional[str] = None,
         provision: Optional[Callable[[str], str]] = None,
         deprovision: Optional[Callable[[str], bool]] = None,
         suspend: Optional[Callable[[str], bool]] = None,
@@ -97,25 +124,61 @@ class AwgFallbackService:
     ) -> None:
         self.account = account
         self.config = config or AwgFallbackConfig.from_env()
+        self.server_id = str(server_id) if server_id else None
         self._provision = provision or self._ssh_provision
         self._deprovision = deprovision or self._ssh_deprovision
         self._suspend = suspend or self._ssh_suspend
         self._resume = resume or self._ssh_resume
 
     # --- public API -------------------------------------------------------
+    def _get_peer(self, telegram_id: int) -> Optional[dict[str, Any]]:
+        if self.server_id is None:
+            return self.account.awg_get_peer(telegram_id)
+        return self.account.awg_get_server_peer(telegram_id, self.server_id)
+
+    def _save_peer(
+        self,
+        telegram_id: int,
+        *,
+        client_name: str,
+        remnawave_uuid: Optional[str],
+        config: Optional[str],
+        status: str,
+    ) -> dict[str, Any]:
+        kwargs = {
+            "client_name": client_name,
+            "remnawave_uuid": remnawave_uuid,
+            "config": config,
+            "status": status,
+        }
+        if self.server_id is None:
+            return self.account.awg_save_peer(telegram_id, **kwargs)
+        return self.account.awg_save_server_peer(telegram_id, self.server_id, **kwargs)
+
+    def _set_status(self, telegram_id: int, status: str) -> None:
+        if self.server_id is None:
+            self.account.awg_set_status(telegram_id, status)
+        else:
+            self.account.awg_set_server_status(telegram_id, self.server_id, status)
+
+    def _delete_peer(self, telegram_id: int) -> bool:
+        if self.server_id is None:
+            return self.account.awg_delete_peer(telegram_id)
+        return self.account.awg_delete_server_peer(telegram_id, self.server_id)
+
     def issue(self, telegram_id: int, *, remnawave_uuid: Optional[str] = None) -> dict[str, Any]:
         """Return an AWG config for this user, provisioning the peer on first use.
 
         The caller MUST have already confirmed an active subscription.
         """
         telegram_id = int(telegram_id)
-        existing = self.account.awg_get_peer(telegram_id)
+        existing = self._get_peer(telegram_id)
         if existing and existing.get("status") == "active" and existing.get("config"):
             return {"config": existing["config"], "client_name": existing["client_name"], "reused": True}
         if existing and existing.get("status") == "suspended" and existing.get("config"):
             if not self._resume(existing["client_name"]):
                 raise RuntimeError("Suspended AWG peer could not be restored.")
-            self.account.awg_save_peer(
+            self._save_peer(
                 telegram_id,
                 client_name=existing["client_name"],
                 remnawave_uuid=remnawave_uuid or existing.get("remnawave_uuid"),
@@ -129,9 +192,9 @@ class AwgFallbackService:
                 "resumed": True,
             }
 
-        name = peer_name(telegram_id)
+        name = peer_name(telegram_id, self.server_id)
         config_text = self._provision(name)
-        self.account.awg_save_peer(
+        self._save_peer(
             telegram_id,
             client_name=name,
             remnawave_uuid=remnawave_uuid,
@@ -143,38 +206,38 @@ class AwgFallbackService:
     def suspend(self, telegram_id: int) -> bool:
         """Disable access while retaining the peer keys and encrypted config."""
         telegram_id = int(telegram_id)
-        existing = self.account.awg_get_peer(telegram_id)
+        existing = self._get_peer(telegram_id)
         if not existing:
             return False
         if existing.get("status") == "suspended":
             return True
         self._suspend(existing["client_name"])
-        self.account.awg_set_status(telegram_id, "suspended")
+        self._set_status(telegram_id, "suspended")
         return True
 
     def resume(self, telegram_id: int) -> bool:
         """Re-enable a retained peer so the existing client config works again."""
         telegram_id = int(telegram_id)
-        existing = self.account.awg_get_peer(telegram_id)
+        existing = self._get_peer(telegram_id)
         if not existing:
             return False
         if existing.get("status") == "active":
             return True
         if not self._resume(existing["client_name"]):
             raise RuntimeError("Suspended AWG peer could not be restored.")
-        self.account.awg_set_status(telegram_id, "active")
+        self._set_status(telegram_id, "active")
         return True
 
     def revoke(self, telegram_id: int) -> bool:
         """Permanently remove the AWG peer and its stored config."""
         telegram_id = int(telegram_id)
-        existing = self.account.awg_get_peer(telegram_id)
+        existing = self._get_peer(telegram_id)
         if not existing:
             return False
         try:
             self._deprovision(existing["client_name"])
         finally:
-            self.account.awg_delete_peer(telegram_id)
+            self._delete_peer(telegram_id)
         return True
 
     # --- default SSH-backed provisioning ---------------------------------

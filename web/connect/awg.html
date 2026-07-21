@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Подключить AmneziaWG · Fodder VPN</title>
+<style>
+  :root{
+    --ink:#101a3c; --ink-soft:#39426b; --muted:#5b6690;
+    --card:#ffffff; --card-2:#f4f6fc; --line:#e2e7f2;
+    --go1:#10c48a; --go2:#0bb6c6; --on-go:#04150f; --accent:#4b5cff;
+    --warn-ink:#8a5a12; --warn-bg:rgba(255,196,92,.22); --warn-edge:rgba(212,150,40,.4);
+    --shadow:0 1px 2px rgba(16,26,60,.05), 0 12px 30px rgba(16,26,60,.12);
+    --sans:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"SF Pro Text",Roboto,sans-serif;
+    --mono:"SF Mono","Cascadia Mono",Consolas,ui-monospace,monospace;
+    --b1:#7aa8ff; --b2:#b98cff; --b3:#5fe6cf; --base-a:#eaf1ff; --base-b:#f3edff;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --ink:#eef1fb; --ink-soft:#c2cae6; --muted:#95a0c8;
+    --card:#161d38; --card-2:#101830; --line:#26305a;
+    --warn-ink:#f0c070; --warn-bg:rgba(224,169,85,.14); --warn-edge:rgba(224,169,85,.32);
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 16px 38px rgba(0,0,0,.5);
+    --b1:#2f45c9; --b2:#7a34e6; --b3:#0f9f8c; --base-a:#0a0f22; --base-b:#150a26;
+  }}
+  *{box-sizing:border-box} html{font-size:100%}
+  body{margin:0;min-height:100dvh;color:var(--ink);font-family:var(--sans);font-size:1.0625rem;line-height:1.55;
+    -webkit-font-smoothing:antialiased;padding:max(1rem,env(safe-area-inset-top)) 1rem calc(2.5rem + env(safe-area-inset-bottom));
+    background:
+      radial-gradient(58vw 58vw at 10% 4%, color-mix(in srgb,var(--b1),transparent 46%), transparent 60%),
+      radial-gradient(52vw 52vw at 96% 10%, color-mix(in srgb,var(--b2),transparent 48%), transparent 60%),
+      radial-gradient(60vw 60vw at 50% 100%, color-mix(in srgb,var(--b3),transparent 50%), transparent 64%),
+      linear-gradient(160deg,var(--base-a),var(--base-b)); background-attachment:fixed;}
+  .wrap{max-width:30rem;margin:0 auto}
+  header{text-align:center;padding:.5rem .25rem .25rem}
+  .logo{display:inline-flex;align-items:center;gap:.55rem;font-weight:700;font-size:.94rem}
+  .logo .mark{width:2rem;height:2rem;border-radius:.66rem;background:linear-gradient(150deg,var(--go1),var(--accent));display:grid;place-items:center;color:#fff;font-size:1rem}
+  h1{font-size:clamp(1.55rem,6vw,1.95rem);letter-spacing:-.02em;margin:1rem 0 .35rem;text-wrap:balance}
+  .sub{color:var(--ink-soft);margin:0 auto;max-width:32ch;font-size:.98rem}
+
+  .seg{display:flex;gap:.3rem;padding:.32rem;margin:1.25rem 0 .3rem;background:var(--card);border:1px solid var(--line);border-radius:1.05rem;box-shadow:var(--shadow)}
+  .seg button{flex:1;appearance:none;border:0;background:transparent;color:var(--ink-soft);font-family:inherit;font-size:.94rem;font-weight:600;padding:.7rem .5rem;border-radius:.78rem;cursor:pointer}
+  .seg button[aria-selected="true"]{background:var(--card-2);color:var(--ink)}
+
+  .step{background:var(--card);border:1px solid var(--line);border-radius:1.25rem;box-shadow:var(--shadow);padding:1.15rem 1.1rem;margin-top:.9rem;display:grid;grid-template-columns:2.1rem 1fr;gap:.1rem .8rem}
+  .num{grid-row:1/3;width:2.1rem;height:2.1rem;border-radius:50%;background:linear-gradient(150deg,var(--go1),var(--go2));color:var(--on-go);font-weight:800;display:grid;place-items:center}
+  .step h2{grid-column:2;margin:.3rem 0 0;font-size:1.1rem}
+  .step .body{grid-column:2;color:var(--ink-soft);font-size:.97rem;margin-top:.35rem}
+  .step .body p{margin:0 0 .55rem} .step .body p:last-child{margin-bottom:0}
+  .platform{display:none} .platform.on{display:block}
+  b{color:var(--ink)}
+
+  .btn{display:flex;align-items:center;justify-content:center;gap:.55rem;width:100%;text-decoration:none;text-align:center;
+    font-family:inherit;font-size:1.05rem;font-weight:700;padding:1rem;border-radius:.95rem;border:1px solid transparent;cursor:pointer;margin-top:.7rem;transition:transform .08s;-webkit-tap-highlight-color:transparent}
+  .btn:active{transform:scale(.985)}
+  .btn-go{background:linear-gradient(150deg,var(--go1),var(--go2));color:var(--on-go);box-shadow:var(--shadow)}
+  .btn-out{background:var(--card-2);color:var(--ink);border-color:var(--line);font-weight:600;font-size:.98rem}
+  .qrwrap{margin-top:.9rem;text-align:center}
+  .qrwrap img{width:190px;height:190px;border-radius:1rem;border:1px solid var(--line);background:#fff;padding:.5rem}
+  .qrwrap .cap{font-size:.85rem;color:var(--muted);margin-top:.5rem}
+  .callout{margin-top:.7rem;background:var(--warn-bg);border:1px solid var(--warn-edge);border-radius:.85rem;padding:.75rem .8rem;font-size:.9rem}
+  .callout b{color:var(--warn-ink)}
+  .tip{margin-top:.6rem;font-size:.87rem;color:var(--muted)}
+  .srv{display:inline-block;margin:0 0 .7rem;padding:.3rem .7rem;border-radius:999px;
+       background:rgba(120,170,255,.14);font-size:.9rem;font-weight:600}
+  .srv b{font-weight:700}
+  .server-picker{margin:0 0 .85rem}
+  .server-picker p{margin:0 0 .5rem;font-weight:650;color:var(--ink)}
+  .server-grid{display:grid;grid-template-columns:1fr 1fr;gap:.45rem}
+  .server-btn{appearance:none;border:1px solid var(--line);background:var(--card-2);color:var(--ink);
+    border-radius:.78rem;padding:.72rem .5rem;font:600 .9rem var(--sans);cursor:pointer}
+  .server-btn[aria-pressed="true"]{border-color:var(--go2);box-shadow:inset 0 0 0 1px var(--go2);background:color-mix(in srgb,var(--go2),transparent 86%)}
+  .pastebox{margin-top:.6rem}
+  .pastebox label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:.35rem}
+  .pastebox input{width:100%;font-family:var(--mono);font-size:.85rem;padding:.75rem .8rem;border-radius:.78rem;border:1px solid var(--line);background:var(--card-2);color:var(--ink)}
+  #have[hidden],#nolink[hidden]{display:none}
+  .help{background:color-mix(in srgb,var(--accent),transparent 88%);border:1px solid color-mix(in srgb,var(--accent),transparent 70%);border-radius:1.1rem;padding:1rem;margin-top:1.1rem;font-size:.93rem;color:var(--ink-soft)}
+  footer{text-align:center;color:var(--muted);font-size:.78rem;margin-top:1.1rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="logo"><span class="mark" aria-hidden="true">🛡</span> Fodder VPN</span>
+    <h1>Подключение за 3 шага</h1>
+    <p class="sub">Стабильно работает в РФ. Российские сайты и банки — как обычно.</p>
+  </header>
+
+  <div class="seg" role="tablist" aria-label="Телефон">
+    <button id="t-and" role="tab" aria-selected="true">🤖 Android</button>
+    <button id="t-ios" role="tab" aria-selected="false">🍎 iPhone</button>
+  </div>
+
+  <section class="step">
+    <div class="num">1</div>
+    <h2>Установите AmneziaWG</h2>
+    <div class="body">
+      <div class="platform on" id="p-and">
+        <p>Приложение <b>AmneziaWG</b> (или AmneziaVPN) — Google Play, RuStore или файл APK.</p>
+        <a class="btn btn-out" href="https://play.google.com/store/apps/details?id=org.amnezia.awg" target="_blank" rel="noopener noreferrer">Открыть в Google Play →</a>
+      </div>
+      <div class="platform" id="p-ios">
+        <p>Приложение <b>AmneziaWG</b> в App Store. Если не находится — нужен Apple ID другой страны, напишите тому, кто дал ссылку.</p>
+        <a class="btn btn-out" href="https://apps.apple.com/app/amneziawg/id6478942365" target="_blank" rel="noopener noreferrer">Открыть в App Store →</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="step">
+    <div class="num">2</div>
+    <h2>Получите свой конфиг</h2>
+    <div class="body">
+      <div id="have" hidden>
+        <div class="server-picker" id="server-picker" hidden>
+          <p>Выберите страну</p>
+          <div class="server-grid" id="server-buttons"></div>
+        </div>
+        <div class="srv" id="srv" hidden>🌍 Сервер: <b id="srv-name"></b></div>
+        <a class="btn btn-go" id="dl" href="#" download>📥 Скачать конфиг</a>
+        <div class="qrwrap">
+          <img id="qr" alt="QR конфигурации" referrerpolicy="no-referrer">
+          <div class="cap">…или отсканируйте этот QR прямо в приложении AmneziaWG.<br>
+            При импорте по QR приложение спросит название — введите <b id="qr-name">FVPN</b>,
+            чтобы потом было видно, с какого это сервера.</div>
+        </div>
+      </div>
+      <div id="nolink">
+        <p>Персональную ссылку пришлёт тот, кто пригласил. Откройте её <b>на телефоне</b> — или вставьте ссылку-конфиг сюда:</p>
+        <div class="pastebox">
+          <label for="cfg">Ссылка на конфиг</label>
+          <input id="cfg" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://…/api/awg/…/config?token=…">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="step">
+    <div class="num">3</div>
+    <h2>Импортируйте и включите</h2>
+    <div class="body">
+      <p>Откройте скачанный файл в AmneziaWG (или отсканируйте QR) → нажмите большую кнопку включения.</p>
+      <p class="tip">Первый раз телефон спросит разрешение на VPN — согласитесь. Значок VPN вверху = всё работает. 🎉</p>
+    </div>
+  </section>
+
+  <section class="step" style="display:block">
+    <h2 style="margin:0 0 .55rem;font-size:1.1rem">💡 Как это работает</h2>
+    <div class="body" style="margin:0">
+      <p>🎁 Сейчас у тебя <b>7 дней бесплатно</b> — попробуй, ничего платить не надо.</p>
+      <p>💳 Чтобы пользоваться дальше — открой нашего бота <b><a href="https://t.me/foddervpnbot" style="color:var(--accent)">@foddervpnbot</a></b> (когда подключишься, Telegram заработает) и оплати подписку: без рекламы, без лимитов, недорого.</p>
+      <p>🔁 Оплатил — работает дальше. Срок кончился — доступ закроется, пока не продлишь.</p>
+      <p class="tip">Триал — один на человека и привязан к подписке. Бесконечных бесплатных профилей не сделать.</p>
+    </div>
+  </section>
+
+  <div class="help" id="help">
+    <b>Не получается?</b> Напишите тому, кто дал ссылку — поможем за пару минут.
+  </div>
+  <footer>Fodder VPN · без рекламы и лимитов · работает пока активна подписка</footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var $=function(id){return document.getElementById(id);};
+  // platform tabs
+  var tabs={and:$("t-and"),ios:$("t-ios")}, pans={and:$("p-and"),ios:$("p-ios")};
+  function sel(p){for(var k in tabs){var on=k===p;tabs[k].setAttribute("aria-selected",on?"true":"false");pans[k].classList.toggle("on",on);}}
+  tabs.and.onclick=function(){sel("and");}; tabs.ios.onclick=function(){sel("ios");};
+  sel(/iphone|ipad|ipod/i.test(navigator.userAgent||"")?"ios":"and");
+
+  function base(){var o=location.origin;return /^https?:/i.test(o)?o.replace(/\/$/,""):"https://212-69-84-167.nip.io";}
+  function isHttp(u){return /^https?:\/\//i.test(u);}
+
+  function urls(){
+    var p=new URLSearchParams(location.search);
+    var cfg=(p.get("config")||"").trim(), qr=(p.get("qr")||"").trim();
+    var tid=(p.get("tid")||"").trim(), tok=(p.get("token")||"").trim();
+    if(!cfg && tid && tok){ cfg=base()+"/api/awg/"+encodeURIComponent(tid)+"/config?token="+encodeURIComponent(tok); qr=base()+"/api/awg/"+encodeURIComponent(tid)+"/qr?token="+encodeURIComponent(tok); }
+    if(cfg && !qr){ qr=cfg.replace("/config?","/qr?"); }
+    return {cfg:cfg,qr:qr,server:(p.get("server")||"").trim()};
+  }
+  function serverUrl(url,server){
+    if(!isHttp(url)||!server) return url;
+    try{var parsed=new URL(url);parsed.searchParams.set("server",server);return parsed.toString();}
+    catch(e){return url;}
+  }
+  function show(cfg,qr){
+    if(!isHttp(cfg)) return false;
+    $("dl").href=cfg;
+    if(isHttp(qr)) $("qr").src=qr; else $("qr").parentNode.style.display="none";
+    $("have").hidden=false; $("nolink").hidden=true; return true;
+  }
+  $("cfg").addEventListener("input",function(e){var v=(e.target.value||"").trim();if(isHttp(v))show(v,v.replace("/config?","/qr?"));});
+  var u=urls(); if(u.cfg) show(serverUrl(u.cfg,u.server),serverUrl(u.qr,u.server));
+
+  // The picker is functional: the selected id is sent to both provisioning
+  // endpoints, so each country receives its own peer and downloadable profile.
+  function loadServers(){
+    if(!window.fetch) return;
+    fetch(base()+"/api/awg/servers",{credentials:"omit"})
+      .then(function(r){return r.ok?r.json():null;})
+      .then(function(d){
+        if(!d||!d.servers||!d.servers.length) return;
+        var pick=d.servers[0];
+        var wanted=u.server||d.default_server;
+        for(var i=0;i<d.servers.length;i++){ if(d.servers[i].id===wanted){ pick=d.servers[i]; break; } }
+        var box=$("server-buttons");box.textContent="";
+        function select(item){
+          pick=item;
+          show(serverUrl(u.cfg,item.id),serverUrl(u.qr,item.id));
+          $("srv-name").textContent=item.display||item.label||item.id;
+          $("srv").hidden=false;
+          $("qr-name").textContent=("FVPN-"+item.id).slice(0,15);
+          var buttons=box.querySelectorAll("button");
+          for(var j=0;j<buttons.length;j++){buttons[j].setAttribute("aria-pressed",buttons[j].dataset.id===item.id?"true":"false");}
+          try{var page=new URL(location.href);page.searchParams.set("server",item.id);history.replaceState(null,"",page.toString());}catch(e){}
+        }
+        for(var k=0;k<d.servers.length;k++){
+          (function(item){
+            var button=document.createElement("button");button.type="button";button.className="server-btn";
+            button.dataset.id=item.id;button.textContent=item.display||item.label||item.id;
+            button.setAttribute("aria-pressed","false");button.onclick=function(){select(item);};box.appendChild(button);
+          })(d.servers[k]);
+        }
+        $("server-picker").hidden=false;
+        select(pick);
+      })
+      .catch(function(){});
+  }
+  loadServers();
+})();
+</script>
+</body>
+</html>
