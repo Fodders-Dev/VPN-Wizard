@@ -39,8 +39,11 @@ from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
 from vpn_wizard.awg_fallback import (
     AwgFallbackConfig,
     AwgFallbackService,
+    device_owner_slot,
+    device_peer_id,
     family_guest_id,
     family_issue_token,
+    family_owner_id,
     issue_token,
     verify_family_issue_token,
     verify_issue_token,
@@ -52,6 +55,7 @@ from vpn_wizard.remnawave import (
     RemnawaveClient,
     RemnawaveConfig,
     RemnawaveError,
+    device_limit_of,
     event_action,
     parse_event,
     telegram_id_of,
@@ -504,6 +508,16 @@ class PortalLinksResponse(BaseModel):
     personal_vpn_url: str
     family_vpn_url: str
     server_wizard_url: str
+    subscription_active: bool = False
+    device_limit: int = 1
+
+
+class AwgAccessResponse(BaseModel):
+    ok: bool
+    active: bool
+    device_limit: int
+    family: bool = False
+    expires_at: Optional[str] = None
 
 
 class SavedServerRequest(BaseModel):
@@ -1162,6 +1176,13 @@ def portal_links(request: Request) -> Response:
         family_vpn_url=f"{base}/connect/awg.html?{family_query}",
         server_wizard_url=f"{base}/wizard/?v=20260722-3",
     )
+    try:
+        active_user = RemnawaveClient(RemnawaveConfig.from_env()).active_user(telegram_id)
+    except RemnawaveError:
+        active_user = None
+    if active_user:
+        payload.subscription_active = True
+        payload.device_limit = device_limit_of(active_user)
     return JSONResponse(
         payload.model_dump(),
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
@@ -2683,10 +2704,20 @@ _AWG_UNSAFE_NAME_RE = re.compile(r"[^A-Za-z0-9_=+.-]")
 _AWG_NAME_MAX = 15
 
 
-def _awg_file_slug(server_id: Optional[str]) -> str:
+def _awg_file_slug(
+    server_id: Optional[str],
+    *,
+    device_slot: int = 1,
+    family: bool = False,
+) -> str:
     """Base filename == the tunnel name the user will see in the app."""
-    suffix = _AWG_UNSAFE_NAME_RE.sub("", (server_id or "").strip())[: _AWG_NAME_MAX - 5]
-    return f"FVPN-{suffix}" if suffix else "FVPN"
+    suffix = _AWG_UNSAFE_NAME_RE.sub("", (server_id or "").strip())[:6]
+    name = f"FVPN-{suffix}" if suffix else "FVPN"
+    if family:
+        name += "-F"
+    elif int(device_slot) > 1:
+        name += f"-D{int(device_slot)}"
+    return name[:_AWG_NAME_MAX]
 
 
 def _awg_label_config(config_text: str, server: Optional[object]) -> str:
@@ -2716,6 +2747,7 @@ def _awg_issue_config(
     telegram_id: int,
     token: str,
     server_id: Optional[str] = None,
+    device_slot: int = 1,
 ) -> tuple[str, Optional[object]]:
     """Verify the link token + active subscription, then return (config, server)."""
     awg_cfg = AwgFallbackConfig.from_env()
@@ -2723,7 +2755,16 @@ def _awg_issue_config(
         raise HTTPException(status_code=503, detail="AWG fallback is not configured.")
     if not verify_issue_token(awg_cfg.link_secret, telegram_id, token):
         raise HTTPException(status_code=403, detail="Invalid or missing token.")
-    return _awg_issue_entitled_config(telegram_id, telegram_id, server_id)
+    try:
+        peer_id = device_peer_id(telegram_id, device_slot)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _awg_issue_entitled_config(
+        peer_id,
+        telegram_id,
+        server_id,
+        required_device_slot=device_slot,
+    )
 
 
 def _awg_issue_family_config(
@@ -2741,13 +2782,20 @@ def _awg_issue_family_config(
         peer_id = family_guest_id(owner_telegram_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return _awg_issue_entitled_config(peer_id, owner_telegram_id, server_id)
+    return _awg_issue_entitled_config(
+        peer_id,
+        owner_telegram_id,
+        server_id,
+        required_device_slot=2,
+    )
 
 
 def _awg_issue_entitled_config(
     peer_id: int,
     entitlement_telegram_id: int,
     server_id: Optional[str] = None,
+    *,
+    required_device_slot: Optional[int] = None,
 ) -> tuple[str, Optional[object]]:
     """Provision ``peer_id`` using another Telegram account's entitlement."""
     registry = _awg_registry()
@@ -2764,6 +2812,11 @@ def _awg_issue_entitled_config(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     if not user:
         raise HTTPException(status_code=403, detail="No active subscription.")
+    if required_device_slot is not None and required_device_slot > device_limit_of(user):
+        raise HTTPException(
+            status_code=403,
+            detail="This device is not included in the active subscription.",
+        )
     try:
         result = _awg_service_for(server, registry).issue(
             peer_id,
@@ -2772,6 +2825,73 @@ def _awg_issue_entitled_config(
     except Exception as exc:  # provisioning/SSH failure
         raise HTTPException(status_code=502, detail=f"AWG provisioning failed: {_error_message(exc)}") from exc
     return _awg_label_config(result["config"], server), server
+
+
+def _awg_access(
+    telegram_id: int,
+    token: str,
+    *,
+    family: bool = False,
+) -> AwgAccessResponse:
+    """Validate a signed installer link and expose only its paid slot count."""
+    awg_cfg = AwgFallbackConfig.from_env()
+    if not awg_cfg.link_secret:
+        raise HTTPException(status_code=503, detail="AWG fallback is not configured.")
+    valid = (
+        verify_family_issue_token(awg_cfg.link_secret, telegram_id, token)
+        if family
+        else verify_issue_token(awg_cfg.link_secret, telegram_id, token)
+    )
+    if not valid:
+        raise HTTPException(status_code=403, detail="Invalid or missing token.")
+    try:
+        user = RemnawaveClient(RemnawaveConfig.from_env()).active_user(telegram_id)
+    except RemnawaveError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    if not user:
+        raise HTTPException(status_code=403, detail="No active subscription.")
+    paid_limit = device_limit_of(user)
+    if family and paid_limit < 2:
+        raise HTTPException(
+            status_code=403,
+            detail="Family access requires a subscription with at least two devices.",
+        )
+    return AwgAccessResponse(
+        ok=True,
+        active=True,
+        device_limit=1 if family else paid_limit,
+        family=family,
+        expires_at=str(user.get("expireAt") or "") or None,
+    )
+
+
+def _awg_peer_ids_for_owner(service: object, owner_telegram_id: int) -> list[int]:
+    """Existing personal, extra-device and family peers owned by one subscriber."""
+    owner_telegram_id = int(owner_telegram_id)
+    try:
+        account = service.account
+        if service.server_id is None:
+            peers = account.awg_list_peers()
+        else:
+            peers = [
+                peer
+                for peer in account.awg_list_server_peers()
+                if str(peer.get("server_id")) == str(service.server_id)
+            ]
+        owned: list[int] = []
+        for peer in peers:
+            peer_id = int(peer["telegram_id"])
+            device_owner = device_owner_slot(peer_id)
+            resolved_owner = family_owner_id(peer_id) or (
+                device_owner[0] if device_owner else peer_id
+            )
+            if resolved_owner == owner_telegram_id:
+                owned.append(peer_id)
+        return sorted(set(owned))
+    except (AttributeError, KeyError, TypeError, ValueError):
+        # Compatibility for injected/custom services: preserve the original two
+        # well-known slots. Real services always enumerate their persisted peers.
+        return [owner_telegram_id, family_guest_id(owner_telegram_id)]
 
 
 @app.post("/api/integrations/remnawave/webhook")
@@ -2800,12 +2920,12 @@ async def remnawave_webhook(request: Request) -> JSONResponse:
                 telegram_id,
                 _error_message(exc),
             )
-        peer_ids = [telegram_id]
-        try:
-            peer_ids.append(family_guest_id(telegram_id))
-        except ValueError:
-            logger.warning("awg.webhook.invalid_telegram_id tid=%s", telegram_id)
         for service in services:
+            try:
+                peer_ids = _awg_peer_ids_for_owner(service, telegram_id)
+            except ValueError:
+                peer_ids = [telegram_id]
+                logger.warning("awg.webhook.invalid_telegram_id tid=%s", telegram_id)
             for peer_id in peer_ids:
                 try:
                     if action == "disable":
@@ -2814,10 +2934,10 @@ async def remnawave_webhook(request: Request) -> JSONResponse:
                         service.resume(peer_id)
                 except Exception as exc:
                     logger.warning(
-                        "awg.webhook.sync_failed action=%s tid=%s family=%s server=%s err=%s",
+                        "awg.webhook.sync_failed action=%s tid=%s peer=%s server=%s err=%s",
                         action,
                         telegram_id,
-                        peer_id != telegram_id,
+                        peer_id,
                         service.server_id or "default",
                         _error_message(exc),
                     )
@@ -2825,12 +2945,17 @@ async def remnawave_webhook(request: Request) -> JSONResponse:
 
 
 @app.get("/api/awg/{telegram_id}/config")
-async def awg_config(telegram_id: int, token: str, server: Optional[str] = None) -> Response:
-    config_text, selected_server = _awg_issue_config(telegram_id, token, server)
+async def awg_config(
+    telegram_id: int,
+    token: str,
+    server: Optional[str] = None,
+    device: int = 1,
+) -> Response:
+    config_text, selected_server = _awg_issue_config(telegram_id, token, server, device)
     # The body carries a private key: never let a proxy/browser/link-preview cache it.
     # octet-stream (not text/plain) so browsers/Telegram keep the ".conf" name as-is
     # instead of appending ".txt" (which breaks "open with AmneziaWG" on Android).
-    slug = _awg_file_slug(getattr(selected_server, "id", None))
+    slug = _awg_file_slug(getattr(selected_server, "id", None), device_slot=device)
     return Response(
         content=config_text,
         media_type="application/octet-stream",
@@ -2843,13 +2968,23 @@ async def awg_config(telegram_id: int, token: str, server: Optional[str] = None)
 
 
 @app.get("/api/awg/{telegram_id}/qr")
-async def awg_qr(telegram_id: int, token: str, server: Optional[str] = None) -> Response:
-    config_text, _server = _awg_issue_config(telegram_id, token, server)
+async def awg_qr(
+    telegram_id: int,
+    token: str,
+    server: Optional[str] = None,
+    device: int = 1,
+) -> Response:
+    config_text, _server = _awg_issue_config(telegram_id, token, server, device)
     return Response(
         content=_build_qr_png(config_text),
         media_type="image/png",
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
     )
+
+
+@app.get("/api/awg/{telegram_id}/access", response_model=AwgAccessResponse)
+async def awg_access(telegram_id: int, token: str) -> AwgAccessResponse:
+    return _awg_access(telegram_id, token)
 
 
 @app.get("/api/awg/family/{owner_telegram_id}/config")
@@ -2863,7 +2998,7 @@ async def awg_family_config(
         token,
         server,
     )
-    slug = _awg_file_slug(getattr(selected_server, "id", None))
+    slug = _awg_file_slug(getattr(selected_server, "id", None), family=True)
     return Response(
         content=config_text,
         media_type="application/octet-stream",
@@ -2873,6 +3008,14 @@ async def awg_family_config(
             "Referrer-Policy": "no-referrer",
         },
     )
+
+
+@app.get(
+    "/api/awg/family/{owner_telegram_id}/access",
+    response_model=AwgAccessResponse,
+)
+async def awg_family_access(owner_telegram_id: int, token: str) -> AwgAccessResponse:
+    return _awg_access(owner_telegram_id, token, family=True)
 
 
 @app.get("/api/awg/family/{owner_telegram_id}/qr")

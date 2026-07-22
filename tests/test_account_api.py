@@ -101,6 +101,16 @@ def test_portal_links_require_telegram_session_and_keep_tokens_separate(
     )
     assert login.status_code == 200
 
+    class ActiveRemnawave:
+        def __init__(self, config) -> None:
+            self.config = config
+
+        def active_user(self, telegram_id: int):
+            assert telegram_id == 10101
+            return {"uuid": "active", "hwidDeviceLimit": 3}
+
+    monkeypatch.setattr(server, "RemnawaveClient", ActiveRemnawave)
+
     response = client.get("/api/portal/links")
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
@@ -119,6 +129,8 @@ def test_portal_links_require_telegram_session_and_keep_tokens_separate(
         "token": [family_issue_token(secret, 10101)],
     }
     assert body["server_wizard_url"] == "https://vpn.example.test/wizard/?v=20260722-3"
+    assert body["subscription_active"] is True
+    assert body["device_limit"] == 3
 
 
 def test_legacy_miniapp_entry_redirects_to_uncached_portal() -> None:

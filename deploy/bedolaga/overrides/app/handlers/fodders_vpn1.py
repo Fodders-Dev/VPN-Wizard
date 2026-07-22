@@ -164,7 +164,7 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
             'Доступ работает только при активной подписке. Если срок закончится, '
             'сервер приостановит ключ; после продления уже установленный профиль '
             'заработает снова.\n\n'
-            '1. Установите официальное приложение AmneziaWG для своего телефона.\n'
+            '1. Установите официальное приложение для Android, iPhone, Windows или Mac.\n'
             '2. Нажмите страну и откройте скачанный .conf в AmneziaWG.\n'
             '3. Включите туннель нужной страны.'
         )
@@ -172,6 +172,7 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
         android_text = '🤖 Android'
         ios_text = '🍎 iPhone'
         windows_text = '🪟 Windows'
+        mac_text = '🍎 Mac'
         family_text = '👵 Дать доступ близкому'
     else:
         text = (
@@ -189,6 +190,7 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
         android_text = '🤖 Android'
         ios_text = '🍎 iPhone'
         windows_text = '🪟 Windows'
+        mac_text = '🍎 Mac'
         family_text = '👵 Share with family'
     server_rows = []
     for server_id, label in servers:
@@ -223,6 +225,10 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
                     text=windows_text,
                     url='https://github.com/amnezia-vpn/amneziawg-windows-client/releases/latest',
                 ),
+                types.InlineKeyboardButton(
+                    text=mac_text,
+                    url='https://github.com/amnezia-vpn/amnezia-client/releases/latest',
+                ),
             ],
         ]
     )
@@ -241,9 +247,10 @@ async def _send_family_link(message: types.Message, user: types.User | None) -> 
             '👵 <b>Доступ для близкого — без Telegram</b>\n\n'
             'Отправьте ссылку по SMS, WhatsApp или любым другим способом. '
             'Она откроется в обычном браузере и выдаст <b>отдельный</b> профиль '
-            'AmneziaWG — ваш собственный профиль не сломается.\n\n'
+            'AmneziaWG — ваше устройство №1 продолжит работать.\n\n'
             'Семейный профиль работает, пока активна ваша подписка. '
-            'Это один дополнительный семейный слот на аккаунт.\n\n'
+            'Он занимает <b>устройство №2</b> и доступен на тарифах для 3 или 5 '
+            'устройств — лишний бесплатный ключ не создаётся.\n\n'
             f'<code>{html_escape(family_url)}</code>'
         )
         button_text = '🌐 Открыть семейную ссылку'
@@ -252,9 +259,9 @@ async def _send_family_link(message: types.Message, user: types.User | None) -> 
             '👵 <b>Family access — no Telegram required</b>\n\n'
             'Send this link by SMS, WhatsApp, or any other channel. It opens in '
             'a normal browser and issues a separate AmneziaWG profile, so your '
-            'own device keeps working.\n\n'
-            'The family profile follows your subscription. One family slot is '
-            'available per account.\n\n'
+            'first device keeps working.\n\n'
+            'The family profile follows your subscription and uses paid device '
+            'slot 2 on the 3- or 5-device plan. It is not an extra free slot.\n\n'
             f'<code>{html_escape(family_url)}</code>'
         )
         button_text = '🌐 Open family link'

@@ -16,7 +16,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 import vpn_wizard.server as server_module
-from vpn_wizard.awg_fallback import family_guest_id, family_issue_token, issue_token
+from vpn_wizard.awg_fallback import (
+    device_peer_id,
+    family_guest_id,
+    family_issue_token,
+    issue_token,
+)
 from vpn_wizard.awg_servers import AwgServer
 from vpn_wizard.server import _awg_file_slug, _awg_label_config, app
 
@@ -73,6 +78,8 @@ def test_file_slug_names_the_server() -> None:
     # Different servers must yield different files, or a second download
     # overwrites the first instead of adding a tunnel.
     assert _awg_file_slug("nl") != _awg_file_slug("fi")
+    assert _awg_file_slug("nl", device_slot=2) == "FVPN-nl-D2"
+    assert _awg_file_slug("nl", family=True) == "FVPN-nl-F"
 
 
 def test_file_slug_falls_back_when_id_is_unusable() -> None:
@@ -131,7 +138,7 @@ def test_config_download_filename_is_importable(monkeypatch: pytest.MonkeyPatch,
     monkeypatch.setattr(
         server_module,
         "_awg_issue_config",
-        lambda telegram_id, token, server_id=None: ("[Interface]\nPrivateKey = k\n", _server()),
+        lambda telegram_id, token, server_id=None, device_slot=1: ("[Interface]\nPrivateKey = k\n", _server()),
     )
     response = client.get("/api/awg/449066726/config", params={"token": "whatever"})
 
@@ -175,7 +182,7 @@ def test_family_config_uses_owner_entitlement_and_separate_peer(
 
         def active_user(self, telegram_id: int):
             entitlement_lookups.append(telegram_id)
-            return {"uuid": "owner-active"}
+            return {"uuid": "owner-active", "hwidDeviceLimit": 2}
 
     def issue(self, telegram_id: int, *, remnawave_uuid=None):
         issued_peers.append(telegram_id)
@@ -199,7 +206,7 @@ def test_family_config_uses_owner_entitlement_and_separate_peer(
     )
 
     assert config.status_code == 200
-    assert config.headers["content-disposition"] == 'attachment; filename="FVPN-main.conf"'
+    assert config.headers["content-disposition"] == 'attachment; filename="FVPN-main-F.conf"'
     assert config.headers["cache-control"] == "no-store"
     assert config.headers["referrer-policy"] == "no-referrer"
     assert qr.status_code == 200
@@ -225,6 +232,59 @@ def test_family_endpoint_rejects_personal_or_wrong_owner_token(
         client.get("/api/awg/family/1/config", params={"token": other_family}).status_code
         == 403
     )
+
+
+def test_personal_device_slot_is_capped_by_paid_limit(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    secret = "link-secret"
+    owner_id = 449066726
+    _configure_single_server(monkeypatch, secret)
+    issued_peers: list[int] = []
+
+    class ActiveRemnawave:
+        def __init__(self, config) -> None:
+            self.config = config
+
+        def active_user(self, telegram_id: int):
+            assert telegram_id == owner_id
+            return {
+                "uuid": "active-user",
+                "status": "ACTIVE",
+                "hwidDeviceLimit": 2,
+                "expireAt": "2999-01-01T00:00:00Z",
+            }
+
+    def issue(self, telegram_id: int, *, remnawave_uuid=None):
+        issued_peers.append(telegram_id)
+        return {"config": "[Interface]\nPrivateKey = k\n", "client_name": "x", "reused": False}
+
+    monkeypatch.setattr(server_module, "RemnawaveClient", ActiveRemnawave)
+    monkeypatch.setattr(server_module.AwgFallbackService, "issue", issue)
+    token = issue_token(secret, owner_id)
+
+    access = client.get(f"/api/awg/{owner_id}/access", params={"token": token})
+    second = client.get(
+        f"/api/awg/{owner_id}/config",
+        params={"token": token, "device": 2},
+    )
+    third = client.get(
+        f"/api/awg/{owner_id}/config",
+        params={"token": token, "device": 3},
+    )
+
+    assert access.status_code == 200
+    assert access.json() == {
+        "ok": True,
+        "active": True,
+        "device_limit": 2,
+        "family": False,
+        "expires_at": "2999-01-01T00:00:00Z",
+    }
+    assert second.status_code == 200
+    assert second.headers["content-disposition"] == 'attachment; filename="FVPN-main-D2.conf"'
+    assert third.status_code == 403
+    assert issued_peers == [device_peer_id(owner_id, 2)]
 
 
 def test_webhook_applies_expiry_and_renewal_to_owner_and_family(
@@ -308,8 +368,10 @@ def test_servers_route_does_not_shadow_the_config_route(client: TestClient) -> N
     paths = {getattr(route, "path", "") for route in app.routes}
     assert "/api/awg/servers" in paths
     assert "/api/awg/{telegram_id}/config" in paths
+    assert "/api/awg/{telegram_id}/access" in paths
     assert "/api/awg/family/{owner_telegram_id}/config" in paths
     assert "/api/awg/family/{owner_telegram_id}/qr" in paths
+    assert "/api/awg/family/{owner_telegram_id}/access" in paths
 
 
 def test_selected_server_controls_real_provisioning(

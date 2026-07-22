@@ -9,10 +9,11 @@ from vpn_wizard.account import build_account_store
 from vpn_wizard.awg_fallback import (
     AwgFallbackConfig,
     AwgFallbackService,
+    device_owner_slot,
     family_owner_id,
 )
 from vpn_wizard.awg_servers import AwgRegistry
-from vpn_wizard.remnawave import RemnawaveClient, RemnawaveConfig
+from vpn_wizard.remnawave import RemnawaveClient, RemnawaveConfig, device_limit_of
 
 
 def reconcile_awg_peers(
@@ -49,11 +50,14 @@ def reconcile_awg_peers(
         (peer, server_services.get(str(peer["server_id"])), str(peer["server_id"]))
         for peer in account.awg_list_server_peers()
     )
-    entitlement_cache: dict[int, bool | Exception] = {}
+    entitlement_cache: dict[int, dict[str, Any] | None | Exception] = {}
 
     for peer, service, server_id in peers:
         telegram_id = int(peer["telegram_id"])
-        entitlement_id = family_owner_id(telegram_id) or telegram_id
+        family_owner = family_owner_id(telegram_id)
+        device_owner = device_owner_slot(telegram_id)
+        entitlement_id = family_owner or (device_owner[0] if device_owner else telegram_id)
+        required_slot = device_owner[1] if device_owner else (1 if family_owner is None else None)
         result["checked"] += 1
         status = str(peer.get("status") or "")
         if service is None:
@@ -67,9 +71,7 @@ def reconcile_awg_peers(
             continue
         if entitlement_id not in entitlement_cache:
             try:
-                entitlement_cache[entitlement_id] = (
-                    remnawave.active_user(entitlement_id) is not None
-                )
+                entitlement_cache[entitlement_id] = remnawave.active_user(entitlement_id)
             except Exception as exc:
                 entitlement_cache[entitlement_id] = exc
         entitlement = entitlement_cache[entitlement_id]
@@ -81,8 +83,13 @@ def reconcile_awg_peers(
                 error["server_id"] = server_id
             result["errors"].append(error)
             continue
-        if entitlement:
+        owner_active = entitlement is not None
+        peer_entitled = owner_active and (
+            required_slot is None or required_slot <= device_limit_of(entitlement)
+        )
+        if owner_active:
             active_seen += 1
+        if peer_entitled:
             if status == "suspended":
                 to_resume.append((telegram_id, service, server_id))
             else:

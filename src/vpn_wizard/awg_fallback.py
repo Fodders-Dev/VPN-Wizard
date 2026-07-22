@@ -30,8 +30,10 @@ from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
 
 
 _SERVER_ID_RE = re.compile(r"[^a-z0-9-]")
+DEVICE_PEER_ID_OFFSET = 3_000_000_000_000_000
 FAMILY_GUEST_ID_OFFSET = 4_000_000_000_000_000
 _MAX_FAMILY_OWNER_ID = 999_999_999_999
+MAX_DEVICE_SLOT = 99
 
 
 def peer_name(telegram_id: int, server_id: Optional[str] = None) -> str:
@@ -61,6 +63,43 @@ def verify_issue_token(secret: str, telegram_id: int, token: Optional[str]) -> b
     if not secret or not token:
         return False
     return hmac.compare_digest(issue_token(secret, telegram_id), token.strip())
+
+
+def device_peer_id(owner_telegram_id: int, slot: int) -> int:
+    """Stable peer id for one paid device slot.
+
+    Slot 1 deliberately remains the Telegram id used by all profiles already in
+    production. Extra slots use a reversible synthetic range, so every device has
+    independent WireGuard keys without adding another account or database table.
+    """
+    owner = int(owner_telegram_id)
+    slot = int(slot)
+    if owner <= 0 or owner > _MAX_FAMILY_OWNER_ID:
+        raise ValueError("Invalid device owner Telegram id.")
+    if slot < 1 or slot > MAX_DEVICE_SLOT:
+        raise ValueError(f"Device slot must be between 1 and {MAX_DEVICE_SLOT}.")
+    if slot == 1:
+        return owner
+    # The shareable no-Telegram family link is the paid second device, not a
+    # hidden free peer. Both owner and relative therefore receive the same slot-2
+    # config and can never exceed the subscription's device allowance.
+    if slot == 2:
+        return FAMILY_GUEST_ID_OFFSET + owner
+    return DEVICE_PEER_ID_OFFSET + owner * 100 + slot
+
+
+def device_owner_slot(peer_id: int) -> Optional[tuple[int, int]]:
+    """Map an extra-device synthetic peer back to ``(owner, slot)``."""
+    family_owner = int(peer_id) - FAMILY_GUEST_ID_OFFSET
+    if 0 < family_owner <= _MAX_FAMILY_OWNER_ID:
+        return family_owner, 2
+    encoded = int(peer_id) - DEVICE_PEER_ID_OFFSET
+    if encoded <= 0:
+        return None
+    owner, slot = divmod(encoded, 100)
+    if 0 < owner <= _MAX_FAMILY_OWNER_ID and 2 <= slot <= MAX_DEVICE_SLOT:
+        return owner, slot
+    return None
 
 
 def family_guest_id(owner_telegram_id: int) -> int:

@@ -47,6 +47,7 @@ config_paths=(
     opt/bedolaga/app/handlers/fodders_vpn1.py
     opt/bedolaga/scripts/configure_fodders_vpn1_menu.py
     opt/bedolaga/scripts/configure_trial_tariff.py
+    opt/bedolaga/scripts/configure_paid_tariffs.py
     opt/bedolaga/cutover-existing-bot.sh
     opt/bedolaga/suppress-upstream-startup-report.patch
     opt/bedolaga/migrations/alembic/versions/0021_landing_localized_texts.py

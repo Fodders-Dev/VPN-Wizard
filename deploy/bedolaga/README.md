@@ -55,7 +55,10 @@ after taking a database backup.
 6. Run `scripts/configure_trial_tariff.py` in the bot container. It creates the
    hidden 7-day / 100 GB / 1-device tariff, assigns the paid squad, and repairs
    active trials idempotently.
-7. Send yourself a test trial, connect on a phone, then buy a plan with Stars to
+7. Run `scripts/configure_paid_tariffs.py` in the bot container. It creates the
+   fixed 1 / 3 / 5-device plans with 30 / 90 / 180 / 360-day prices. The second
+   device is the no-Telegram family link; it is not an extra unbilled slot.
+8. Send yourself a test trial, connect on a phone, then buy a plan with Stars to
    confirm the full loop.
 
 ## Operations

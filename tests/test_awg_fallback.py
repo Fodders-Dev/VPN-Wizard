@@ -8,6 +8,8 @@ from pathlib import Path
 from vpn_wizard.account import AccountStore
 from vpn_wizard.awg_fallback import (
     AwgFallbackService,
+    device_owner_slot,
+    device_peer_id,
     family_guest_id,
     family_issue_token,
     family_owner_id,
@@ -18,6 +20,7 @@ from vpn_wizard.awg_fallback import (
 )
 from vpn_wizard.awg_reconcile import reconcile_awg_peers
 from vpn_wizard.remnawave import (
+    device_limit_of,
     event_action,
     parse_event,
     telegram_id_of,
@@ -63,6 +66,14 @@ def test_user_is_active_variants() -> None:
     assert user_is_active({"status": "ACTIVE", "expireAt": "2999-01-01T00:00:00.000Z"}) is True
 
 
+def test_device_limit_fails_closed_and_is_bounded() -> None:
+    assert device_limit_of({}) == 1
+    assert device_limit_of({"hwidDeviceLimit": None}) == 1
+    assert device_limit_of({"hwidDeviceLimit": 0}) == 1
+    assert device_limit_of({"hwidDeviceLimit": "5"}) == 5
+    assert device_limit_of({"hwidDeviceLimit": 1000}) == 99
+
+
 # --- link token ---------------------------------------------------------------
 
 def test_issue_token_roundtrip() -> None:
@@ -96,6 +107,28 @@ def test_family_guest_id_rejects_non_telegram_ranges() -> None:
             pass
         else:
             raise AssertionError(f"owner id {owner_id} must be rejected")
+
+
+def test_paid_device_slots_are_independent_and_reversible() -> None:
+    owner_id = 449066726
+    assert device_peer_id(owner_id, 1) == owner_id
+    second = device_peer_id(owner_id, 2)
+    fifth = device_peer_id(owner_id, 5)
+    assert second == family_guest_id(owner_id)
+    assert fifth != second
+    assert device_owner_slot(second) == (owner_id, 2)
+    assert device_owner_slot(fifth) == (owner_id, 5)
+    assert device_owner_slot(owner_id) is None
+
+
+def test_paid_device_slot_rejects_invalid_owner_or_slot() -> None:
+    for owner_id, slot in ((0, 1), (1, 0), (1, 100)):
+        try:
+            device_peer_id(owner_id, slot)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"owner={owner_id}, slot={slot} must be rejected")
 
 
 def test_peer_name() -> None:
@@ -230,7 +263,7 @@ def test_reconcile_family_peer_uses_owner_entitlement(tmp_path: Path) -> None:
         @staticmethod
         def active_user(telegram_id: int):
             lookups.append(telegram_id)
-            return {"uuid": "owner-active"} if telegram_id == owner_id else None
+            return {"uuid": "owner-active", "hwidDeviceLimit": 2} if telegram_id == owner_id else None
 
     result = reconcile_awg_peers(store, Entitlements(), service)
 
@@ -243,6 +276,44 @@ def test_reconcile_family_peer_uses_owner_entitlement(tmp_path: Path) -> None:
     }
     assert lookups == [owner_id]
     assert store.awg_get_peer(guest_id)["status"] == "active"
+
+
+def test_reconcile_enforces_paid_device_limit_and_restores_after_upgrade(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    owner_id = 777
+    second = device_peer_id(owner_id, 2)
+    third = device_peer_id(owner_id, 3)
+    suspended: list[str] = []
+    resumed: list[str] = []
+    service = AwgFallbackService(
+        store,
+        provision=lambda name: f"[Interface]\n# {name}\n",
+        deprovision=lambda name: True,
+        suspend=lambda name: suspended.append(name) or True,
+        resume=lambda name: resumed.append(name) or True,
+    )
+    service.issue(owner_id)
+    service.issue(second)
+    service.issue(third)
+
+    class Entitlements:
+        limit = 2
+
+        @classmethod
+        def active_user(cls, telegram_id: int):
+            assert telegram_id == owner_id
+            return {"uuid": "active", "hwidDeviceLimit": cls.limit}
+
+    result = reconcile_awg_peers(store, Entitlements(), service)
+    assert result["suspended"] == 1
+    assert store.awg_get_peer(third)["status"] == "suspended"
+    assert suspended == [peer_name(third)]
+
+    Entitlements.limit = 3
+    result = reconcile_awg_peers(store, Entitlements(), service)
+    assert result["resumed"] == 1
+    assert store.awg_get_peer(third)["status"] == "active"
+    assert resumed == [peer_name(third)]
 
 
 def test_reconcile_circuit_breaker_skips_mass_suspend_on_panel_outage(tmp_path: Path) -> None:

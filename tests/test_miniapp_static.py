@@ -58,6 +58,13 @@ def test_connect_page_is_a_private_unified_portal() -> None:
     assert "localStorage" not in html
     assert "Happ" not in html
     assert "Reality" not in html
+    assert "Поделиться VPN с близким" in html
+    assert "Открыть» и «Скопировать» — это одна и та же семейная ссылка" in html
+    assert "Личный · 1 устройство" in html
+    assert "Семья · 5 устройств" in html
+    assert "Делиться выгодно" in html
+    assert "И ещё 25%" in html
+    assert "вывод в деньги не предусмотрен" in html
 
 
 def test_static_routes_keep_old_buttons_on_portal_and_preserve_wizard() -> None:
@@ -82,6 +89,13 @@ def test_awg_page_supports_private_family_links_without_telegram() -> None:
     assert "Ни Telegram, ни регистрация не нужны" in html
     assert "amnezia-vpn/amneziawg-android/releases/download/2.0.1" in html
     assert "(или AmneziaVPN)" not in html
+    assert 'value="win"' in html
+    assert 'value="mac"' in html
+    assert "amneziawg-windows-client/releases/latest" in html
+    assert "amnezia-client/releases/latest" in html
+    assert 'id="device-picker"' in html
+    assert '"/access?token="' in html
+    assert "У каждого устройства — свой ключ" in html
 
 
 def test_bedolaga_exposes_family_link_with_the_api_token_namespace() -> None:

@@ -40,9 +40,13 @@
   h1{font-size:clamp(1.55rem,6vw,1.95rem);letter-spacing:-.02em;margin:1rem 0 .35rem;text-wrap:balance}
   .sub{color:var(--ink-soft);margin:0 auto;max-width:32ch;font-size:.98rem}
 
-  .seg{display:flex;gap:.3rem;padding:.32rem;margin:1.25rem 0 .3rem;background:var(--card);border:1px solid var(--line);border-radius:1.05rem;box-shadow:var(--shadow)}
-  .seg button{flex:1;appearance:none;border:0;background:transparent;color:var(--ink-soft);font-family:inherit;font-size:.94rem;font-weight:600;padding:.7rem .5rem;border-radius:.78rem;cursor:pointer}
-  .seg button[aria-selected="true"]{background:var(--card-2);color:var(--ink)}
+  .seg{display:grid;grid-template-columns:1fr 1fr;gap:.3rem;padding:.32rem;margin:1.25rem 0 .3rem;background:var(--card);border:1px solid var(--line);border-radius:1.05rem;box-shadow:var(--shadow)}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  .seg label,.device-grid label{position:relative;cursor:pointer}
+  .seg input,.device-grid input{position:absolute;opacity:0;pointer-events:none}
+  .seg span{display:flex;align-items:center;justify-content:center;min-height:3rem;color:var(--ink-soft);font-size:.92rem;font-weight:650;padding:.65rem .45rem;border-radius:.78rem}
+  .seg input:checked+span{background:var(--card-2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
+  .seg input:focus-visible+span,.device-grid input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
 
   .step{background:var(--card);border:1px solid var(--line);border-radius:1.25rem;box-shadow:var(--shadow);padding:1.15rem 1.1rem;margin-top:.9rem;display:grid;grid-template-columns:2.1rem 1fr;gap:.1rem .8rem}
   .num{grid-row:1/3;width:2.1rem;height:2.1rem;border-radius:50%;background:linear-gradient(150deg,var(--go1),var(--go2));color:var(--on-go);font-weight:800;display:grid;place-items:center}
@@ -72,6 +76,12 @@
   .server-btn{appearance:none;border:1px solid var(--line);background:var(--card-2);color:var(--ink);
     border-radius:.78rem;padding:.72rem .5rem;font:600 .9rem var(--sans);cursor:pointer}
   .server-btn[aria-pressed="true"]{border-color:var(--go2);box-shadow:inset 0 0 0 1px var(--go2);background:color-mix(in srgb,var(--go2),transparent 86%)}
+  .device-picker{border:0;padding:0;margin:0 0 .9rem}
+  .device-picker legend{font-weight:700;color:var(--ink);margin-bottom:.5rem}
+  .device-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem}
+  .device-grid span{display:flex;align-items:center;justify-content:center;min-height:3rem;padding:.65rem;border:1px solid var(--line);border-radius:.78rem;background:var(--card-2);font-size:.9rem;font-weight:650}
+  .device-grid input:checked+span{border-color:var(--go2);box-shadow:inset 0 0 0 1px var(--go2);background:color-mix(in srgb,var(--go2),transparent 86%)}
+  .access-error{border:1px solid var(--warn-edge);background:var(--warn-bg);border-radius:.85rem;padding:.8rem;color:var(--warn-ink)}
   .pastebox{margin-top:.6rem}
   .pastebox label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:.35rem}
   .pastebox input{width:100%;font-family:var(--mono);font-size:.85rem;padding:.75rem .8rem;border-radius:.78rem;border:1px solid var(--line);background:var(--card-2);color:var(--ink)}
@@ -88,10 +98,13 @@
     <p class="sub">Стабильно работает в РФ. Российские сайты и банки — как обычно.</p>
   </header>
 
-  <div class="seg" role="tablist" aria-label="Телефон">
-    <button id="t-and" role="tab" aria-selected="true">🤖 Android</button>
-    <button id="t-ios" role="tab" aria-selected="false">🍎 iPhone</button>
-  </div>
+  <fieldset class="seg">
+    <legend class="sr-only">Выберите устройство</legend>
+    <label><input type="radio" name="platform" value="and" checked><span>🤖 Android</span></label>
+    <label><input type="radio" name="platform" value="ios"><span>📱 iPhone / iPad</span></label>
+    <label><input type="radio" name="platform" value="win"><span>🪟 Windows</span></label>
+    <label><input type="radio" name="platform" value="mac"><span>🍎 Mac</span></label>
+  </fieldset>
 
   <section class="step">
     <div class="num">1</div>
@@ -107,6 +120,14 @@
         <p>Приложение <b>AmneziaWG</b> в App Store. Если не находится — нужен Apple ID другой страны, напишите тому, кто дал ссылку.</p>
         <a class="btn btn-out" href="https://apps.apple.com/app/amneziawg/id6478942365" target="_blank" rel="noopener noreferrer">Открыть в App Store →</a>
       </div>
+      <div class="platform" id="p-win">
+        <p>Установите официальный клиент <b>AmneziaWG для Windows</b>, затем импортируйте файл конфигурации.</p>
+        <a class="btn btn-out" href="https://github.com/amnezia-vpn/amneziawg-windows-client/releases/latest" target="_blank" rel="noopener noreferrer">Скачать AmneziaWG для Windows →</a>
+      </div>
+      <div class="platform" id="p-mac">
+        <p>На Mac установите официальный <b>AmneziaVPN</b>: он умеет импортировать конфигурацию AmneziaWG.</p>
+        <a class="btn btn-out" href="https://github.com/amnezia-vpn/amnezia-client/releases/latest" target="_blank" rel="noopener noreferrer">Скачать AmneziaVPN для macOS →</a>
+      </div>
     </div>
   </section>
 
@@ -115,6 +136,11 @@
     <h2>Получите свой конфиг</h2>
     <div class="body">
       <div id="have" hidden>
+        <fieldset class="device-picker" id="device-picker" hidden>
+          <legend>Какое устройство подключаете?</legend>
+          <div class="device-grid" id="device-buttons"></div>
+          <p class="tip">У каждого устройства — свой ключ. Не импортируйте один профиль на несколько устройств.</p>
+        </fieldset>
         <div class="server-picker" id="server-picker" hidden>
           <p>Выберите страну</p>
           <div class="server-grid" id="server-buttons"></div>
@@ -128,8 +154,9 @@
             чтобы потом было видно, с какого это сервера.</div>
         </div>
       </div>
+      <div class="access-error" id="access-error" hidden></div>
       <div id="nolink">
-        <p>Персональную ссылку пришлёт тот, кто пригласил. Откройте её <b>на телефоне</b> — или вставьте ссылку-конфиг сюда:</p>
+        <p>Персональную ссылку пришлёт тот, кто пригласил. Откройте её на нужном устройстве — или вставьте ссылку-конфиг сюда:</p>
         <div class="pastebox">
           <label for="cfg">Ссылка на конфиг</label>
           <input id="cfg" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://…/api/awg/…/config?token=…">
@@ -142,18 +169,18 @@
     <div class="num">3</div>
     <h2>Импортируйте и включите</h2>
     <div class="body">
-      <p>Откройте скачанный файл в AmneziaWG (или отсканируйте QR) → нажмите большую кнопку включения.</p>
-      <p class="tip">Первый раз телефон спросит разрешение на VPN — согласитесь. Значок VPN вверху = всё работает. 🎉</p>
+      <p>Откройте скачанный файл в приложении (на телефоне можно отсканировать QR) → импортируйте профиль → включите VPN.</p>
+      <p class="tip">Первый раз система спросит разрешение на VPN — согласитесь. Значок VPN = всё работает. 🎉</p>
     </div>
   </section>
 
   <section class="step" id="personal-access" style="display:block">
     <h2 style="margin:0 0 .55rem;font-size:1.1rem">💡 Как это работает</h2>
     <div class="body" style="margin:0">
-      <p>🎁 Сейчас у тебя <b>7 дней бесплатно</b> — попробуй, ничего платить не надо.</p>
-      <p>💳 Чтобы пользоваться дальше — открой нашего бота <b><a href="https://t.me/foddervpnbot" style="color:var(--accent)">@foddervpnbot</a></b> (когда подключишься, Telegram заработает) и оплати подписку: без рекламы, без лимитов, недорого.</p>
-      <p>🔁 Оплатил — работает дальше. Срок кончился — доступ закроется, пока не продлишь.</p>
-      <p class="tip">Триал — один на человека и привязан к подписке. Бесконечных бесплатных профилей не сделать.</p>
+      <p>🔐 Каждый номер устройства получает <b>отдельный ключ</b>. Сервер выдаст не больше профилей, чем включено в подписку.</p>
+      <p>🔁 Срок закончился — все ключи отключатся. После продления те же профили заработают снова, импортировать их заново не нужно.</p>
+      <p>💳 Управление подпиской — в <b><a href="https://t.me/foddervpnbot" style="color:var(--accent)">@foddervpnbot</a></b>.</p>
+      <p class="tip">Не пересылайте личную ссылку: для близкого есть отдельная семейная ссылка.</p>
     </div>
   </section>
 
@@ -177,11 +204,15 @@
 (function(){
   "use strict";
   var $=function(id){return document.getElementById(id);};
-  // platform tabs
-  var tabs={and:$("t-and"),ios:$("t-ios")}, pans={and:$("p-and"),ios:$("p-ios")};
-  function sel(p){for(var k in tabs){var on=k===p;tabs[k].setAttribute("aria-selected",on?"true":"false");pans[k].classList.toggle("on",on);}}
-  tabs.and.onclick=function(){sel("and");}; tabs.ios.onclick=function(){sel("ios");};
-  sel(/iphone|ipad|ipod/i.test(navigator.userAgent||"")?"ios":"and");
+  var pans={and:$("p-and"),ios:$("p-ios"),win:$("p-win"),mac:$("p-mac")};
+  var platformInputs=document.querySelectorAll('input[name="platform"]');
+  function selectPlatform(name){
+    for(var key in pans)pans[key].classList.toggle("on",key===name);
+    for(var i=0;i<platformInputs.length;i++)platformInputs[i].checked=platformInputs[i].value===name;
+  }
+  for(var pi=0;pi<platformInputs.length;pi++)platformInputs[pi].addEventListener("change",function(){selectPlatform(this.value);});
+  var agent=navigator.userAgent||"";
+  selectPlatform(/iphone|ipad|ipod/i.test(agent)?"ios":/windows/i.test(agent)?"win":/macintosh|mac os x/i.test(agent)?"mac":"and");
 
   function base(){var o=location.origin;return /^https?:/i.test(o)?o.replace(/\/$/,""):"https://212-69-84-167.nip.io";}
   function isHttp(u){return /^https?:\/\//i.test(u);}
@@ -190,27 +221,95 @@
     var p=new URLSearchParams(location.search);
     var cfg=(p.get("config")||"").trim(), qr=(p.get("qr")||"").trim();
     var tid=(p.get("tid")||"").trim(), family=(p.get("family")||"").trim(), tok=(p.get("token")||"").trim();
-    if(!cfg && family && tok){ cfg=base()+"/api/awg/family/"+encodeURIComponent(family)+"/config?token="+encodeURIComponent(tok); qr=base()+"/api/awg/family/"+encodeURIComponent(family)+"/qr?token="+encodeURIComponent(tok); }
-    else if(!cfg && tid && tok){ cfg=base()+"/api/awg/"+encodeURIComponent(tid)+"/config?token="+encodeURIComponent(tok); qr=base()+"/api/awg/"+encodeURIComponent(tid)+"/qr?token="+encodeURIComponent(tok); }
+    var access="";
+    if(!cfg && family && tok){
+      cfg=base()+"/api/awg/family/"+encodeURIComponent(family)+"/config?token="+encodeURIComponent(tok);
+      qr=base()+"/api/awg/family/"+encodeURIComponent(family)+"/qr?token="+encodeURIComponent(tok);
+      access=base()+"/api/awg/family/"+encodeURIComponent(family)+"/access?token="+encodeURIComponent(tok);
+    }else if(!cfg && tid && tok){
+      cfg=base()+"/api/awg/"+encodeURIComponent(tid)+"/config?token="+encodeURIComponent(tok);
+      qr=base()+"/api/awg/"+encodeURIComponent(tid)+"/qr?token="+encodeURIComponent(tok);
+      access=base()+"/api/awg/"+encodeURIComponent(tid)+"/access?token="+encodeURIComponent(tok);
+    }
     if(cfg && !qr){ qr=cfg.replace("/config?","/qr?"); }
-    return {cfg:cfg,qr:qr,server:(p.get("server")||"").trim(),family:!!family};
+    var device=parseInt(p.get("device")||"1",10);
+    return {cfg:cfg,qr:qr,access:access,server:(p.get("server")||"").trim(),family:!!family,device:device>0?device:1};
   }
-  function serverUrl(url,server){
-    if(!isHttp(url)||!server) return url;
-    try{var parsed=new URL(url);parsed.searchParams.set("server",server);return parsed.toString();}
+  function profileUrl(url,server,device){
+    if(!isHttp(url))return url;
+    try{
+      var parsed=new URL(url);
+      if(server)parsed.searchParams.set("server",server);else parsed.searchParams.delete("server");
+      if(!u.family&&device>1)parsed.searchParams.set("device",String(device));else parsed.searchParams.delete("device");
+      return parsed.toString();
+    }
     catch(e){return url;}
   }
   function show(cfg,qr){
-    if(!isHttp(cfg)) return false;
+    if(!accessGranted||!isHttp(cfg)) return false;
     $("dl").href=cfg;
     if(isHttp(qr)) $("qr").src=qr; else $("qr").parentNode.style.display="none";
-    $("have").hidden=false; $("nolink").hidden=true; return true;
+    $("access-error").hidden=true;$("have").hidden=false; $("nolink").hidden=true; return true;
   }
-  $("cfg").addEventListener("input",function(e){var v=(e.target.value||"").trim();if(isHttp(v))show(v,v.replace("/config?","/qr?"));});
   var u=urls();
+  var accessGranted=!u.access;
+  function render(){
+    show(profileUrl(u.cfg,u.server,u.device),profileUrl(u.qr,u.server,u.device));
+    var suffix=u.family?"-F":u.device>1?"-D"+u.device:"";
+    $("qr-name").textContent=("FVPN"+(u.server?"-"+u.server:"")+suffix).slice(0,15);
+  }
+  $("cfg").addEventListener("input",function(e){
+    var v=(e.target.value||"").trim();
+    if(isHttp(v)){accessGranted=true;u.cfg=v;u.qr=v.replace("/config?","/qr?");render();}
+  });
   $("personal-access").hidden=u.family;
   $("family-access").hidden=!u.family;
-  if(u.cfg) show(serverUrl(u.cfg,u.server),serverUrl(u.qr,u.server));
+  if(u.cfg&&!u.access)render();
+
+  function selectDevice(slot,limit){
+    u.device=Math.max(1,Math.min(slot,limit));
+    var inputs=$("device-buttons").querySelectorAll("input");
+    for(var i=0;i<inputs.length;i++)inputs[i].checked=parseInt(inputs[i].value,10)===u.device;
+    try{
+      var page=new URL(location.href);
+      if(u.device>1)page.searchParams.set("device",String(u.device));else page.searchParams.delete("device");
+      history.replaceState(null,"",page.toString());
+    }catch(e){}
+    render();
+  }
+  function loadAccess(){
+    if(!u.access)return;
+    fetch(u.access,{credentials:"omit",headers:{"Accept":"application/json"}})
+      .then(function(response){
+        return response.json().catch(function(){return {};}).then(function(body){
+          if(!response.ok)throw new Error(response.status===403?"Подписка не активна или ссылка недействительна.":"Не удалось проверить подписку. Попробуйте ещё раз.");
+          return body;
+        });
+      })
+      .then(function(data){
+        var limit=Math.max(1,parseInt(data.device_limit||"1",10));
+        accessGranted=true;
+        if(!u.family){
+          var box=$("device-buttons");box.textContent="";
+          for(var i=1;i<=limit;i++){
+            (function(slot){
+              var label=document.createElement("label");
+              var input=document.createElement("input");input.type="radio";input.name="device-slot";input.value=String(slot);
+              var span=document.createElement("span");span.textContent="Устройство "+slot;
+              input.addEventListener("change",function(){selectDevice(slot,limit);});
+              label.appendChild(input);label.appendChild(span);box.appendChild(label);
+            })(i);
+          }
+          $("device-picker").hidden=false;
+          selectDevice(u.device,limit);
+        }else render();
+      })
+      .catch(function(error){
+        $("have").hidden=true;$("nolink").hidden=true;
+        $("access-error").textContent=error&&error.message?error.message:"Не удалось проверить подписку.";
+        $("access-error").hidden=false;
+      });
+  }
 
   // The picker is functional: the selected id is sent to both provisioning
   // endpoints, so each country receives its own peer and downloadable profile.
@@ -226,10 +325,9 @@
         var box=$("server-buttons");box.textContent="";
         function select(item){
           pick=item;
-          show(serverUrl(u.cfg,item.id),serverUrl(u.qr,item.id));
+          u.server=item.id;render();
           $("srv-name").textContent=item.display||item.label||item.id;
           $("srv").hidden=false;
-          $("qr-name").textContent=("FVPN-"+item.id).slice(0,15);
           var buttons=box.querySelectorAll("button");
           for(var j=0;j<buttons.length;j++){buttons[j].setAttribute("aria-pressed",buttons[j].dataset.id===item.id?"true":"false");}
           try{var page=new URL(location.href);page.searchParams.set("server",item.id);history.replaceState(null,"",page.toString());}catch(e){}
@@ -247,6 +345,7 @@
       .catch(function(){});
   }
   loadServers();
+  loadAccess();
 })();
 </script>
 </body>

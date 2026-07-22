@@ -94,6 +94,20 @@ def telegram_id_of(user: dict[str, Any]) -> Optional[int]:
         return None
 
 
+def device_limit_of(user: dict[str, Any], *, default: int = 1, maximum: int = 99) -> int:
+    """Read the paid HWID/device limit from a Remnawave user safely.
+
+    Missing, malformed and zero values fail closed to one device. Bedolaga syncs
+    its subscription ``device_limit`` into Remnawave's ``hwidDeviceLimit``.
+    """
+    raw = user.get("hwidDeviceLimit")
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = int(default)
+    return max(1, min(value, int(maximum)))
+
+
 @dataclass
 class RemnawaveConfig:
     api_url: str

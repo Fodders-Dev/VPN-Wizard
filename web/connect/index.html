@@ -61,6 +61,18 @@
   @keyframes spin{to{transform:rotate(360deg)}}
   @media (prefers-reduced-motion:reduce){.spinner{animation:none}}
   .choice{padding:.95rem 1rem}.choice h2{font-size:1.05rem}.choice p{font-size:.9rem}
+  .price-list{display:grid;gap:.55rem;margin-top:.8rem}
+  .price{display:grid;grid-template-columns:1fr auto;gap:.25rem .7rem;align-items:center;padding:.78rem;border:1px solid var(--edge);border-radius:.9rem;background:var(--card-strong)}
+  .price b{font-size:.96rem}.price strong{font-size:1.05rem;color:var(--ink)}
+  .price span{grid-column:1/-1;color:var(--soft);font-size:.82rem}
+  .periods{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.65rem;color:var(--soft);font-size:.82rem}
+  .periods span{padding:.25rem .48rem;border-radius:999px;background:var(--card-strong);border:1px solid var(--edge)}
+  .share-hero{padding:.85rem;border-radius:1rem;background:linear-gradient(135deg,color-mix(in srgb,var(--go1),transparent 82%),color-mix(in srgb,var(--accent),transparent 84%));border:1px solid color-mix(in srgb,var(--go2),transparent 58%);margin:.75rem 0}
+  .share-hero strong{display:block;font-size:1.08rem}.share-hero span{display:block;color:var(--soft);font-size:.88rem;margin-top:.2rem}
+  .reward-grid{display:grid;grid-template-columns:1fr 1fr;gap:.45rem;margin:.7rem 0}
+  .reward{padding:.65rem;border-radius:.8rem;background:var(--card-strong);border:1px solid var(--edge);font-size:.82rem;color:var(--soft)}
+  .reward b{display:block;color:var(--ink);font-size:.9rem;margin-bottom:.15rem}
+  .fine{font-size:.78rem!important;color:var(--muted)!important}
   .product-nav{display:grid;grid-template-columns:1fr 1fr;gap:.35rem;padding:.35rem;background:var(--card);border:1px solid var(--edge);
     border-radius:1rem;box-shadow:var(--shadow);backdrop-filter:saturate(150%) blur(14px)}
   .product-nav a{display:flex;align-items:center;justify-content:center;min-height:2.9rem;padding:.65rem .7rem;border-radius:.75rem;
@@ -101,7 +113,7 @@
     <div class="stack" id="portal" hidden>
       <section class="card status" aria-live="polite">
         <span class="status-icon" aria-hidden="true">✅</span>
-        <div><b>Аккаунт подключён</b><span>Личные ссылки не сохраняются в браузере и не показываются на странице.</span></div>
+        <div><b>Аккаунт подключён</b><span id="account-status">Проверяем подписку…</span></div>
       </section>
 
       <section class="card primary">
@@ -111,14 +123,53 @@
         <div class="features">
           <div class="feature"><b>4 страны</b>NL · FI · TR · US</div>
           <div class="feature"><b>Для РФ</b>AmneziaWG</div>
-          <div class="feature"><b>Одна подписка</b>Автопродление доступа</div>
-          <div class="feature"><b>Семейный слот</b>Без Telegram у близкого</div>
+          <div class="feature"><b>1, 3 или 5 устройств</b>Каждому свой ключ</div>
+          <div class="feature"><b>Семейная ссылка</b>Это устройство №2</div>
         </div>
         <div class="actions">
           <a class="btn btn-go" id="personal-link" href="#">🛡 Подключить мой VPN</a>
-          <a class="btn btn-soft" id="family-link" href="#">👵 Открыть доступ для близкого</a>
-          <button class="btn btn-link" id="copy-family" type="button">🔗 Скопировать семейную ссылку</button>
         </div>
+      </section>
+
+      <section class="card" id="family-card">
+        <p class="eyebrow">Одно действие — два способа</p>
+        <h2>👵 Поделиться VPN с близким</h2>
+        <p><b>«Открыть» и «Скопировать» — это одна и та же семейная ссылка.</b> Она выдаёт близкому отдельный профиль без Telegram и занимает устройство №2 вашего тарифа.</p>
+        <p id="family-status">Доступно на тарифах от 3 устройств.</p>
+        <div class="actions" id="family-actions">
+          <a class="btn btn-soft" id="family-link" href="#">Открыть страницу для близкого →</a>
+          <button class="btn btn-link" id="copy-family" type="button">🔗 Скопировать эту же ссылку</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <p class="eyebrow">Тарифы</p>
+        <h2>Вы платите за устройства и срок</h2>
+        <p>Во всех тарифах: четыре страны, безлимитный трафик и отдельный защищённый ключ на каждое устройство.</p>
+        <div class="price-list">
+          <div class="price"><b>Личный · 1 устройство</b><strong>от 199 ₽</strong><span>30 дней 199 ₽ · 90 дней 499 ₽ · 180 дней 899 ₽ · год 1 490 ₽</span></div>
+          <div class="price"><b>Вместе · 3 устройства</b><strong>от 299 ₽</strong><span>30 дней 299 ₽ · 90 дней 799 ₽ · 180 дней 1 390 ₽ · год 2 390 ₽</span></div>
+          <div class="price"><b>Семья · 5 устройств</b><strong>от 399 ₽</strong><span>30 дней 399 ₽ · 90 дней 1 090 ₽ · 180 дней 1 890 ₽ · год 3 290 ₽</span></div>
+        </div>
+        <div class="periods" aria-label="Доступные сроки"><span>1 месяц</span><span>3 месяца</span><span>6 месяцев</span><span>1 год</span></div>
+        <a class="btn btn-go" href="https://t.me/foddervpnbot" target="_blank" rel="noopener noreferrer">Выбрать тариф в боте →</a>
+      </section>
+
+      <section class="card">
+        <p class="eyebrow">Делиться выгодно</p>
+        <h2>🎁 Пригласите друга — VPN станет дешевле</h2>
+        <div class="share-hero">
+          <strong>Одна рекомендация приносит бонус сейчас и дальше</strong>
+          <span>Друг получает приятный старт, а вы — баланс на следующие продления.</span>
+        </div>
+        <div class="reward-grid">
+          <div class="reward"><b>Другу +100 ₽</b>на VPN-баланс после первого пополнения от 100 ₽</div>
+          <div class="reward"><b>Вам +100 ₽</b>после его первого пополнения</div>
+          <div class="reward" style="grid-column:1/-1"><b>И ещё 25%</b>на ваш VPN-баланс с каждого его следующего пополнения</div>
+        </div>
+        <p><b>Чем больше друзей реально пользуются VPN, тем реже вам приходится платить за своё продление.</b></p>
+        <p class="fine">Бонусы начисляются на внутренний баланс Fodder VPN и расходуются на подписку; вывод в деньги не предусмотрен. Реферальная ссылка находится в боте: «Пригласить друзей».</p>
+        <a class="btn btn-go" href="https://t.me/foddervpnbot" target="_blank" rel="noopener noreferrer">🤝 Получить мою ссылку в боте</a>
       </section>
 
       <section class="card legacy">
@@ -134,7 +185,7 @@
       </section>
     </div>
   </div>
-  <footer>Fodder VPN · одна подписка · четыре страны · свой сервер по желанию</footer>
+  <footer>Fodder VPN · каждому устройству свой ключ · четыре страны · свой сервер по желанию</footer>
 </main>
 
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -179,10 +230,30 @@
       showLocked();return;
     }
     var links=await request("/api/portal/links");
-    document.getElementById("personal-link").href=links.personal_vpn_url;
+    var personal=document.getElementById("personal-link");
+    var familyActions=document.getElementById("family-actions");
+    var familyStatus=document.getElementById("family-status");
+    var deviceLimit=Math.max(1,parseInt(links.device_limit||"1",10));
+    var deviceWord=deviceLimit===1?"устройство":deviceLimit<5?"устройства":"устройств";
+    if(links.subscription_active){
+      personal.href=links.personal_vpn_url;
+      document.getElementById("account-status").textContent="Подписка активна: "+deviceLimit+" "+deviceWord+". Каждому будет выдан отдельный ключ.";
+    }else{
+      personal.href="https://t.me/foddervpnbot";
+      personal.target="_blank";personal.rel="noopener noreferrer";
+      personal.textContent="🛡 Активировать VPN в боте";
+      document.getElementById("account-status").textContent="Активной подписки пока нет. Оформите тариф или включите пробный доступ в боте.";
+    }
     document.getElementById("family-link").href=links.family_vpn_url;
     document.getElementById("wizard-link").href=links.server_wizard_url;
     familyUrl=links.family_vpn_url;
+    if(links.subscription_active&&deviceLimit>=2){
+      familyActions.hidden=false;
+      familyStatus.textContent="Семейный профиль занимает устройство №2 из "+deviceLimit+" и не создаёт лишний бесплатный ключ.";
+    }else{
+      familyActions.hidden=true;
+      familyStatus.textContent=links.subscription_active?"Сейчас оплачен 1 профиль. Для семейной ссылки выберите тариф на 3 или 5 устройств.":"Семейная ссылка появится после активации тарифа на 3 или 5 устройств.";
+    }
     loading.hidden=true;locked.hidden=true;portal.hidden=false;
   }
 
