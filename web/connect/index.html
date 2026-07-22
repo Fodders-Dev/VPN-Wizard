@@ -4,253 +4,194 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
-<title>Как подключиться · Fodder VPN</title>
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="data:,">
+<title>Fodder VPN</title>
 <style>
   :root{
-    --ink:#101a3c; --ink-soft:#36406b; --muted:#5b6690;
-    --glass:rgba(255,255,255,.62);
-    --glass-strong:rgba(255,255,255,.8);
-    --glass-chrome:rgba(255,255,255,.5);
-    --ctrl:rgba(255,255,255,.66);
-    --edge:rgba(255,255,255,.8);
-    --edge-soft:rgba(255,255,255,.55);
-    --go1:#10c48a; --go2:#0bb6c6; --on-go:#04150f;
-    --accent:#4b5cff;
-    --warn-ink:#8a5a12; --warn-bg:rgba(255,196,92,.24); --warn-edge:rgba(212,150,40,.42);
-    --shadow:0 1px 1px rgba(16,26,60,.05), 0 14px 34px rgba(16,26,60,.13);
-    --sheen: inset 0 1px 0 rgba(255,255,255,.7);
-    --radius:1.5rem;
-    --frost: saturate(150%) blur(12px);
+    --ink:#101a3c;--soft:#3b466f;--muted:#69739a;--card:rgba(255,255,255,.72);
+    --card-strong:rgba(255,255,255,.88);--edge:rgba(255,255,255,.82);
+    --accent:#4b5cff;--go1:#10c48a;--go2:#0bb6c6;--on-go:#04150f;
+    --shadow:0 1px 2px rgba(16,26,60,.06),0 16px 38px rgba(16,26,60,.14);
+    --base-a:#e9f1ff;--base-b:#f4edff;--b1:#7aa8ff;--b2:#b98cff;--b3:#5fe6cf;
     --sans:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"SF Pro Text",Roboto,sans-serif;
-    --mono:"SF Mono","Cascadia Mono",Consolas,ui-monospace,monospace;
-    --b1:#7aa8ff; --b2:#b98cff; --b3:#5fe6cf; --b4:#ff92c2; --base-a:#eaf1ff; --base-b:#f3edff;
   }
-  @media (prefers-color-scheme:dark){
-    :root{
-      --ink:#eef1fb; --ink-soft:#c2cae6; --muted:#95a0c8;
-      --glass:rgba(24,31,58,.56); --glass-strong:rgba(28,36,66,.72); --glass-chrome:rgba(30,38,70,.46); --ctrl:rgba(40,49,84,.6);
-      --edge:rgba(255,255,255,.2); --edge-soft:rgba(255,255,255,.1);
-      --warn-ink:#f0c070; --warn-bg:rgba(224,169,85,.15); --warn-edge:rgba(224,169,85,.32);
-      --shadow:0 1px 1px rgba(0,0,0,.3), 0 18px 40px rgba(0,0,0,.5);
-      --sheen: inset 0 1px 0 rgba(255,255,255,.16);
-      --b1:#2f45c9; --b2:#7a34e6; --b3:#0f9f8c; --b4:#c73f8e; --base-a:#0a0f22; --base-b:#150a26;
-    }
-  }
-  *{box-sizing:border-box}
+  @media (prefers-color-scheme:dark){:root{
+    --ink:#f0f3ff;--soft:#c5cce8;--muted:#98a3c9;--card:rgba(22,29,56,.7);
+    --card-strong:rgba(28,36,66,.88);--edge:rgba(255,255,255,.15);
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 18px 44px rgba(0,0,0,.5);
+    --base-a:#090f22;--base-b:#160a27;--b1:#2f45c9;--b2:#7a34e6;--b3:#0f9f8c;
+  }}
+  *{box-sizing:border-box} [hidden]{display:none!important}
   html{font-size:100%}
-  body{margin:0; min-height:100dvh; color:var(--ink); font-family:var(--sans);
-    font-size:1.0625rem; line-height:1.55; -webkit-font-smoothing:antialiased;
-    padding:max(1rem,env(safe-area-inset-top)) 1rem calc(2.5rem + env(safe-area-inset-bottom));
-    background:
-      radial-gradient(60vw 60vw at 12% 6%, color-mix(in srgb,var(--b1),transparent 42%), transparent 62%),
-      radial-gradient(56vw 56vw at 94% 12%, color-mix(in srgb,var(--b2),transparent 44%), transparent 62%),
-      radial-gradient(66vw 66vw at 6% 98%, color-mix(in srgb,var(--b3),transparent 42%), transparent 64%),
-      radial-gradient(46vw 46vw at 92% 94%, color-mix(in srgb,var(--b4),transparent 52%), transparent 62%),
-      linear-gradient(160deg,var(--base-a),var(--base-b));
-    background-attachment:fixed;}
-  .wrap{max-width:29rem; margin:0 auto}
-
-  header{text-align:center; padding:.5rem .25rem .25rem}
-  .logo{display:inline-flex; align-items:center; gap:.55rem; font-weight:700; font-size:.94rem; letter-spacing:.02em}
-  .logo .mark{width:2rem;height:2rem;border-radius:.66rem;background:linear-gradient(150deg,var(--go1),var(--accent));display:grid;place-items:center;color:#fff;font-size:1rem;box-shadow:var(--sheen), 0 6px 16px rgba(75,92,255,.35)}
-  h1{font-size:clamp(1.5rem,6.2vw,1.85rem); line-height:1.12; margin:1rem 0 .35rem; letter-spacing:-.02em; text-wrap:balance}
-  .sub{color:var(--ink-soft); margin:0 auto; max-width:34ch; font-size:.98rem}
-
-  /* only a few large panels use backdrop-filter; they stay legible even without it */
-  .glass{background:var(--glass); border:1px solid var(--edge); border-radius:var(--radius);
-    box-shadow:var(--sheen), var(--shadow); contain:layout style paint}
-  @supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
-    .glass, .seg{-webkit-backdrop-filter:var(--frost); backdrop-filter:var(--frost)}
-    :root{--glass:rgba(255,255,255,.5); --glass-chrome:rgba(255,255,255,.4)}
-    @media (prefers-color-scheme:dark){:root{--glass:rgba(24,31,58,.46); --glass-chrome:rgba(30,38,70,.36)}}
-  }
-
-  .seg{display:flex; gap:.3rem; padding:.32rem; margin:1.25rem 0 .4rem; position:sticky; top:.5rem; z-index:5;
-    background:var(--glass-chrome); border:1px solid var(--edge); border-radius:1.05rem; box-shadow:var(--sheen), var(--shadow)}
-  .seg button{flex:1; appearance:none; border:0; background:transparent; color:var(--ink-soft); font-family:inherit; font-size:.94rem; font-weight:600; padding:.7rem .5rem; border-radius:.78rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:.45rem; transition:color .15s}
-  .seg button[aria-selected="true"]{background:var(--glass-strong); color:var(--ink); box-shadow:var(--sheen), 0 2px 8px rgba(16,26,60,.14)}
-  .seg button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
-
-  .steps{display:flex; flex-direction:column; gap:.9rem; margin-top:.9rem}
-  .step{padding:1.15rem 1rem 1rem; display:grid; grid-template-columns:2.1rem 1fr; gap:.1rem .8rem}
-  .num{grid-row:1/3; width:2.1rem;height:2.1rem;border-radius:50%; background:linear-gradient(150deg,var(--go1),var(--go2)); color:var(--on-go); font-weight:800; display:grid; place-items:center; font-variant-numeric:tabular-nums; box-shadow:var(--sheen), 0 4px 12px rgba(11,182,198,.35)}
-  .step h2{grid-column:2; margin:.28rem 0 0; font-size:1.1rem; letter-spacing:-.01em}
-  .step .body{grid-column:2; color:var(--ink-soft); font-size:.97rem; margin-top:.3rem}
-  .step .body p{margin:0 0 .55rem} .step .body p:last-child{margin-bottom:0}
-  .platform{display:none} .platform.on{display:block}
-  b{color:var(--ink)}
-
-  .btn{display:flex; align-items:center; justify-content:center; gap:.55rem; width:100%; text-decoration:none; text-align:center;
-    font-family:inherit; font-size:1.02rem; font-weight:650; padding:.95rem 1rem; border-radius:.92rem; border:1px solid transparent; cursor:pointer; margin-top:.7rem; -webkit-tap-highlight-color:transparent; transition:transform .08s}
-  .btn:active{transform:scale(.985)}
-  .btn-go{background:linear-gradient(150deg,var(--go1),var(--go2)); color:var(--on-go); border-color:rgba(255,255,255,.4); box-shadow:var(--sheen), 0 8px 22px rgba(11,182,198,.4)}
-  .btn-out{background:var(--ctrl); color:var(--ink); border-color:var(--edge); box-shadow:var(--sheen)}
-  .btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
-  .btn[hidden]{display:none}
-
-  .applist{display:grid; grid-template-columns:1fr 1fr; gap:.5rem; margin-top:.7rem}
-  .applist a{display:flex; align-items:center; justify-content:center; text-decoration:none; font-weight:600; font-size:.9rem; padding:.7rem .5rem; border-radius:.78rem; border:1px solid var(--edge-soft); background:var(--ctrl); color:var(--ink); box-shadow:var(--sheen)}
-  .applist a:active{transform:scale(.98)}
-
-  .callout{margin-top:.7rem; background:var(--warn-bg); border:1px solid var(--warn-edge); border-radius:.85rem; padding:.75rem .8rem; font-size:.9rem}
-  .callout b{color:var(--warn-ink)}
-  .tip{margin-top:.6rem; font-size:.87rem; color:var(--muted)}
-
-  .pastebox{margin-top:.7rem}
-  .pastebox label{display:block; font-size:.85rem; color:var(--muted); margin-bottom:.35rem}
-  .pastebox input{width:100%; font-family:var(--mono); font-size:.85rem; padding:.75rem .8rem; border-radius:.78rem; border:1px solid var(--edge); background:var(--glass-strong); color:var(--ink)}
-  .pastebox input:focus{outline:2px solid var(--accent); outline-offset:1px}
-  .linkline{margin-top:.55rem; display:flex; gap:.5rem; align-items:center}
-  .linkline code{flex:1; font-family:var(--mono); font-size:.78rem; color:var(--muted); background:var(--ctrl); border:1px solid var(--edge-soft); border-radius:.6rem; padding:.55rem .6rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; overflow-wrap:anywhere}
-  .copybtn{flex:none; font-family:inherit; font-size:.82rem; font-weight:600; border:1px solid var(--edge); background:var(--glass-strong); color:var(--ink); border-radius:.6rem; padding:.55rem .75rem; cursor:pointer}
-  .copybtn:active{transform:scale(.97)}
-
-  .help{margin-top:1.35rem; padding:1rem}
-  .help h3{margin:0 0 .35rem; font-size:1rem}
-  .help p{margin:0; font-size:.95rem; color:var(--ink-soft)}
-  .awg{margin-top:1.15rem; padding:1.05rem}
-  .awg h2{margin:0 0 .35rem; font-size:1.12rem}
-  .awg p{margin:0; color:var(--ink-soft); font-size:.95rem}
-  footer{margin-top:1.5rem; text-align:center; color:var(--muted); font-size:.8rem; line-height:1.6}
-  footer .dot{opacity:.5; margin:0 .35rem}
+  body{margin:0;min-height:100dvh;color:var(--ink);font-family:var(--sans);font-size:1.04rem;line-height:1.5;
+    -webkit-font-smoothing:antialiased;padding:max(1rem,env(safe-area-inset-top)) 1rem calc(2.5rem + env(safe-area-inset-bottom));
+    background:radial-gradient(58vw 58vw at 8% 2%,color-mix(in srgb,var(--b1),transparent 44%),transparent 62%),
+      radial-gradient(52vw 52vw at 96% 12%,color-mix(in srgb,var(--b2),transparent 48%),transparent 62%),
+      radial-gradient(64vw 64vw at 50% 100%,color-mix(in srgb,var(--b3),transparent 52%),transparent 64%),
+      linear-gradient(155deg,var(--base-a),var(--base-b));background-attachment:fixed}
+  .wrap{max-width:31rem;margin:0 auto}
+  header{text-align:center;padding:.45rem .25rem 1rem}
+  .brand{display:inline-flex;align-items:center;gap:.55rem;font-weight:750;font-size:.94rem}
+  .mark{width:2rem;height:2rem;border-radius:.65rem;background:linear-gradient(145deg,var(--go1),var(--accent));display:grid;place-items:center;color:#fff}
+  h1{font-size:clamp(1.65rem,7vw,2.1rem);line-height:1.1;letter-spacing:-.035em;margin:1rem 0 .38rem;text-wrap:balance}
+  .lead{max-width:34ch;margin:0 auto;color:var(--soft);font-size:.97rem}
+  .stack{display:grid;gap:.9rem}
+  .card{background:var(--card);border:1px solid var(--edge);border-radius:1.35rem;padding:1.05rem;box-shadow:var(--shadow)}
+  @supports(backdrop-filter:blur(1px)){.card{backdrop-filter:saturate(150%) blur(14px)}}
+  .eyebrow{font-size:.76rem;letter-spacing:.07em;text-transform:uppercase;color:var(--accent);font-weight:800;margin:0 0 .2rem}
+  .card h2{font-size:1.22rem;letter-spacing:-.02em;margin:.15rem 0 .35rem}
+  .card p{color:var(--soft);margin:.35rem 0;font-size:.94rem}
+  .primary{border-color:color-mix(in srgb,var(--go2),transparent 45%)}
+  .legacy{border-style:dashed}
+  .features{display:grid;grid-template-columns:1fr 1fr;gap:.45rem;margin:.8rem 0 0}
+  .feature{background:color-mix(in srgb,var(--card-strong),transparent 8%);border:1px solid var(--edge);border-radius:.8rem;padding:.58rem .62rem;font-size:.84rem;color:var(--soft)}
+  .feature b{display:block;color:var(--ink);font-size:.9rem}
+  .actions{display:grid;gap:.55rem;margin-top:.9rem}
+  .btn{appearance:none;display:flex;align-items:center;justify-content:center;width:100%;min-height:3.2rem;padding:.8rem 1rem;border-radius:.92rem;
+    border:1px solid transparent;font:700 1rem var(--sans);text-align:center;text-decoration:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .btn:active{transform:scale(.985)} .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .btn-go{background:linear-gradient(145deg,var(--go1),var(--go2));color:var(--on-go);box-shadow:0 8px 22px rgba(11,182,198,.28)}
+  .btn-soft{background:var(--card-strong);color:var(--ink);border-color:var(--edge)}
+  .btn-link{background:transparent;color:var(--accent);border-color:color-mix(in srgb,var(--accent),transparent 58%)}
+  .status{display:flex;align-items:flex-start;gap:.7rem}
+  .status-icon{width:2rem;height:2rem;flex:none;border-radius:50%;display:grid;place-items:center;background:var(--card-strong)}
+  .status b{display:block}.status span{display:block;color:var(--soft);font-size:.88rem;margin-top:.08rem}
+  .spinner{width:1rem;height:1rem;border:.16rem solid color-mix(in srgb,var(--accent),transparent 72%);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion:reduce){.spinner{animation:none}}
+  .choice{padding:.95rem 1rem}.choice h2{font-size:1.05rem}.choice p{font-size:.9rem}
+  footer{text-align:center;color:var(--muted);font-size:.78rem;margin:1.15rem 0 0}
 </style>
 </head>
 <body>
-<div class="wrap">
-
+<main class="wrap">
   <header>
-    <span class="logo"><span class="mark" aria-hidden="true">🛡</span> Fodder VPN</span>
-    <h1>Подключение за 3 шага</h1>
-    <p class="sub">Спокойный и быстрый интернет без блокировок. Российские сайты и банки работают как обычно.</p>
+    <span class="brand"><span class="mark" aria-hidden="true">🛡</span> Fodder VPN</span>
+    <h1>Всё для VPN — в одном месте</h1>
+    <p class="lead">Подключите готовый VPN или настройте собственный сервер через прежний мастер.</p>
   </header>
 
-  <section class="awg glass">
-    <h2>🛡 Подключаетесь из РФ?</h2>
-    <p>Основной режим — <b>AmneziaWG</b> через UDP/443. Happ/Reality ниже оставлен как резервный вариант.</p>
-    <a class="btn btn-go" href="https://t.me/foddervpnbot?start=awg" target="_blank" rel="noopener">Получить AmneziaWG в боте</a>
-  </section>
+  <div class="stack">
+    <section class="card status" id="loading" aria-live="polite">
+      <span class="status-icon"><span class="spinner" aria-hidden="true"></span></span>
+      <div><b>Подключаем аккаунт…</b><span>Telegram используется только для проверки вашей подписки.</span></div>
+    </section>
 
-  <div class="seg" role="tablist" aria-label="Выберите телефон">
-    <button id="tab-ios" role="tab" aria-selected="true" aria-controls="p-ios">🍎 iPhone</button>
-    <button id="tab-android" role="tab" aria-selected="false" aria-controls="p-android">🤖 Android</button>
-  </div>
-
-  <div class="steps">
-
-    <section class="step glass">
-      <div class="num">1</div>
-      <h2>Установите приложение</h2>
-      <div class="body">
-        <div class="platform on" id="p-ios" role="tabpanel" aria-labelledby="tab-ios">
-          <p>На iPhone нужен один из клиентов: <b>Hiddify</b>, <b>Happ</b>, <b>Streisand</b> или <b>v2RayTun</b>. Найдите любой из них в App Store.</p>
-          <a class="btn btn-out" href="https://apps.apple.com/search?term=hiddify" target="_blank" rel="noopener">Открыть App Store →</a>
-          <div class="callout">
-            <b>Не находится в App Store?</b> Apple убрала часть VPN-приложений из российского App Store. Тогда нужен Apple ID другой страны — напишите тому, кто дал вам ссылку, поможем за пару минут.
-          </div>
-        </div>
-        <div class="platform" id="p-android" role="tabpanel" aria-labelledby="tab-android">
-          <p>На Android поставьте <b>Hiddify</b> (или <b>Happ</b> / <b>v2rayNG</b>) из Google Play или RuStore. Если магазин недоступен — попросите у нас файл приложения (APK).</p>
-          <a class="btn btn-out" href="https://play.google.com/store/search?q=hiddify&c=apps" target="_blank" rel="noopener">Открыть Google Play →</a>
-        </div>
+    <section class="card status" id="locked" hidden aria-live="polite">
+      <span class="status-icon" aria-hidden="true">🔐</span>
+      <div style="width:100%">
+        <b id="locked-title">Откройте портал из бота</b>
+        <span id="locked-copy">Так мы безопасно определим вашу подписку и выдадим именно ваш профиль.</span>
+        <a class="btn btn-go" href="https://t.me/foddervpnbot?start=portal" target="_blank" rel="noopener noreferrer">Открыть Fodder VPN в Telegram</a>
       </div>
     </section>
 
-    <section class="step glass">
-      <div class="num">2</div>
-      <h2>Передайте VPN в приложение</h2>
-      <div class="body">
-        <div id="have-link" hidden>
-          <p>Нажмите кнопку — персональные настройки <b>Fodder VPN</b> автоматически добавятся в Happ:</p>
-          <a class="btn btn-go" id="open-profile" href="#">Добавить Fodder VPN в Happ</a>
-          <div class="applist" id="applist">
-            <a id="imp-hiddify" href="#">Добавить в Hiddify</a>
-            <a id="imp-happ" href="#">Добавить в Happ</a>
-            <a id="imp-v2raytun" href="#">Добавить в v2RayTun</a>
-            <a id="imp-streisand" href="#">Добавить в Streisand</a>
-          </div>
-          <div class="callout">
-            <b>Это личная ссылка.</b> Не пересылайте её: другой человек увидит вашу подписку и подключит ваши серверы. Каждый пользователь получает свою ссылку в боте.
-          </div>
-          <div class="linkline">
-            <code id="link-text">Персональная ссылка готова</code>
-            <button class="copybtn" id="copy">Копировать</button>
-          </div>
-          <p class="tip">Если кнопки не сработали — скопируйте ссылку и вставьте в приложении: «Добавить подписку из буфера».</p>
+    <div class="stack" id="portal" hidden>
+      <section class="card status" aria-live="polite">
+        <span class="status-icon" aria-hidden="true">✅</span>
+        <div><b>Аккаунт подключён</b><span>Личные ссылки не сохраняются в браузере и не показываются на странице.</span></div>
+      </section>
+
+      <section class="card primary">
+        <p class="eyebrow">Основной продукт</p>
+        <h2>🌍 Готовый Fodder VPN</h2>
+        <p>Ничего настраивать на сервере не нужно. Выберите страну, установите AmneziaWG и подключитесь.</p>
+        <div class="features">
+          <div class="feature"><b>4 страны</b>NL · FI · TR · US</div>
+          <div class="feature"><b>Для РФ</b>AmneziaWG</div>
+          <div class="feature"><b>Одна подписка</b>Автопродление доступа</div>
+          <div class="feature"><b>Семейный слот</b>Без Telegram у близкого</div>
         </div>
-        <div id="no-link">
-          <p><b>Не используйте чужую подписку.</b> Откройте бота со своего Telegram-аккаунта, получите личный триал или тариф и вернитесь по кнопке «Подключиться».</p>
-          <a class="btn btn-go" href="https://t.me/foddervpnbot?start=connect" target="_blank" rel="noopener">Получить мой VPN в Telegram</a>
-          <p class="tip">Если бот уже прислал вам персональную ссылку, вставьте её ниже:</p>
-          <div class="pastebox">
-            <label for="sub-input">Ваша ссылка-подписка</label>
-            <input id="sub-input" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://…">
-          </div>
+        <div class="actions">
+          <a class="btn btn-go" id="personal-link" href="#">🛡 Подключить мой VPN</a>
+          <a class="btn btn-soft" id="family-link" href="#">👵 Открыть доступ для близкого</a>
+          <button class="btn btn-link" id="copy-family" type="button">🔗 Скопировать семейную ссылку</button>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section class="step glass">
-      <div class="num">3</div>
-      <h2>Нажмите «Подключить»</h2>
-      <div class="body">
-        <p>Откройте приложение и нажмите большую кнопку включения. Значок VPN вверху экрана — значит всё работает. 🎉</p>
-        <p class="tip">Первый раз телефон спросит разрешение на VPN — согласитесь.</p>
-      </div>
-    </section>
+      <section class="card legacy">
+        <p class="eyebrow">Fodders VPN 1 · сохранён полностью</p>
+        <h2>🛠 Настроить свой сервер</h2>
+        <p>Есть собственный VPS? Прежний Wizard установит AmneziaWG, создаст профили и поможет управлять сохранёнными серверами.</p>
+        <a class="btn btn-soft" id="wizard-link" href="/wizard/">Открыть мастер своего сервера →</a>
+      </section>
 
+      <section class="card choice">
+        <h2>Что выбрать?</h2>
+        <p><b>Готовый Fodder VPN</b> — если нужен интернет прямо сейчас. <b>Свой сервер</b> — если вы арендуете VPS и хотите управлять им самостоятельно.</p>
+      </section>
+    </div>
   </div>
+  <footer>Fodder VPN · одна подписка · четыре страны · свой сервер по желанию</footer>
+</main>
 
-  <div class="help glass">
-    <h3>Что-то не получается?</h3>
-    <p>Напишите тому, кто дал вам эту ссылку — поможем подключиться. Это займёт пару минут.</p>
-  </div>
-
-  <footer>
-    Fodder VPN<span class="dot">·</span>без рекламы и лимитов<span class="dot">·</span>работает, пока активна подписка
-  </footer>
-</div>
-
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script>
 (function(){
   "use strict";
-  var $=function(id){return document.getElementById(id);};
-  var tabs={ios:$("tab-ios"),android:$("tab-android")};
-  var panels={ios:$("p-ios"),android:$("p-android")};
-  function select(p){for(var k in tabs){var on=k===p;tabs[k].setAttribute("aria-selected",on?"true":"false");panels[k].classList.toggle("on",on);}}
-  tabs.ios.addEventListener("click",function(){select("ios");});
-  tabs.android.addEventListener("click",function(){select("android");});
-  var ua=navigator.userAgent||"";
-  if(/android/i.test(ua)) select("android"); else select("ios");
+  var tg=window.Telegram&&window.Telegram.WebApp?window.Telegram.WebApp:null;
+  var loading=document.getElementById("loading");
+  var locked=document.getElementById("locked");
+  var portal=document.getElementById("portal");
+  var familyUrl="";
 
-  function getSub(){
+  if(tg){try{tg.ready();tg.expand();}catch(e){}}
+
+  function showLocked(title,copy){
+    loading.hidden=true;portal.hidden=true;locked.hidden=false;
+    if(title)document.getElementById("locked-title").textContent=title;
+    if(copy)document.getElementById("locked-copy").textContent=copy;
+  }
+
+  async function request(url,options){
+    var response=await fetch(url,Object.assign({credentials:"same-origin",headers:{"Accept":"application/json"}},options||{}));
+    var body=null;try{body=await response.json();}catch(e){}
+    if(!response.ok||!body||body.ok===false){throw new Error(body&&body.detail?String(body.detail):"Сервис временно недоступен");}
+    return body;
+  }
+
+  async function authenticate(){
+    var me;
+    if(tg&&tg.initData){
+      // Telegram is the authority for this launch. Do not let a stale browser
+      // cookie from another Telegram account win over the current initData.
+      me=await request("/api/auth/telegram/miniapp",{
+        method:"POST",
+        headers:{"Accept":"application/json","Content-Type":"application/json"},
+        body:JSON.stringify({init_data:tg.initData})
+      });
+    }else{
+      me=await request("/api/auth/me");
+    }
+    if(!me.authenticated){
+      showLocked();return;
+    }
+    var links=await request("/api/portal/links");
+    document.getElementById("personal-link").href=links.personal_vpn_url;
+    document.getElementById("family-link").href=links.family_vpn_url;
+    document.getElementById("wizard-link").href=links.server_wizard_url;
+    familyUrl=links.family_vpn_url;
+    loading.hidden=true;locked.hidden=true;portal.hidden=false;
+  }
+
+  document.getElementById("copy-family").addEventListener("click",async function(){
+    if(!familyUrl)return;
+    var button=this;
     try{
-      var p=new URLSearchParams(location.search);
-      var s=(p.get("sub")||p.get("url")||"").trim();
-      if(!s && location.hash.indexOf("sub=")>=0){ s=decodeURIComponent(location.hash.split("sub=")[1].split("&")[0]); }
-      return s;
-    }catch(e){return "";}
-  }
-  function isHttp(u){return /^https?:\/\//i.test(u);}
-  function wire(sub){
-    if(!isHttp(sub)) return false;
-    $("have-link").hidden=false; $("no-link").hidden=true;
-    $("open-profile").href="happ://add/"+sub;
-    $("imp-hiddify").href="hiddify://import/"+sub;
-    $("imp-happ").href="happ://add/"+sub;
-    $("imp-v2raytun").href="v2raytun://import/"+sub;
-    $("imp-streisand").href="streisand://import/"+sub;
-    $("link-text").textContent="Персональная ссылка готова";
-    $("link-text").dataset.url=sub; return true;
-  }
-  $("copy").addEventListener("click",function(){
-    var t=$("link-text").dataset.url||"";
-    if(!t) return;
-    var done=function(){var b=$("copy");b.textContent="Готово";setTimeout(function(){b.textContent="Копировать";},1500);};
-    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done,done);}
-    else{try{var r=document.createRange();r.selectNode($("link-text"));var s=getSelection();s.removeAllRanges();s.addRange(r);document.execCommand("copy");s.removeAllRanges();done();}catch(e){}}
+      if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error("clipboard unavailable");
+      await navigator.clipboard.writeText(familyUrl);
+      button.textContent="✅ Ссылка скопирована";
+      if(tg&&tg.HapticFeedback)tg.HapticFeedback.notificationOccurred("success");
+      setTimeout(function(){button.textContent="🔗 Скопировать семейную ссылку";},1800);
+    }catch(e){
+      button.textContent="Откройте страницу и скопируйте адрес";
+    }
   });
-  $("sub-input").addEventListener("input",function(e){var v=(e.target.value||"").trim();if(isHttp(v))wire(v);});
-  var initial=getSub(); if(initial) wire(initial);
+
+  authenticate().catch(function(error){
+    showLocked("Не удалось открыть портал",error&&error.message?error.message:"Попробуйте ещё раз из бота.");
+  });
 })();
 </script>
 </body>

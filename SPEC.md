@@ -23,7 +23,7 @@ Telegram Stars stay on the Telegram bot balance.
 - core: optional network tuning (BBR, buffers) and MTU default for speed/stability
 - cli: `provision`, `export`, `status`
 - gui: wizard flow (server access -> configure -> progress -> download config + QR)
-- miniapp: RU/EN локализация (RU по умолчанию), быстрый чек статуса сервера, выбор UDP порта, локальный список недавних серверов (без паролей)
+- self-hosted wizard (`/wizard/`): RU/EN локализация (RU по умолчанию), быстрый чек статуса сервера, выбор UDP порта, локальный список недавних серверов (без паролей)
 - miniapp: поддержка SSH порта (включая формат host:port) и понятные подсказки при ошибке подключения к порту 22
 - miniapp: remember login через временную серверную сессию (`session_id`) без хранения пароля/приватного ключа в localStorage
 - miniapp: управление профилями доступа (список, статус/трафик, скачать конфиг/QR, удалить/перевыпустить), FAQ и онбординг
@@ -46,6 +46,9 @@ Telegram Stars stay on the Telegram bot balance.
   a full-width "Share VPN" action; do not present it as a multi-level pyramid
 - managed family UX: one private browser link per owner issues a separate AWG
   peer without Telegram; it follows the owner's expiry and resumes with the same keys
+- managed portal (`/miniapp/` and `/connect/`): authenticate through Telegram
+  initData + HttpOnly session, expose managed/family AWG actions, and link to the
+  complete Fodders VPN 1 self-hosted wizard without storing signed links locally
 - distribution: API server + Telegram bot + miniapp wizard UI
 - distribution: async job queue + progress polling for miniapp
 

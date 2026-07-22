@@ -13,7 +13,7 @@ from pathlib import Path
 import socket
 import subprocess
 import time
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 import tempfile
 from typing import Callable, Optional
 import threading
@@ -40,6 +40,8 @@ from vpn_wizard.awg_fallback import (
     AwgFallbackConfig,
     AwgFallbackService,
     family_guest_id,
+    family_issue_token,
+    issue_token,
     verify_family_issue_token,
     verify_issue_token,
 )
@@ -495,6 +497,13 @@ class CurrentUserResponse(BaseModel):
     pin_enabled: bool = False
     pin_required: bool = False
     error: Optional[str] = None
+
+
+class PortalLinksResponse(BaseModel):
+    ok: bool
+    personal_vpn_url: str
+    family_vpn_url: str
+    server_wizard_url: str
 
 
 class SavedServerRequest(BaseModel):
@@ -1120,6 +1129,43 @@ def auth_logout(request: Request, response: Response) -> CurrentUserResponse:
         PIN_UNLOCK_LIMITER.reset(session_id)
     _clear_auth_cookie(response)
     return CurrentUserResponse(ok=True, authenticated=False)
+
+
+@app.get("/api/portal/links", response_model=PortalLinksResponse)
+def portal_links(request: Request) -> Response:
+    """Return private navigation for the authenticated Telegram user.
+
+    Telegram initData is exchanged for an HttpOnly session before this endpoint
+    is called. Tokens are returned only in a no-store response and are never put
+    in localStorage by the portal.
+    """
+    account = _require_account(request)
+    telegram_id = int(account["user"]["telegram_id"])
+    config = AwgFallbackConfig.from_env()
+    if not config.link_secret:
+        raise HTTPException(status_code=503, detail="AWG links are not configured.")
+    base = _public_base_url_from_request(request)
+    if not base:
+        raise HTTPException(status_code=503, detail="Public URL is not configured.")
+    personal_query = urlencode(
+        {"tid": telegram_id, "token": issue_token(config.link_secret, telegram_id)}
+    )
+    family_query = urlencode(
+        {
+            "family": telegram_id,
+            "token": family_issue_token(config.link_secret, telegram_id),
+        }
+    )
+    payload = PortalLinksResponse(
+        ok=True,
+        personal_vpn_url=f"{base}/connect/awg.html?{personal_query}",
+        family_vpn_url=f"{base}/connect/awg.html?{family_query}",
+        server_wizard_url=f"{base}/wizard/",
+    )
+    return JSONResponse(
+        payload.model_dump(),
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
 
 
 @app.get("/api/account/servers", response_model=SavedServerListResponse)
@@ -2866,11 +2912,15 @@ async def awg_servers() -> JSONResponse:
 
 def _mount_miniapp() -> None:
     root = Path(__file__).resolve().parents[2]
-    miniapp_dir = root / "web" / "miniapp"
-    if miniapp_dir.exists():
-        app.mount("/miniapp", StaticFiles(directory=str(miniapp_dir), html=True), name="miniapp")
-    # Public "how to connect" page — reachable without Telegram, safe to send to new users.
     connect_dir = root / "web" / "connect"
+    miniapp_dir = root / "web" / "miniapp"
+    # Keep every old /miniapp button useful: it now opens the unified product
+    # portal. The complete original bring-your-own-VPS wizard lives at /wizard.
+    if connect_dir.exists():
+        app.mount("/miniapp", StaticFiles(directory=str(connect_dir), html=True), name="miniapp")
+    if miniapp_dir.exists():
+        app.mount("/wizard", StaticFiles(directory=str(miniapp_dir), html=True), name="wizard")
+    # The portal also has a normal-browser address; family links use awg.html here.
     if connect_dir.exists():
         app.mount("/connect", StaticFiles(directory=str(connect_dir), html=True), name="connect")
 

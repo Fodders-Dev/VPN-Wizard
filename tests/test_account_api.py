@@ -5,11 +5,12 @@ import hmac
 import json
 from contextlib import contextmanager
 import time
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlparse
 
 from fastapi.testclient import TestClient
 
 import vpn_wizard.server as server
+from vpn_wizard.awg_fallback import family_issue_token, issue_token
 
 
 def _configure_env(monkeypatch, tmp_path) -> None:
@@ -82,6 +83,42 @@ def test_miniapp_auth_works_without_legacy_bot_poller(monkeypatch, tmp_path) -> 
     )
     assert response.status_code == 200
     assert response.json()["authenticated"] is True
+
+
+def test_portal_links_require_telegram_session_and_keep_tokens_separate(
+    monkeypatch, tmp_path
+) -> None:
+    _configure_env(monkeypatch, tmp_path)
+    secret = "portal-link-secret"
+    monkeypatch.setenv("VPNW_AWG_LINK_SECRET", secret)
+    monkeypatch.setenv("VPNW_PUBLIC_BASE_URL", "https://vpn.example.test")
+    client = TestClient(server.app)
+
+    assert client.get("/api/portal/links").status_code == 401
+    login = client.post(
+        "/api/auth/telegram/miniapp",
+        json={"init_data": _miniapp_init_data("123456:telegram-test-token")},
+    )
+    assert login.status_code == 200
+
+    response = client.get("/api/portal/links")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    body = response.json()
+    personal = urlparse(body["personal_vpn_url"])
+    family = urlparse(body["family_vpn_url"])
+    assert personal.path == "/connect/awg.html"
+    assert family.path == "/connect/awg.html"
+    assert parse_qs(personal.query) == {
+        "tid": ["10101"],
+        "token": [issue_token(secret, 10101)],
+    }
+    assert parse_qs(family.query) == {
+        "family": ["10101"],
+        "token": [family_issue_token(secret, 10101)],
+    }
+    assert body["server_wizard_url"] == "https://vpn.example.test/wizard/"
 
 
 def test_saved_server_roundtrip_works_for_authenticated_user(monkeypatch, tmp_path) -> None:

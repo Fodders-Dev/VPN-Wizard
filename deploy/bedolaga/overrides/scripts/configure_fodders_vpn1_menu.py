@@ -7,7 +7,7 @@ import copy
 import os
 
 from aiogram import Bot
-from aiogram.types import BotCommand
+from aiogram.types import BotCommand, MenuButtonWebApp, WebAppInfo
 
 from app.database.database import AsyncSessionLocal
 from app.services.menu_layout.service import MenuLayoutService
@@ -19,12 +19,16 @@ AWG_BUTTON_ID = 'fodders_awg'
 AWG_ROW_ID = 'fodders_awg_row'
 INVITE_BUTTON_ID = 'referrals'
 INVITE_ROW_ID = 'fodders_invite_row'
-DEFAULT_URL = 'https://212-69-84-167.nip.io/miniapp'
+DEFAULT_PORTAL_URL = 'https://212-69-84-167.nip.io/miniapp'
+DEFAULT_LEGACY_URL = 'https://212-69-84-167.nip.io/wizard'
 
 
 async def main() -> None:
-    url = (os.getenv('FODDERS_VPN1_MINIAPP_URL') or DEFAULT_URL).strip()
-    if not url.startswith('https://'):
+    portal_url = (os.getenv('FODDERS_PORTAL_URL') or DEFAULT_PORTAL_URL).strip()
+    legacy_url = (os.getenv('FODDERS_VPN1_MINIAPP_URL') or DEFAULT_LEGACY_URL).strip()
+    if not portal_url.startswith('https://'):
+        raise RuntimeError('FODDERS_PORTAL_URL must be an HTTPS URL')
+    if not legacy_url.startswith('https://'):
         raise RuntimeError('FODDERS_VPN1_MINIAPP_URL must be an HTTPS URL')
 
     async with AsyncSessionLocal() as db:
@@ -82,16 +86,16 @@ async def main() -> None:
             'type': 'mini_app',
             'builtin_id': None,
             'text': {
-                'ru': '🛠 Fodders VPN 1',
-                'en': '🛠 Fodders VPN 1',
+                'ru': '🛡 Открыть Fodder VPN',
+                'en': '🛡 Open Fodder VPN',
             },
             'icon': None,
-            'action': url,
+            'action': portal_url,
             'enabled': True,
             'visibility': 'all',
             'conditions': None,
             'dynamic_text': False,
-            'description': 'Original self-hosted VPS wizard',
+            'description': 'Unified managed VPN and self-hosted server portal',
         }
 
         rows = config.setdefault('rows', [])
@@ -197,6 +201,8 @@ async def main() -> None:
         descriptions = {command.command: command.description for command in current}
         descriptions['awg'] = 'Подключиться из РФ через AmneziaWG'
         descriptions['family'] = 'Дать отдельный VPN-профиль близкому'
+        descriptions['miniapp'] = 'Открыть единый портал Fodder VPN'
+        descriptions['vpn1'] = 'Настроить собственный VPS через Wizard'
         order = ['start', 'awg', 'family', 'miniapp', 'vpn1', 'help']
         commands = [
             BotCommand(command=command, description=descriptions[command])
@@ -204,10 +210,19 @@ async def main() -> None:
             if command in descriptions
         ]
         await bot.set_my_commands(commands)
+        await bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(
+                text='Open Fodder VPN',
+                web_app=WebAppInfo(url=portal_url),
+            )
+        )
     finally:
         await bot.session.close()
 
-    print(f'legacy_menu=configured url={url} awg_command=configured')
+    print(
+        f'portal_menu=configured url={portal_url} '
+        f'legacy_wizard={legacy_url} awg_command=configured'
+    )
 
 
 if __name__ == '__main__':

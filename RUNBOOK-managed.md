@@ -149,6 +149,8 @@ Then, in Telegram:
 
 - [ ] Fresh Telegram account → `/start` → prompted to subscribe to `@fodders_dev`.
 - [ ] After subscribing → 7-day trial issued and `/awg` opens the AWG installer.
+- [ ] Telegram menu button / `/miniapp` → unified portal; “Подключить мой VPN”
+      opens the personal AWG installer and “Свой сервер” opens `/wizard/`.
 - [ ] On **Android**, send `/awg`, install the official AmneziaWG app, import the
       personal `.conf` and verify that traffic flows through UDP 443.
 - [ ] On **iPhone**, send `/awg`, install the official AmneziaWG app, import the
@@ -160,6 +162,7 @@ Then, in Telegram:
 - [ ] Buy the 30-day plan with **Telegram Stars** → subscription extends.
 - [ ] Let a test profile expire (or expire it manually) → access is **cut off**.
 - [ ] Renew that profile → owner and family peers resume with their existing configs.
+- [ ] `/vpn1` and `/wizard` still expose saved VPS servers, provisioning and profiles.
 - [ ] Unsubscribe from the channel during a trial → trial is disabled.
 
 When all boxes pass, you have the "paid → works, unpaid → off" loop. That's the MVP.

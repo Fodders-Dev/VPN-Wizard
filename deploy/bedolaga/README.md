@@ -1,7 +1,7 @@
 # Bedolaga shop-bot (billing / storefront)
 
 Bedolaga is the Telegram shop-bot that sits in front of Remnawave: it sells
-subscriptions, grants the 14-day trial for channel subscription, reminds users
+subscriptions, grants the 7-day trial for channel subscription, reminds users
 before expiry, and disables them when unpaid. It talks to the panel over the API.
 License: MIT.
 
@@ -37,7 +37,7 @@ after taking a database backup.
 ## Wire-up order (see the master runbook for detail)
 
 1. Panel must be up and you must have created an **API token** and an **internal
-   squad** with a working VLESS Reality inbound.
+   squad**. Remnawave remains the entitlement source; the working client path is AWG.
 2. Put the API token in `REMNAWAVE_API_KEY` and the squad UUID in
    `SIMPLE_SUBSCRIPTION_SQUAD_UUID`.
 3. For a fresh deployment, create a bot in BotFather. For the existing
@@ -48,11 +48,12 @@ after taking a database backup.
    two pollers on the same token.
 4. Install `overrides/app/handlers/fodders_vpn1.py` and apply
    `fodders-vpn1-compat.patch` before building the image. This preserves
-   `/miniapp`, `/vpn1`, `/wizard`, and `/help` in the combined bot.
+   the unified `/miniapp` portal, the original `/vpn1` + `/wizard` self-hosted
+   flow, and `/help` in the combined bot.
 5. Add `@fodders_dev` to `required_channels` using its numeric Telegram channel
    id. The bot must be an administrator of the channel to check membership.
 6. Run `scripts/configure_trial_tariff.py` in the bot container. It creates the
-   hidden 14-day / 100 GB / 1-device tariff, assigns the paid squad, and repairs
+   hidden 7-day / 100 GB / 1-device tariff, assigns the paid squad, and repairs
    active trials idempotently.
 7. Send yourself a test trial, connect on a phone, then buy a plan with Stars to
    confirm the full loop.
@@ -68,9 +69,8 @@ after taking a database backup.
   owner's product chat without disabling payment/ticket admin notifications.
 - `/usr/local/sbin/remnawave-backup` backs up both databases and the deployment
   configuration nightly; archives are root-only in `/var/backups/remnawave`.
-- Keep the web API private until a separate frontend is deployed. The Telegram
-  flow uses Remnawave's branded subscription page and does not need a public
-  Bedolaga API.
+- Keep the Bedolaga web API private. The public VPN Wizard API serves the unified
+  portal, validates Telegram initData and issues signed AWG links.
 
 ## Gotchas
 

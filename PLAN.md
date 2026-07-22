@@ -22,5 +22,7 @@
 - [x] Add a private family web link with one independent AWG slot and no Telegram requirement
 - [x] Apply owner entitlement, expiry and renewal to the family slot on every AWG server
 - [x] Replace the stale 14-day tariff label and duplicate production trial settings with a 7-day trial
+- [x] Replace old `/miniapp` buttons with one unified managed-VPN portal
+- [x] Preserve the complete Fodders VPN 1 self-hosted flow at `/wizard` and `/vpn1`
 
 Next: Провести реальную покупку Telegram Stars и проверить полный цикл «оплата → продление → вывод».

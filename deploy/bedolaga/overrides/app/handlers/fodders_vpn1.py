@@ -14,8 +14,16 @@ from aiogram import Dispatcher, F, types
 from aiogram.filters import Command
 
 
-DEFAULT_MINIAPP_URL = 'https://212-69-84-167.nip.io/miniapp'
+DEFAULT_PORTAL_URL = 'https://212-69-84-167.nip.io/miniapp'
+DEFAULT_MINIAPP_URL = 'https://212-69-84-167.nip.io/wizard'
 DEFAULT_AWG_PUBLIC_URL = 'https://212-69-84-167.nip.io'
+
+
+def _portal_url() -> str:
+    value = (os.getenv('FODDERS_PORTAL_URL') or DEFAULT_PORTAL_URL).strip()
+    if not value.startswith('https://'):
+        return DEFAULT_PORTAL_URL
+    return value
 
 
 def _miniapp_url() -> str:
@@ -111,7 +119,21 @@ def _family_picker_url(telegram_id: int) -> str | None:
 
 
 def _keyboard(message: types.Message) -> types.InlineKeyboardMarkup:
-    text = '🛠 Открыть Fodders VPN 1' if _is_russian(message) else '🛠 Open Fodders VPN 1'
+    text = '🛡 Открыть Fodder VPN' if _is_russian(message) else '🛡 Open Fodder VPN'
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                types.InlineKeyboardButton(
+                    text=text,
+                    web_app=types.WebAppInfo(url=_portal_url()),
+                )
+            ]
+        ]
+    )
+
+
+def _legacy_keyboard(message: types.Message) -> types.InlineKeyboardMarkup:
+    text = '🛠 Открыть мастер своего сервера' if _is_russian(message) else '🛠 Open server wizard'
     return types.InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -264,6 +286,22 @@ async def open_family_callback(callback: types.CallbackQuery) -> None:
     await callback.answer()
 
 
+async def open_portal(message: types.Message) -> None:
+    if _is_russian(message):
+        text = (
+            '🛡 <b>Fodder VPN</b>\n\n'
+            'В одном портале: подключение готового VPN, четыре страны, '
+            'семейный доступ и прежний мастер для собственного VPS.'
+        )
+    else:
+        text = (
+            '🛡 <b>Fodder VPN</b>\n\n'
+            'One portal for managed VPN access, four countries, family access, '
+            'and the original bring-your-own-server wizard.'
+        )
+    await message.answer(text, reply_markup=_keyboard(message), parse_mode='HTML')
+
+
 async def open_legacy_miniapp(message: types.Message) -> None:
     if _is_russian(message):
         text = (
@@ -279,7 +317,7 @@ async def open_legacy_miniapp(message: types.Message) -> None:
             'AmneziaWG/Xray profiles, and server diagnostics.\n'
             'Use /start for the managed Fodder VPN subscription, trial, and payments.'
         )
-    await message.answer(text, reply_markup=_keyboard(message))
+    await message.answer(text, reply_markup=_legacy_keyboard(message))
 
 
 async def show_help(message: types.Message) -> None:
@@ -288,8 +326,8 @@ async def show_help(message: types.Message) -> None:
             'Fodder VPN:\n'
             '• /start — подписка, пробный период, оплата и подключение\n'
             '• /awg — стабильное подключение через AmneziaWG\n'
-            '• /miniapp — прежний мастер Fodders VPN 1\n'
-            '• /vpn1 или /wizard — открыть прежний мастер\n\n'
+            '• /miniapp — единый портал Fodder VPN\n'
+            '• /vpn1 или /wizard — прежний мастер своего сервера\n\n'
             'AmneziaWG: https://amnezia.org/ru/downloads\n'
             'Гайд по VPS: '
             'https://telegra.ph/Kak-arendovat-minimalnyj-server-VPS-na-HostKey-dlya-VPN-12-28'
@@ -299,8 +337,8 @@ async def show_help(message: types.Message) -> None:
             'Fodder VPN:\n'
             '• /start — subscription, free trial, payments, and connection\n'
             '• /awg — stable connection through AmneziaWG\n'
-            '• /miniapp — original Fodders VPN 1 wizard\n'
-            '• /vpn1 or /wizard — open the original wizard\n\n'
+            '• /miniapp — unified Fodder VPN portal\n'
+            '• /vpn1 or /wizard — original server wizard\n\n'
             'AmneziaWG: https://amnezia.org/en/downloads'
         )
     await message.answer(text, reply_markup=_keyboard(message))
@@ -311,5 +349,6 @@ def register_handlers(dp: Dispatcher) -> None:
     dp.callback_query.register(open_managed_awg_callback, F.data == 'fodders_awg')
     dp.message.register(open_family_message, Command('family', 'share'))
     dp.callback_query.register(open_family_callback, F.data == 'fodders_awg_family')
-    dp.message.register(open_legacy_miniapp, Command('miniapp', 'wizard', 'vpn1'))
+    dp.message.register(open_portal, Command('miniapp', 'portal'))
+    dp.message.register(open_legacy_miniapp, Command('wizard', 'vpn1'))
     dp.message.register(show_help, Command('help'))
