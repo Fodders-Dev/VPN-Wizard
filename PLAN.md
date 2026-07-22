@@ -24,5 +24,6 @@
 - [x] Replace the stale 14-day tariff label and duplicate production trial settings with a 7-day trial
 - [x] Replace old `/miniapp` buttons with one unified managed-VPN portal
 - [x] Preserve the complete Fodders VPN 1 self-hosted flow at `/wizard` and `/vpn1`
+- [x] Add bidirectional portal/Wizard navigation and Telegram native BackButton support
 
 Next: Провести реальную покупку Telegram Stars и проверить полный цикл «оплата → продление → вывод».

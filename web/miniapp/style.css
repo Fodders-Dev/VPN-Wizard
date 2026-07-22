@@ -151,6 +151,43 @@ textarea {
   gap: 12px;
 }
 
+.product-switcher {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 6px;
+  border-radius: 18px;
+}
+
+.product-switch-link {
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: 13px;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+  text-decoration: none;
+}
+
+.product-switch-link.active {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: var(--shadow-soft);
+}
+
+.product-switch-link:focus-visible {
+  outline: 3px solid rgba(19, 104, 255, 0.5);
+  outline-offset: 2px;
+}
+
 .topbar,
 .diagnostics,
 .compact-card,
@@ -1281,6 +1318,16 @@ textarea {
     padding: 10px 10px calc(var(--nav-height) + env(safe-area-inset-bottom, 0px) + 8px);
   }
 
+  .product-switcher {
+    padding: 4px;
+  }
+
+  .product-switch-link {
+    min-height: 38px;
+    padding: 8px 9px;
+    font-size: 0.82rem;
+  }
+
   .topbar {
     min-height: 64px;
     padding: 12px 14px;
@@ -1504,6 +1551,17 @@ textarea {
 body.compact-height.compact-width .app-shell {
   gap: 6px;
   padding: 8px 8px calc(var(--nav-height) + env(safe-area-inset-bottom, 0px) + 6px);
+}
+
+body.compact-height.compact-width .product-switcher {
+  gap: 4px;
+  padding: 4px;
+}
+
+body.compact-height.compact-width .product-switch-link {
+  min-height: 36px;
+  padding: 7px 8px;
+  font-size: 0.78rem;
 }
 
 body.compact-height.compact-width .page-stack {

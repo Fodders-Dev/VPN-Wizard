@@ -49,6 +49,8 @@ Telegram Stars stay on the Telegram bot balance.
 - managed portal (`/portal/`; legacy `/miniapp/` redirects there): authenticate through Telegram
   initData + HttpOnly session, expose managed/family AWG actions, and link to the
   complete Fodders VPN 1 self-hosted wizard without storing signed links locally
+- product navigation: portal and self-hosted Wizard expose the same two-destination
+  navigation (`VPN subscription` / `My server`); Wizard also uses Telegram BackButton
 - distribution: API server + Telegram bot + miniapp wizard UI
 - distribution: async job queue + progress polling for miniapp
 

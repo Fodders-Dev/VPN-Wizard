@@ -4,11 +4,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>VPN Wizard</title>
+  <title>Свой сервер | Fodder VPN</title>
   <meta name="theme-color" content="#eef4ff" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="style.css?v=20260718a" />
+  <link rel="stylesheet" href="style.css?v=20260722b" />
 </head>
 
 <body>
@@ -17,6 +17,17 @@
   <div class="backdrop-grid" aria-hidden="true"></div>
 
   <main class="app-shell">
+    <nav class="product-switcher glass-panel" aria-label="Разделы Fodder VPN">
+      <a class="product-switch-link" href="/portal/?v=20260722-3">
+        <span aria-hidden="true">🛡</span>
+        <span id="product-managed-label">VPN-подписка</span>
+      </a>
+      <a class="product-switch-link active" href="/wizard/?v=20260722-3" aria-current="page">
+        <span aria-hidden="true">🛠</span>
+        <span id="product-wizard-label">Свой сервер</span>
+      </a>
+    </nav>
+
     <header class="topbar glass-panel">
       <div>
         <div class="eyebrow" id="app-eyebrow">Telegram Mini App</div>
@@ -430,8 +441,8 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260718a"></script>
-  <script src="app.js?v=20260718a"></script>
+  <script src="config.js?v=20260722b"></script>
+  <script src="app.js?v=20260722b"></script>
 </body>
 
 </html>

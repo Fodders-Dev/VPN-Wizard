@@ -9,8 +9,11 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_miniapp_uses_canonical_api_fallback_and_test_hooks() -> None:
     js = (ROOT / "web" / "miniapp" / "app.js").read_text(encoding="utf-8")
     assert 'const CANONICAL_API_BASE = "https://212-69-84-167.nip.io";' in js
-    assert 'const CANONICAL_MINIAPP_URL = `${CANONICAL_API_BASE}/wizard/`;' in js
-    assert 'new URL("/wizard/", window.location.origin)' in js
+    assert 'const CANONICAL_MINIAPP_URL = `${CANONICAL_API_BASE}/wizard/?v=20260722-3`;' in js
+    assert 'new URL("/wizard/?v=20260722-3", window.location.origin)' in js
+    assert 'new URL("/portal/?v=20260722-3", window.location.origin)' in js
+    assert "tg.BackButton?.show()" in js
+    assert "tg.BackButton?.onClick(returnToPortal)" in js
     assert "function resolveApiBaseFrom" in js
     assert "window.__VPNW_TEST__" in js
     config_js = (ROOT / "web" / "miniapp" / "config.js").read_text(encoding="utf-8")
@@ -35,6 +38,9 @@ def test_miniapp_shell_is_single_flow_and_has_diagnostics_panel() -> None:
     assert 'value="shadowtls_ss"' not in html
     assert 'value="vless_reality"' not in html
     assert 'id="faq-sheet"' not in html
+    assert 'class="product-switcher glass-panel"' in html
+    assert 'href="/portal/?v=20260722-3"' in html
+    assert 'aria-current="page"' in html
 
 
 def test_connect_page_is_a_private_unified_portal() -> None:
@@ -42,7 +48,10 @@ def test_connect_page_is_a_private_unified_portal() -> None:
     assert "Всё для VPN — в одном месте" in html
     assert "Готовый Fodder VPN" in html
     assert "Настроить свой сервер" in html
-    assert 'href="/wizard/"' in html
+    assert 'href="/wizard/?v=20260722-3"' in html
+    assert 'class="product-nav"' in html
+    assert 'href="/portal/?v=20260722-3" aria-current="page"' in html
+    assert "tg.BackButton&&tg.BackButton.hide()" in html
     assert 'request("/api/auth/telegram/miniapp"' in html
     assert 'request("/api/portal/links")' in html
     assert "stale browser" in html
@@ -53,9 +62,11 @@ def test_connect_page_is_a_private_unified_portal() -> None:
 
 def test_static_routes_keep_old_buttons_on_portal_and_preserve_wizard() -> None:
     source = (ROOT / "src" / "vpn_wizard" / "server.py").read_text(encoding="utf-8")
-    assert 'PORTAL_ENTRY_URL = "/portal/?v=20260722-2"' in source
+    assert 'PORTAL_ENTRY_URL = "/portal/?v=20260722-3"' in source
     assert '@app.get("/miniapp/", include_in_schema=False)' in source
-    assert 'headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"}' in source
+    assert '"Cache-Control": "no-store, max-age=0"' in source
+    assert '@app.get("/portal/", include_in_schema=False)' in source
+    assert '@app.get("/wizard/", include_in_schema=False)' in source
     assert 'app.mount("/portal", StaticFiles(directory=str(connect_dir)' in source
     assert 'app.mount("/miniapp", StaticFiles(directory=str(connect_dir)' in source
     assert 'app.mount("/wizard", StaticFiles(directory=str(miniapp_dir)' in source
@@ -106,4 +117,4 @@ def test_bedolaga_configures_telegram_menu_button_for_the_portal() -> None:
     assert "WebAppInfo(url=portal_url)" in script
     assert "action': portal_url" in script
     assert "FODDERS_VPN1_MINIAPP_URL" in script
-    assert "/portal/?v=20260722-2" in script
+    assert "/portal/?v=20260722-3" in script

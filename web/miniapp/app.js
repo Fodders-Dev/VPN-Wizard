@@ -1,5 +1,6 @@
 const CANONICAL_API_BASE = "https://212-69-84-167.nip.io";
-const CANONICAL_MINIAPP_URL = `${CANONICAL_API_BASE}/wizard/`;
+const CANONICAL_MINIAPP_URL = `${CANONICAL_API_BASE}/wizard/?v=20260722-3`;
+const CANONICAL_PORTAL_URL = `${CANONICAL_API_BASE}/portal/?v=20260722-3`;
 const API_OVERRIDE_KEY = "vpnw_api_base";
 const LANG_KEY = "vpnw_lang";
 const SETTINGS_KEY = "vpnw_settings_v3";
@@ -556,10 +557,22 @@ function openExternal(url) {
 
 function currentMiniappUrl() {
   try {
-    return new URL("/wizard/", window.location.origin).toString();
+    return new URL("/wizard/?v=20260722-3", window.location.origin).toString();
   } catch {
     return CANONICAL_MINIAPP_URL;
   }
+}
+
+function currentPortalUrl() {
+  try {
+    return new URL("/portal/?v=20260722-3", window.location.origin).toString();
+  } catch {
+    return CANONICAL_PORTAL_URL;
+  }
+}
+
+function returnToPortal() {
+  window.location.assign(currentPortalUrl());
 }
 
 function parsePort(value) {
@@ -1157,6 +1170,8 @@ function renderProfilesHeader() {
 
 function renderAll() {
   refs.topbarCopy.textContent = t("topbarCopy");
+  document.getElementById("product-managed-label").textContent = STATE.lang === "ru" ? "VPN-подписка" : "VPN subscription";
+  document.getElementById("product-wizard-label").textContent = STATE.lang === "ru" ? "Свой сервер" : "My server";
   document.getElementById("connect-title").textContent = STATE.lang === "ru" ? "Подключение к серверу" : "Connect your server";
   document.getElementById("host-label").textContent = STATE.lang === "ru" ? "IP или домен" : "IP or domain";
   document.getElementById("user-label").textContent = STATE.lang === "ru" ? "SSH пользователь" : "SSH user";
@@ -1266,6 +1281,8 @@ function setupTelegramChrome() {
     tg.expand();
     tg.setHeaderColor?.("#eef4ff");
     tg.setBackgroundColor?.("#eef4ff");
+    tg.BackButton?.show();
+    tg.BackButton?.onClick(returnToPortal);
   } catch {
     // Ignore Telegram shell issues.
   }
@@ -2122,6 +2139,7 @@ window.__VPNW_TEST__ = {
   resolveApiBaseFrom,
   CANONICAL_API_BASE,
   CANONICAL_MINIAPP_URL,
+  CANONICAL_PORTAL_URL,
   getDebugLog: () => STATE.debugLog.slice(),
 };
 

@@ -118,7 +118,7 @@ def test_portal_links_require_telegram_session_and_keep_tokens_separate(
         "family": ["10101"],
         "token": [family_issue_token(secret, 10101)],
     }
-    assert body["server_wizard_url"] == "https://vpn.example.test/wizard/"
+    assert body["server_wizard_url"] == "https://vpn.example.test/wizard/?v=20260722-3"
 
 
 def test_legacy_miniapp_entry_redirects_to_uncached_portal() -> None:
@@ -127,10 +127,15 @@ def test_legacy_miniapp_entry_redirects_to_uncached_portal() -> None:
     response = client.get("/miniapp/")
 
     assert response.status_code == 307
-    assert response.headers["location"] == "/portal/?v=20260722-2"
+    assert response.headers["location"] == "/portal/?v=20260722-3"
     assert response.headers["cache-control"] == "no-store, max-age=0"
     assert response.headers["pragma"] == "no-cache"
-    assert client.get("/portal/").status_code == 200
+    portal = client.get("/portal/")
+    wizard = client.get("/wizard/")
+    assert portal.status_code == 200
+    assert wizard.status_code == 200
+    assert portal.headers["cache-control"] == "no-store, max-age=0"
+    assert wizard.headers["cache-control"] == "no-store, max-age=0"
 
 
 def test_saved_server_roundtrip_works_for_authenticated_user(monkeypatch, tmp_path) -> None:

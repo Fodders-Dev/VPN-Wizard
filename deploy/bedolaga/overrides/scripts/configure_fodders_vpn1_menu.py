@@ -19,8 +19,8 @@ AWG_BUTTON_ID = 'fodders_awg'
 AWG_ROW_ID = 'fodders_awg_row'
 INVITE_BUTTON_ID = 'referrals'
 INVITE_ROW_ID = 'fodders_invite_row'
-DEFAULT_PORTAL_URL = 'https://212-69-84-167.nip.io/portal/?v=20260722-2'
-DEFAULT_LEGACY_URL = 'https://212-69-84-167.nip.io/wizard'
+DEFAULT_PORTAL_URL = 'https://212-69-84-167.nip.io/portal/?v=20260722-3'
+DEFAULT_LEGACY_URL = 'https://212-69-84-167.nip.io/wizard/?v=20260722-3'
 
 
 async def main() -> None:

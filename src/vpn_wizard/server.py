@@ -22,7 +22,7 @@ import uuid
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import paramiko
 from pydantic import BaseModel, Field, model_validator
@@ -1160,7 +1160,7 @@ def portal_links(request: Request) -> Response:
         ok=True,
         personal_vpn_url=f"{base}/connect/awg.html?{personal_query}",
         family_vpn_url=f"{base}/connect/awg.html?{family_query}",
-        server_wizard_url=f"{base}/wizard/",
+        server_wizard_url=f"{base}/wizard/?v=20260722-3",
     )
     return JSONResponse(
         payload.model_dump(),
@@ -2910,7 +2910,11 @@ async def awg_servers() -> JSONResponse:
     return JSONResponse(registry.public())
 
 
-PORTAL_ENTRY_URL = "/portal/?v=20260722-2"
+PORTAL_ENTRY_URL = "/portal/?v=20260722-3"
+STATIC_ENTRY_HEADERS = {
+    "Cache-Control": "no-store, max-age=0",
+    "Pragma": "no-cache",
+}
 
 
 @app.get("/miniapp", include_in_schema=False)
@@ -2920,8 +2924,25 @@ def legacy_miniapp_entry() -> RedirectResponse:
     return RedirectResponse(
         url=PORTAL_ENTRY_URL,
         status_code=307,
-        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+        headers=STATIC_ENTRY_HEADERS,
     )
+
+
+def _entry_file(directory: str) -> FileResponse:
+    root = Path(__file__).resolve().parents[2]
+    return FileResponse(root / "web" / directory / "index.html", headers=STATIC_ENTRY_HEADERS)
+
+
+@app.get("/portal", include_in_schema=False)
+@app.get("/portal/", include_in_schema=False)
+def portal_entry() -> FileResponse:
+    return _entry_file("connect")
+
+
+@app.get("/wizard", include_in_schema=False)
+@app.get("/wizard/", include_in_schema=False)
+def wizard_entry() -> FileResponse:
+    return _entry_file("miniapp")
 
 
 def _mount_miniapp() -> None:

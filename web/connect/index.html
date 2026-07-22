@@ -61,6 +61,12 @@
   @keyframes spin{to{transform:rotate(360deg)}}
   @media (prefers-reduced-motion:reduce){.spinner{animation:none}}
   .choice{padding:.95rem 1rem}.choice h2{font-size:1.05rem}.choice p{font-size:.9rem}
+  .product-nav{display:grid;grid-template-columns:1fr 1fr;gap:.35rem;padding:.35rem;background:var(--card);border:1px solid var(--edge);
+    border-radius:1rem;box-shadow:var(--shadow);backdrop-filter:saturate(150%) blur(14px)}
+  .product-nav a{display:flex;align-items:center;justify-content:center;min-height:2.9rem;padding:.65rem .7rem;border-radius:.75rem;
+    color:var(--soft);font-weight:750;font-size:.9rem;text-decoration:none;text-align:center}
+  .product-nav a[aria-current="page"]{background:var(--card-strong);color:var(--ink);box-shadow:0 3px 12px rgba(16,26,60,.1)}
+  .product-nav a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   footer{text-align:center;color:var(--muted);font-size:.78rem;margin:1.15rem 0 0}
 </style>
 </head>
@@ -73,6 +79,11 @@
   </header>
 
   <div class="stack">
+    <nav class="product-nav" aria-label="Разделы Fodder VPN">
+      <a href="/portal/?v=20260722-3" aria-current="page">🛡 VPN-подписка</a>
+      <a href="/wizard/?v=20260722-3">🛠 Свой сервер</a>
+    </nav>
+
     <section class="card status" id="loading" aria-live="polite">
       <span class="status-icon"><span class="spinner" aria-hidden="true"></span></span>
       <div><b>Подключаем аккаунт…</b><span>Telegram используется только для проверки вашей подписки.</span></div>
@@ -114,7 +125,7 @@
         <p class="eyebrow">Fodders VPN 1 · сохранён полностью</p>
         <h2>🛠 Настроить свой сервер</h2>
         <p>Есть собственный VPS? Прежний Wizard установит AmneziaWG, создаст профили и поможет управлять сохранёнными серверами.</p>
-        <a class="btn btn-soft" id="wizard-link" href="/wizard/">Открыть мастер своего сервера →</a>
+        <a class="btn btn-soft" id="wizard-link" href="/wizard/?v=20260722-3">Открыть мастер своего сервера →</a>
       </section>
 
       <section class="card choice">
@@ -136,7 +147,7 @@
   var portal=document.getElementById("portal");
   var familyUrl="";
 
-  if(tg){try{tg.ready();tg.expand();}catch(e){}}
+  if(tg){try{tg.ready();tg.expand();tg.BackButton&&tg.BackButton.hide();}catch(e){}}
 
   function showLocked(title,copy){
     loading.hidden=true;portal.hidden=true;locked.hidden=false;

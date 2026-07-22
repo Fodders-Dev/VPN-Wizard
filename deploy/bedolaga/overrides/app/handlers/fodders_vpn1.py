@@ -14,8 +14,8 @@ from aiogram import Dispatcher, F, types
 from aiogram.filters import Command
 
 
-DEFAULT_PORTAL_URL = 'https://212-69-84-167.nip.io/portal/?v=20260722-2'
-DEFAULT_MINIAPP_URL = 'https://212-69-84-167.nip.io/wizard'
+DEFAULT_PORTAL_URL = 'https://212-69-84-167.nip.io/portal/?v=20260722-3'
+DEFAULT_MINIAPP_URL = 'https://212-69-84-167.nip.io/wizard/?v=20260722-3'
 DEFAULT_AWG_PUBLIC_URL = 'https://212-69-84-167.nip.io'
 
 

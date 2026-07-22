@@ -163,7 +163,15 @@ Then, in Telegram:
 - [ ] Let a test profile expire (or expire it manually) → access is **cut off**.
 - [ ] Renew that profile → owner and family peers resume with their existing configs.
 - [ ] `/vpn1` and `/wizard` still expose saved VPS servers, provisioning and profiles.
+- [ ] Portal top switch opens Wizard; Wizard top switch and Telegram BackButton return to portal.
 - [ ] Unsubscribe from the channel during a trial → trial is disabled.
+
+BotFather's **Main Mini App** (`Open` in the bot profile and the large launch
+button) is separate from the Bot API menu button. Set its Web App URL to:
+
+```text
+https://212-69-84-167.nip.io/portal/?v=20260722-3
+```
 
 When all boxes pass, you have the "paid → works, unpaid → off" loop. That's the MVP.
 
