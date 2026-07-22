@@ -53,6 +53,10 @@ def test_connect_page_is_a_private_unified_portal() -> None:
 
 def test_static_routes_keep_old_buttons_on_portal_and_preserve_wizard() -> None:
     source = (ROOT / "src" / "vpn_wizard" / "server.py").read_text(encoding="utf-8")
+    assert 'PORTAL_ENTRY_URL = "/portal/?v=20260722-2"' in source
+    assert '@app.get("/miniapp/", include_in_schema=False)' in source
+    assert 'headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"}' in source
+    assert 'app.mount("/portal", StaticFiles(directory=str(connect_dir)' in source
     assert 'app.mount("/miniapp", StaticFiles(directory=str(connect_dir)' in source
     assert 'app.mount("/wizard", StaticFiles(directory=str(miniapp_dir)' in source
 
@@ -102,3 +106,4 @@ def test_bedolaga_configures_telegram_menu_button_for_the_portal() -> None:
     assert "WebAppInfo(url=portal_url)" in script
     assert "action': portal_url" in script
     assert "FODDERS_VPN1_MINIAPP_URL" in script
+    assert "/portal/?v=20260722-2" in script

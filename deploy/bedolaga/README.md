@@ -48,7 +48,7 @@ after taking a database backup.
    two pollers on the same token.
 4. Install `overrides/app/handlers/fodders_vpn1.py` and apply
    `fodders-vpn1-compat.patch` before building the image. This preserves
-   the unified `/miniapp` portal, the original `/vpn1` + `/wizard` self-hosted
+   the unified `/portal` entry (with `/miniapp` compatibility), the original `/vpn1` + `/wizard` self-hosted
    flow, and `/help` in the combined bot.
 5. Add `@fodders_dev` to `required_channels` using its numeric Telegram channel
    id. The bot must be an administrator of the channel to check membership.

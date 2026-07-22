@@ -149,7 +149,7 @@ Then, in Telegram:
 
 - [ ] Fresh Telegram account → `/start` → prompted to subscribe to `@fodders_dev`.
 - [ ] After subscribing → 7-day trial issued and `/awg` opens the AWG installer.
-- [ ] Telegram menu button / `/miniapp` → unified portal; “Подключить мой VPN”
+- [ ] Telegram menu button / `/miniapp` → versioned `/portal/` entry; “Подключить мой VPN”
       opens the personal AWG installer and “Свой сервер” opens `/wizard/`.
 - [ ] On **Android**, send `/awg`, install the official AmneziaWG app, import the
       personal `.conf` and verify that traffic flows through UDP 443.

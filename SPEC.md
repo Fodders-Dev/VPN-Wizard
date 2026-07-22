@@ -46,7 +46,7 @@ Telegram Stars stay on the Telegram bot balance.
   a full-width "Share VPN" action; do not present it as a multi-level pyramid
 - managed family UX: one private browser link per owner issues a separate AWG
   peer without Telegram; it follows the owner's expiry and resumes with the same keys
-- managed portal (`/miniapp/` and `/connect/`): authenticate through Telegram
+- managed portal (`/portal/`; legacy `/miniapp/` redirects there): authenticate through Telegram
   initData + HttpOnly session, expose managed/family AWG actions, and link to the
   complete Fodders VPN 1 self-hosted wizard without storing signed links locally
 - distribution: API server + Telegram bot + miniapp wizard UI

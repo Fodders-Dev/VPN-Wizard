@@ -22,7 +22,7 @@ import uuid
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import paramiko
 from pydantic import BaseModel, Field, model_validator
@@ -2910,13 +2910,29 @@ async def awg_servers() -> JSONResponse:
     return JSONResponse(registry.public())
 
 
+PORTAL_ENTRY_URL = "/portal/?v=20260722-2"
+
+
+@app.get("/miniapp", include_in_schema=False)
+@app.get("/miniapp/", include_in_schema=False)
+def legacy_miniapp_entry() -> RedirectResponse:
+    """Move stale Telegram Wizard buttons onto a fresh, uncached portal URL."""
+    return RedirectResponse(
+        url=PORTAL_ENTRY_URL,
+        status_code=307,
+        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+    )
+
+
 def _mount_miniapp() -> None:
     root = Path(__file__).resolve().parents[2]
     connect_dir = root / "web" / "connect"
     miniapp_dir = root / "web" / "miniapp"
-    # Keep every old /miniapp button useful: it now opens the unified product
-    # portal. The complete original bring-your-own-VPS wizard lives at /wizard.
+    # A distinct /portal URL avoids Telegram WebView reusing the old Wizard
+    # document cached under /miniapp. Exact legacy entry routes below redirect
+    # without caching; nested /miniapp assets remain available during rollout.
     if connect_dir.exists():
+        app.mount("/portal", StaticFiles(directory=str(connect_dir), html=True), name="portal")
         app.mount("/miniapp", StaticFiles(directory=str(connect_dir), html=True), name="miniapp")
     if miniapp_dir.exists():
         app.mount("/wizard", StaticFiles(directory=str(miniapp_dir), html=True), name="wizard")
