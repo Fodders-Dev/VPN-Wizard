@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+from html import escape as html_escape
 import json
 import os
 import re
@@ -25,7 +26,11 @@ def _miniapp_url() -> str:
 
 
 def _is_russian(message: types.Message) -> bool:
-    language = (message.from_user.language_code if message.from_user else '') or ''
+    return _user_is_russian(message.from_user)
+
+
+def _user_is_russian(user: types.User | None) -> bool:
+    language = (user.language_code if user else '') or ''
     return not language or language.lower().startswith('ru')
 
 
@@ -90,6 +95,21 @@ def _awg_picker_url(telegram_id: int) -> str | None:
     return f'{base}/connect/awg.html?{query}'
 
 
+def _family_picker_url(telegram_id: int) -> str | None:
+    context = _awg_link_context(telegram_id)
+    if context is None:
+        return None
+    base, _personal_token = context
+    secret = (os.getenv('VPNW_AWG_LINK_SECRET') or '').strip()
+    family_token = hmac.new(
+        secret.encode('utf-8'),
+        f'family:{int(telegram_id)}'.encode('utf-8'),
+        hashlib.sha256,
+    ).hexdigest()
+    query = urlencode({'family': int(telegram_id), 'token': family_token})
+    return f'{base}/connect/awg.html?{query}'
+
+
 def _keyboard(message: types.Message) -> types.InlineKeyboardMarkup:
     text = '🛠 Открыть Fodders VPN 1' if _is_russian(message) else '🛠 Open Fodders VPN 1'
     return types.InlineKeyboardMarkup(
@@ -112,7 +132,7 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
         await message.answer('AmneziaWG пока не настроен. Напишите в техподдержку.')
         return
     servers = _public_servers()
-    if _is_russian(message):
+    if _user_is_russian(user):
         text = (
             '🛡 <b>AmneziaWG — основной режим для РФ</b>\n\n'
             'Этот профиль работает через обфусцированный AmneziaWG и предназначен '
@@ -130,6 +150,7 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
         android_text = '🤖 Android'
         ios_text = '🍎 iPhone'
         windows_text = '🪟 Windows'
+        family_text = '👵 Дать доступ близкому'
     else:
         text = (
             '🛡 <b>AmneziaWG — primary mode for restricted networks</b>\n\n'
@@ -146,6 +167,7 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
         android_text = '🤖 Android'
         ios_text = '🍎 iPhone'
         windows_text = '🪟 Windows'
+        family_text = '👵 Share with family'
     server_rows = []
     for server_id, label in servers:
         links = _awg_urls(user.id, server_id)
@@ -157,6 +179,12 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
         inline_keyboard=server_rows + [
             [
                 types.InlineKeyboardButton(text=picker_text, url=picker_url),
+            ],
+            [
+                types.InlineKeyboardButton(
+                    text=family_text,
+                    callback_data='fodders_awg_family',
+                ),
             ],
             [
                 types.InlineKeyboardButton(
@@ -179,6 +207,43 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
     await message.answer(text, reply_markup=keyboard, parse_mode='HTML')
 
 
+async def _send_family_link(message: types.Message, user: types.User | None) -> None:
+    if user is None:
+        return
+    family_url = _family_picker_url(user.id)
+    if family_url is None:
+        await message.answer('Семейный доступ пока не настроен. Напишите в техподдержку.')
+        return
+    if _user_is_russian(user):
+        text = (
+            '👵 <b>Доступ для близкого — без Telegram</b>\n\n'
+            'Отправьте ссылку по SMS, WhatsApp или любым другим способом. '
+            'Она откроется в обычном браузере и выдаст <b>отдельный</b> профиль '
+            'AmneziaWG — ваш собственный профиль не сломается.\n\n'
+            'Семейный профиль работает, пока активна ваша подписка. '
+            'Это один дополнительный семейный слот на аккаунт.\n\n'
+            f'<code>{html_escape(family_url)}</code>'
+        )
+        button_text = '🌐 Открыть семейную ссылку'
+    else:
+        text = (
+            '👵 <b>Family access — no Telegram required</b>\n\n'
+            'Send this link by SMS, WhatsApp, or any other channel. It opens in '
+            'a normal browser and issues a separate AmneziaWG profile, so your '
+            'own device keeps working.\n\n'
+            'The family profile follows your subscription. One family slot is '
+            'available per account.\n\n'
+            f'<code>{html_escape(family_url)}</code>'
+        )
+        button_text = '🌐 Open family link'
+    keyboard = types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text=button_text, url=family_url)],
+        ]
+    )
+    await message.answer(text, reply_markup=keyboard, parse_mode='HTML')
+
+
 async def open_managed_awg_message(message: types.Message) -> None:
     await _send_awg(message, message.from_user)
 
@@ -186,6 +251,16 @@ async def open_managed_awg_message(message: types.Message) -> None:
 async def open_managed_awg_callback(callback: types.CallbackQuery) -> None:
     if callback.message:
         await _send_awg(callback.message, callback.from_user)
+    await callback.answer()
+
+
+async def open_family_message(message: types.Message) -> None:
+    await _send_family_link(message, message.from_user)
+
+
+async def open_family_callback(callback: types.CallbackQuery) -> None:
+    if callback.message:
+        await _send_family_link(callback.message, callback.from_user)
     await callback.answer()
 
 
@@ -234,5 +309,7 @@ async def show_help(message: types.Message) -> None:
 def register_handlers(dp: Dispatcher) -> None:
     dp.message.register(open_managed_awg_message, Command('awg', 'amnezia'))
     dp.callback_query.register(open_managed_awg_callback, F.data == 'fodders_awg')
+    dp.message.register(open_family_message, Command('family', 'share'))
+    dp.callback_query.register(open_family_callback, F.data == 'fodders_awg_family')
     dp.message.register(open_legacy_miniapp, Command('miniapp', 'wizard', 'vpn1'))
     dp.message.register(show_help, Command('help'))

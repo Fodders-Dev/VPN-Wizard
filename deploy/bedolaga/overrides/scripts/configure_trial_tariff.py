@@ -13,7 +13,8 @@ from app.database.models import ServerSquad, Subscription, Tariff
 from app.services.subscription_service import SubscriptionService
 
 
-TRIAL_NAME = "Fodder Trial 14d"
+TRIAL_NAME = "Тестовый доступ"
+LEGACY_TRIAL_NAMES = ("Fodder Trial 14d", "Fodder Trial 7d")
 TRIAL_TRAFFIC_GB = 100
 TRIAL_DEVICE_LIMIT = 1
 
@@ -45,14 +46,29 @@ async def main() -> None:
             is_trial_available=False,
         )
 
-        trial = (
-            await db.execute(select(Tariff).where(Tariff.name == TRIAL_NAME).limit(1))
-        ).scalar_one_or_none()
+        trial_candidates = list(
+            (
+                await db.execute(
+                    select(Tariff).where(
+                        Tariff.name.in_((TRIAL_NAME, *LEGACY_TRIAL_NAMES))
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        trial = next(
+            (candidate for candidate in trial_candidates if candidate.name == TRIAL_NAME),
+            trial_candidates[0] if trial_candidates else None,
+        )
         if trial is None:
             trial = await create_tariff(
                 db,
                 TRIAL_NAME,
-                description="Скрытый тариф для 14-дневного тестового доступа",
+                description=(
+                    "Скрытый тариф для тестового доступа; срок задаёт "
+                    "TRIAL_DURATION_DAYS"
+                ),
                 display_order=999,
                 is_active=False,
                 traffic_limit_gb=TRIAL_TRAFFIC_GB,
@@ -69,7 +85,11 @@ async def main() -> None:
             trial = await update_tariff(
                 db,
                 trial,
-                description="Скрытый тариф для 14-дневного тестового доступа",
+                name=TRIAL_NAME,
+                description=(
+                    "Скрытый тариф для тестового доступа; срок задаёт "
+                    "TRIAL_DURATION_DAYS"
+                ),
                 display_order=999,
                 is_active=False,
                 traffic_limit_gb=TRIAL_TRAFFIC_GB,

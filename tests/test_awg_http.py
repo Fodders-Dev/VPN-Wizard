@@ -7,6 +7,8 @@ truncating it, so a long filename silently makes a config unimportable.
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import re
 
@@ -14,7 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import vpn_wizard.server as server_module
-from vpn_wizard.awg_fallback import issue_token
+from vpn_wizard.awg_fallback import family_guest_id, family_issue_token, issue_token
 from vpn_wizard.awg_servers import AwgServer
 from vpn_wizard.server import _awg_file_slug, _awg_label_config, app
 
@@ -158,6 +160,116 @@ def test_config_requires_configuration_then_a_valid_token(
     assert client.get("/api/awg/1/config", params={"token": other}).status_code == 403
 
 
+def test_family_config_uses_owner_entitlement_and_separate_peer(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    secret = "link-secret"
+    owner_id = 449066726
+    _configure_single_server(monkeypatch, secret)
+    entitlement_lookups: list[int] = []
+    issued_peers: list[int] = []
+
+    class ActiveRemnawave:
+        def __init__(self, config) -> None:
+            self.config = config
+
+        def active_user(self, telegram_id: int):
+            entitlement_lookups.append(telegram_id)
+            return {"uuid": "owner-active"}
+
+    def issue(self, telegram_id: int, *, remnawave_uuid=None):
+        issued_peers.append(telegram_id)
+        return {
+            "config": "[Interface]\nPrivateKey = family-key\n",
+            "client_name": "family",
+            "reused": False,
+        }
+
+    monkeypatch.setattr(server_module, "RemnawaveClient", ActiveRemnawave)
+    monkeypatch.setattr(server_module.AwgFallbackService, "issue", issue)
+    token = family_issue_token(secret, owner_id)
+
+    config = client.get(
+        f"/api/awg/family/{owner_id}/config",
+        params={"token": token},
+    )
+    qr = client.get(
+        f"/api/awg/family/{owner_id}/qr",
+        params={"token": token},
+    )
+
+    assert config.status_code == 200
+    assert config.headers["content-disposition"] == 'attachment; filename="FVPN-main.conf"'
+    assert config.headers["cache-control"] == "no-store"
+    assert config.headers["referrer-policy"] == "no-referrer"
+    assert qr.status_code == 200
+    assert qr.headers["content-type"] == "image/png"
+    assert qr.headers["cache-control"] == "no-store"
+    assert entitlement_lookups == [owner_id, owner_id]
+    assert issued_peers == [family_guest_id(owner_id), family_guest_id(owner_id)]
+
+
+def test_family_endpoint_rejects_personal_or_wrong_owner_token(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    secret = "link-secret"
+    _configure_single_server(monkeypatch, secret)
+
+    personal = issue_token(secret, 1)
+    assert (
+        client.get("/api/awg/family/1/config", params={"token": personal}).status_code
+        == 403
+    )
+    other_family = family_issue_token(secret, 2)
+    assert (
+        client.get("/api/awg/family/1/config", params={"token": other_family}).status_code
+        == 403
+    )
+
+
+def test_webhook_applies_expiry_and_renewal_to_owner_and_family(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    secret = "webhook-secret"
+    owner_id = 449066726
+    calls: list[tuple[str, int]] = []
+
+    class Service:
+        server_id = "nl"
+
+        @staticmethod
+        def suspend(peer_id: int) -> None:
+            calls.append(("suspend", peer_id))
+
+        @staticmethod
+        def resume(peer_id: int) -> None:
+            calls.append(("resume", peer_id))
+
+    monkeypatch.setenv("VPNW_REMNAWAVE_WEBHOOK_SECRET", secret)
+    monkeypatch.setattr(server_module, "_awg_all_services", lambda: [Service()])
+
+    for event in ("user.expired", "user.enabled"):
+        raw = json.dumps(
+            {"event": event, "data": {"telegramId": owner_id}},
+            separators=(",", ":"),
+        ).encode()
+        signature = hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+        response = client.post(
+            "/api/integrations/remnawave/webhook",
+            content=raw,
+            headers={"x-remnawave-signature": signature},
+        )
+        assert response.status_code == 200
+
+    guest_id = family_guest_id(owner_id)
+    assert calls == [
+        ("suspend", owner_id),
+        ("suspend", guest_id),
+        ("resume", owner_id),
+        ("resume", guest_id),
+    ]
+
+
 # --- server picker -------------------------------------------------------------
 
 def test_servers_endpoint_lists_choices_without_leaking_secrets(
@@ -196,6 +308,8 @@ def test_servers_route_does_not_shadow_the_config_route(client: TestClient) -> N
     paths = {getattr(route, "path", "") for route in app.routes}
     assert "/api/awg/servers" in paths
     assert "/api/awg/{telegram_id}/config" in paths
+    assert "/api/awg/family/{owner_telegram_id}/config" in paths
+    assert "/api/awg/family/{owner_telegram_id}/qr" in paths
 
 
 def test_selected_server_controls_real_provisioning(

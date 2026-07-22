@@ -19,5 +19,8 @@
 - [x] Enable Telegram Stars billing without giving Remnawave payment custody
 - [x] Prove managed AmneziaWG over UDP 443 end-to-end and make it the primary RF action
 - [x] Replace the vague two-column "Партнёрка" entry with an explicit full-width sharing action
+- [x] Add a private family web link with one independent AWG slot and no Telegram requirement
+- [x] Apply owner entitlement, expiry and renewal to the family slot on every AWG server
+- [x] Replace the stale 14-day tariff label and duplicate production trial settings with a 7-day trial
 
-Next: Сделать одноразовую семейную web-ссылку для выдачи отдельного AWG-профиля без Telegram; затем провести одну реальную покупку Telegram Stars.
+Next: Провести реальную покупку Telegram Stars и проверить полный цикл «оплата → продление → вывод».

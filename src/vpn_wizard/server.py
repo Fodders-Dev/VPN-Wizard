@@ -36,7 +36,13 @@ from vpn_wizard.account import (
     verify_telegram_webapp_init_data,
 )
 from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
-from vpn_wizard.awg_fallback import AwgFallbackConfig, AwgFallbackService, verify_issue_token
+from vpn_wizard.awg_fallback import (
+    AwgFallbackConfig,
+    AwgFallbackService,
+    family_guest_id,
+    verify_family_issue_token,
+    verify_issue_token,
+)
 from vpn_wizard.awg_servers import AwgRegistry, AwgRegistryError
 from vpn_wizard.proxy import ProxyProvisioner, rewrite_vless_alternatives, rewrite_vless_endpoint
 from vpn_wizard.relay import RelayProvisioner
@@ -2671,6 +2677,33 @@ def _awg_issue_config(
         raise HTTPException(status_code=503, detail="AWG fallback is not configured.")
     if not verify_issue_token(awg_cfg.link_secret, telegram_id, token):
         raise HTTPException(status_code=403, detail="Invalid or missing token.")
+    return _awg_issue_entitled_config(telegram_id, telegram_id, server_id)
+
+
+def _awg_issue_family_config(
+    owner_telegram_id: int,
+    token: str,
+    server_id: Optional[str] = None,
+) -> tuple[str, Optional[object]]:
+    """Issue the owner's independent, single family slot."""
+    awg_cfg = AwgFallbackConfig.from_env()
+    if not awg_cfg.link_secret:
+        raise HTTPException(status_code=503, detail="AWG fallback is not configured.")
+    if not verify_family_issue_token(awg_cfg.link_secret, owner_telegram_id, token):
+        raise HTTPException(status_code=403, detail="Invalid or missing family token.")
+    try:
+        peer_id = family_guest_id(owner_telegram_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _awg_issue_entitled_config(peer_id, owner_telegram_id, server_id)
+
+
+def _awg_issue_entitled_config(
+    peer_id: int,
+    entitlement_telegram_id: int,
+    server_id: Optional[str] = None,
+) -> tuple[str, Optional[object]]:
+    """Provision ``peer_id`` using another Telegram account's entitlement."""
     registry = _awg_registry()
     server = registry.get_server(server_id)
     if server_id and server is None:
@@ -2678,14 +2711,16 @@ def _awg_issue_config(
     if server is None or not server.usable:
         raise HTTPException(status_code=503, detail="AWG fallback is not configured.")
     try:
-        user = RemnawaveClient(RemnawaveConfig.from_env()).active_user(telegram_id)
+        user = RemnawaveClient(RemnawaveConfig.from_env()).active_user(
+            entitlement_telegram_id
+        )
     except RemnawaveError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     if not user:
         raise HTTPException(status_code=403, detail="No active subscription.")
     try:
         result = _awg_service_for(server, registry).issue(
-            telegram_id,
+            peer_id,
             remnawave_uuid=user.get("uuid"),
         )
     except Exception as exc:  # provisioning/SSH failure
@@ -2719,20 +2754,27 @@ async def remnawave_webhook(request: Request) -> JSONResponse:
                 telegram_id,
                 _error_message(exc),
             )
+        peer_ids = [telegram_id]
+        try:
+            peer_ids.append(family_guest_id(telegram_id))
+        except ValueError:
+            logger.warning("awg.webhook.invalid_telegram_id tid=%s", telegram_id)
         for service in services:
-            try:
-                if action == "disable":
-                    service.suspend(telegram_id)
-                else:
-                    service.resume(telegram_id)
-            except Exception as exc:
-                logger.warning(
-                    "awg.webhook.sync_failed action=%s tid=%s server=%s err=%s",
-                    action,
-                    telegram_id,
-                    service.server_id or "default",
-                    _error_message(exc),
-                )
+            for peer_id in peer_ids:
+                try:
+                    if action == "disable":
+                        service.suspend(peer_id)
+                    else:
+                        service.resume(peer_id)
+                except Exception as exc:
+                    logger.warning(
+                        "awg.webhook.sync_failed action=%s tid=%s family=%s server=%s err=%s",
+                        action,
+                        telegram_id,
+                        peer_id != telegram_id,
+                        service.server_id or "default",
+                        _error_message(exc),
+                    )
     return JSONResponse({"ok": True, "event": event, "action": action})
 
 
@@ -2757,6 +2799,47 @@ async def awg_config(telegram_id: int, token: str, server: Optional[str] = None)
 @app.get("/api/awg/{telegram_id}/qr")
 async def awg_qr(telegram_id: int, token: str, server: Optional[str] = None) -> Response:
     config_text, _server = _awg_issue_config(telegram_id, token, server)
+    return Response(
+        content=_build_qr_png(config_text),
+        media_type="image/png",
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
+
+
+@app.get("/api/awg/family/{owner_telegram_id}/config")
+async def awg_family_config(
+    owner_telegram_id: int,
+    token: str,
+    server: Optional[str] = None,
+) -> Response:
+    config_text, selected_server = _awg_issue_family_config(
+        owner_telegram_id,
+        token,
+        server,
+    )
+    slug = _awg_file_slug(getattr(selected_server, "id", None))
+    return Response(
+        content=config_text,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{slug}.conf"',
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
+        },
+    )
+
+
+@app.get("/api/awg/family/{owner_telegram_id}/qr")
+async def awg_family_qr(
+    owner_telegram_id: int,
+    token: str,
+    server: Optional[str] = None,
+) -> Response:
+    config_text, _server = _awg_issue_family_config(
+        owner_telegram_id,
+        token,
+        server,
+    )
     return Response(
         content=_build_qr_png(config_text),
         media_type="image/png",

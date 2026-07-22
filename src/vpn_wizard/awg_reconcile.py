@@ -6,7 +6,11 @@ import sys
 from typing import Any
 
 from vpn_wizard.account import build_account_store
-from vpn_wizard.awg_fallback import AwgFallbackConfig, AwgFallbackService
+from vpn_wizard.awg_fallback import (
+    AwgFallbackConfig,
+    AwgFallbackService,
+    family_owner_id,
+)
 from vpn_wizard.awg_servers import AwgRegistry
 from vpn_wizard.remnawave import RemnawaveClient, RemnawaveConfig
 
@@ -49,6 +53,7 @@ def reconcile_awg_peers(
 
     for peer, service, server_id in peers:
         telegram_id = int(peer["telegram_id"])
+        entitlement_id = family_owner_id(telegram_id) or telegram_id
         result["checked"] += 1
         status = str(peer.get("status") or "")
         if service is None:
@@ -60,12 +65,14 @@ def reconcile_awg_peers(
                 }
             )
             continue
-        if telegram_id not in entitlement_cache:
+        if entitlement_id not in entitlement_cache:
             try:
-                entitlement_cache[telegram_id] = remnawave.active_user(telegram_id) is not None
+                entitlement_cache[entitlement_id] = (
+                    remnawave.active_user(entitlement_id) is not None
+                )
             except Exception as exc:
-                entitlement_cache[telegram_id] = exc
-        entitlement = entitlement_cache[telegram_id]
+                entitlement_cache[entitlement_id] = exc
+        entitlement = entitlement_cache[entitlement_id]
         if isinstance(entitlement, Exception):
             # A per-peer lookup failure (network/5xx/decrypt) must never be read as
             # "not entitled" — leave the peer as-is and record it.

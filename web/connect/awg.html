@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="referrer" content="no-referrer">
+<link rel="icon" href="data:,">
 <title>Подключить AmneziaWG · Fodder VPN</title>
 <style>
   :root{
@@ -74,7 +75,7 @@
   .pastebox{margin-top:.6rem}
   .pastebox label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:.35rem}
   .pastebox input{width:100%;font-family:var(--mono);font-size:.85rem;padding:.75rem .8rem;border-radius:.78rem;border:1px solid var(--line);background:var(--card-2);color:var(--ink)}
-  #have[hidden],#nolink[hidden]{display:none}
+  [hidden]{display:none!important}
   .help{background:color-mix(in srgb,var(--accent),transparent 88%);border:1px solid color-mix(in srgb,var(--accent),transparent 70%);border-radius:1.1rem;padding:1rem;margin-top:1.1rem;font-size:.93rem;color:var(--ink-soft)}
   footer{text-align:center;color:var(--muted);font-size:.78rem;margin-top:1.1rem}
 </style>
@@ -97,8 +98,10 @@
     <h2>Установите AmneziaWG</h2>
     <div class="body">
       <div class="platform on" id="p-and">
-        <p>Приложение <b>AmneziaWG</b> (или AmneziaVPN) — Google Play, RuStore или файл APK.</p>
+        <p>Приложение <b>AmneziaWG</b> — Google Play, RuStore или файл APK.</p>
         <a class="btn btn-out" href="https://play.google.com/store/apps/details?id=org.amnezia.awg" target="_blank" rel="noopener noreferrer">Открыть в Google Play →</a>
+        <a class="btn btn-out" href="https://github.com/amnezia-vpn/amneziawg-android/releases/download/2.0.1/amneziawg-2.0.1.apk" target="_blank" rel="noopener noreferrer">Если Play не открывается — скачать APK</a>
+        <p class="tip">APK взят из официального репозитория AmneziaWG.</p>
       </div>
       <div class="platform" id="p-ios">
         <p>Приложение <b>AmneziaWG</b> в App Store. Если не находится — нужен Apple ID другой страны, напишите тому, кто дал ссылку.</p>
@@ -144,13 +147,23 @@
     </div>
   </section>
 
-  <section class="step" style="display:block">
+  <section class="step" id="personal-access" style="display:block">
     <h2 style="margin:0 0 .55rem;font-size:1.1rem">💡 Как это работает</h2>
     <div class="body" style="margin:0">
       <p>🎁 Сейчас у тебя <b>7 дней бесплатно</b> — попробуй, ничего платить не надо.</p>
       <p>💳 Чтобы пользоваться дальше — открой нашего бота <b><a href="https://t.me/foddervpnbot" style="color:var(--accent)">@foddervpnbot</a></b> (когда подключишься, Telegram заработает) и оплати подписку: без рекламы, без лимитов, недорого.</p>
       <p>🔁 Оплатил — работает дальше. Срок кончился — доступ закроется, пока не продлишь.</p>
       <p class="tip">Триал — один на человека и привязан к подписке. Бесконечных бесплатных профилей не сделать.</p>
+    </div>
+  </section>
+
+  <section class="step" id="family-access" style="display:block" hidden>
+    <h2 style="margin:0 0 .55rem;font-size:1.1rem">👵 Вам дали семейный доступ</h2>
+    <div class="body" style="margin:0">
+      <p>Это <b>отдельный VPN-профиль</b>: он не отключит устройство того, кто прислал ссылку.</p>
+      <p>Ни Telegram, ни регистрация не нужны — установите AmneziaWG, выберите страну и скачайте конфиг.</p>
+      <p>Профиль работает, пока активна подписка у пригласившего. После продления этот же профиль включится снова — скачивать новый не придётся.</p>
+      <p class="tip">Ссылку лучше не публиковать: это один семейный слот, предназначенный для близкого человека.</p>
     </div>
   </section>
 
@@ -176,10 +189,11 @@
   function urls(){
     var p=new URLSearchParams(location.search);
     var cfg=(p.get("config")||"").trim(), qr=(p.get("qr")||"").trim();
-    var tid=(p.get("tid")||"").trim(), tok=(p.get("token")||"").trim();
-    if(!cfg && tid && tok){ cfg=base()+"/api/awg/"+encodeURIComponent(tid)+"/config?token="+encodeURIComponent(tok); qr=base()+"/api/awg/"+encodeURIComponent(tid)+"/qr?token="+encodeURIComponent(tok); }
+    var tid=(p.get("tid")||"").trim(), family=(p.get("family")||"").trim(), tok=(p.get("token")||"").trim();
+    if(!cfg && family && tok){ cfg=base()+"/api/awg/family/"+encodeURIComponent(family)+"/config?token="+encodeURIComponent(tok); qr=base()+"/api/awg/family/"+encodeURIComponent(family)+"/qr?token="+encodeURIComponent(tok); }
+    else if(!cfg && tid && tok){ cfg=base()+"/api/awg/"+encodeURIComponent(tid)+"/config?token="+encodeURIComponent(tok); qr=base()+"/api/awg/"+encodeURIComponent(tid)+"/qr?token="+encodeURIComponent(tok); }
     if(cfg && !qr){ qr=cfg.replace("/config?","/qr?"); }
-    return {cfg:cfg,qr:qr,server:(p.get("server")||"").trim()};
+    return {cfg:cfg,qr:qr,server:(p.get("server")||"").trim(),family:!!family};
   }
   function serverUrl(url,server){
     if(!isHttp(url)||!server) return url;
@@ -193,7 +207,10 @@
     $("have").hidden=false; $("nolink").hidden=true; return true;
   }
   $("cfg").addEventListener("input",function(e){var v=(e.target.value||"").trim();if(isHttp(v))show(v,v.replace("/config?","/qr?"));});
-  var u=urls(); if(u.cfg) show(serverUrl(u.cfg,u.server),serverUrl(u.qr,u.server));
+  var u=urls();
+  $("personal-access").hidden=u.family;
+  $("family-access").hidden=!u.family;
+  if(u.cfg) show(serverUrl(u.cfg,u.server),serverUrl(u.qr,u.server));
 
   // The picker is functional: the selected id is sent to both provisioning
   // endpoints, so each country receives its own peer and downloadable profile.

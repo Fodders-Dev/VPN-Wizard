@@ -1,10 +1,11 @@
 # RUNBOOK — Fodder VPN 2 (managed subscription)
 
 Managed VPN-by-subscription on **your** servers: users are profiles with an expiry
-date, auto-disabled when unpaid, sold through a Telegram bot with a 14-day trial for
+date, auto-disabled when unpaid, sold through a Telegram bot with a 7-day trial for
 subscribing to `@fodders_dev`. Stack: **Remnawave** panel + nodes, **Bedolaga**
-shop-bot, **AmneziaWG/UDP 443** as the primary RF protocol and
-**VLESS+Reality/TCP 3478** as the selectable fallback.
+shop-bot, and **AmneziaWG** as the production RF protocol on selectable
+NL/FI/TR/US exits. Reality/Happ is retired from the active onboarding because it
+did not work reliably from the target RF networks.
 
 > This is a different product from the old `vpn_wizard` self-host hub (which
 > provisions a whole server per user over SSH). That tool stays useful as the
@@ -62,7 +63,11 @@ superadmin** — register it now and use a strong password.
 
 ---
 
-## 2. Config profile + squad (the paid product's shape)
+## 2. Remnawave entitlement profile + squad
+
+The squad is still Bedolaga's source of subscription state. Its Reality output is
+legacy and must not be shown as the working VPN path; `/awg` and `/family` issue the
+actual client profiles.
 
 In the panel UI:
 
@@ -83,7 +88,7 @@ In the panel UI:
 
 ---
 
-## 3. Nodes
+## 3. Legacy Remnawave nodes (not required for AWG delivery)
 
 For each traffic VPS (including your existing ones): follow
 [`deploy/node/README.md`](deploy/node/README.md). Short version:
@@ -97,7 +102,7 @@ For each traffic VPS (including your existing ones): follow
 
 ---
 
-## 4. Subscription page
+## 4. Legacy Happ subscription page (not part of onboarding)
 
 Already defined as the `remnawave-subscription-page` service in the panel
 `docker-compose.yml`. Just finish its env:
@@ -124,7 +129,7 @@ git clone https://github.com/BEDOLAGA-DEV/remnawave-bedolaga-telegram-bot bedola
 cd bedolaga && cp .env.example .env
 # set the keys from deploy/bedolaga/bedolaga.env.example into .env:
 #   BOT_TOKEN, ADMIN_IDS, REMNAWAVE_API_URL, REMNAWAVE_API_KEY,
-#   SIMPLE_SUBSCRIPTION_SQUAD_UUID, TRIAL_DURATION_DAYS=14,
+#   SIMPLE_SUBSCRIPTION_SQUAD_UUID, TRIAL_DURATION_DAYS=7,
 #   CHANNEL_IS_REQUIRED_SUB=true, TELEGRAM_STARS_ENABLED=true, PRICE_*
 nano .env
 docker compose up -d && docker compose logs -f
@@ -135,7 +140,7 @@ Then, in Telegram:
 1. Open the bot, `/start` (you're admin via `ADMIN_IDS`).
 2. Admin panel → **channels** → add `@fodders_dev`. Make the bot an **admin of that
    channel** so it can check membership.
-3. Confirm the trial flow: a fresh account should be offered 14 days after it
+3. Confirm the trial flow: a fresh account should be offered 7 days after it
    subscribes to the channel.
 
 ---
@@ -143,15 +148,18 @@ Then, in Telegram:
 ## 6. Smoke test (do this before inviting anyone)
 
 - [ ] Fresh Telegram account → `/start` → prompted to subscribe to `@fodders_dev`.
-- [ ] After subscribing → 14-day trial issued, a subscription link appears.
+- [ ] After subscribing → 7-day trial issued and `/awg` opens the AWG installer.
 - [ ] On **Android**, send `/awg`, install the official AmneziaWG app, import the
       personal `.conf` and verify that traffic flows through UDP 443.
 - [ ] On **iPhone**, send `/awg`, install the official AmneziaWG app, import the
       personal `.conf` and verify that traffic flows.
-- [ ] Check Hiddify/Happ Reality separately as a fallback; failure on a filtered RF
-      network must not block the primary AWG onboarding.
+- [ ] Send `/family`, open the link in an ordinary browser without Telegram,
+      choose each country, and import the separate family profile.
+- [ ] Confirm the owner's and family member's configs have different keys and both
+      remain usable at the same time.
 - [ ] Buy the 30-day plan with **Telegram Stars** → subscription extends.
 - [ ] Let a test profile expire (or expire it manually) → access is **cut off**.
+- [ ] Renew that profile → owner and family peers resume with their existing configs.
 - [ ] Unsubscribe from the channel during a trial → trial is disabled.
 
 When all boxes pass, you have the "paid → works, unpaid → off" loop. That's the MVP.
@@ -165,7 +173,10 @@ When all boxes pass, you have the "paid → works, unpaid → off" loop. That's 
   webhook for teardown, so AWG peers are tied to the same subscription. Set the
   `VPNW_REMNAWAVE_*` / `VPNW_AWG_FALLBACK_*` env, enable the panel webhook
   (`WEBHOOK_URL=…/api/integrations/remnawave/webhook`), and put the AmneziaWG button
-  first in Bedolaga. It links to `/api/awg/<tid>/config?token=<hmac>`.
+  first in Bedolaga. Personal profiles use
+  `/api/awg/<tid>/config?token=<hmac>`. `/family` creates one separate, private
+  browser link per owner at `/api/awg/family/<tid>/config?token=<family-hmac>`;
+  the family peer inherits the owner's entitlement but has independent keys.
   This still needs a provisioned AWG VPS (existing `vpn_wizard` tooling) behind it.
 - **Split-routing (DONE — see [`deploy/remnawave/routing/`](deploy/remnawave/routing/)):**
   RF sites (bank, Gosuslugi, Ozon, Kinopoisk) go direct, only the rest is tunneled —
@@ -174,8 +185,8 @@ When all boxes pass, you have the "paid → works, unpaid → off" loop. That's 
   run `bash deploy/remnawave/routing/fetch-ru-templates.sh` for the maintained sing-box/
   Mihomo/Stash bundles, and/or paste `xray-json-split-ru.json` for a transparent Xray
   version. Sanity-check list is in that folder's README.
-- **Second protocol:** add Hysteria2 once Xray-core support settles (watch the ~15%
-  of ISPs that drop UDP).
+- **Second protocol:** Reality is not part of the current product. Evaluate a new
+  fallback only after a real RF-network test proves it works better than AWG.
 - **IP rotation:** keep spare VPS at different providers; when an ASN/subnet gets
   blocked (Hetzner AS24940 is a known case), add a fresh node and move the squad's
   inbounds. Users re-read the sub-URL automatically.

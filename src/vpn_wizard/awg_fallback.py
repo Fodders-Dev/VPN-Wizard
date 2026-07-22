@@ -30,6 +30,8 @@ from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
 
 
 _SERVER_ID_RE = re.compile(r"[^a-z0-9-]")
+FAMILY_GUEST_ID_OFFSET = 4_000_000_000_000_000
+_MAX_FAMILY_OWNER_ID = 999_999_999_999
 
 
 def peer_name(telegram_id: int, server_id: Optional[str] = None) -> str:
@@ -59,6 +61,46 @@ def verify_issue_token(secret: str, telegram_id: int, token: Optional[str]) -> b
     if not secret or not token:
         return False
     return hmac.compare_digest(issue_token(secret, telegram_id), token.strip())
+
+
+def family_guest_id(owner_telegram_id: int) -> int:
+    """Stable peer id for the owner's single family slot.
+
+    It intentionally lives far outside Telegram's id range, so the guest gets
+    independent AWG keys without pretending to be another Telegram account.
+    """
+    owner = int(owner_telegram_id)
+    if owner <= 0 or owner > _MAX_FAMILY_OWNER_ID:
+        raise ValueError("Invalid family owner Telegram id.")
+    return FAMILY_GUEST_ID_OFFSET + owner
+
+
+def family_owner_id(peer_id: int) -> Optional[int]:
+    """Map a synthetic family peer back to the paying Telegram account."""
+    value = int(peer_id) - FAMILY_GUEST_ID_OFFSET
+    if 0 < value <= _MAX_FAMILY_OWNER_ID:
+        return value
+    return None
+
+
+def family_issue_token(secret: str, owner_telegram_id: int) -> str:
+    """Sign the one-family-slot link separately from the owner's own link."""
+    message = f"family:{int(owner_telegram_id)}"
+    return hmac.new(secret.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def verify_family_issue_token(
+    secret: str,
+    owner_telegram_id: int,
+    token: Optional[str],
+) -> bool:
+    if not secret or not token:
+        return False
+    try:
+        expected = family_issue_token(secret, owner_telegram_id)
+    except (TypeError, ValueError):
+        return False
+    return hmac.compare_digest(expected, token.strip())
 
 
 @dataclass

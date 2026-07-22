@@ -8,8 +8,12 @@ from pathlib import Path
 from vpn_wizard.account import AccountStore
 from vpn_wizard.awg_fallback import (
     AwgFallbackService,
+    family_guest_id,
+    family_issue_token,
+    family_owner_id,
     issue_token,
     peer_name,
+    verify_family_issue_token,
     verify_issue_token,
 )
 from vpn_wizard.awg_reconcile import reconcile_awg_peers
@@ -68,6 +72,30 @@ def test_issue_token_roundtrip() -> None:
     assert verify_issue_token(secret, 778, token) is False
     assert verify_issue_token(secret, 777, "nope") is False
     assert verify_issue_token("", 777, token) is False
+
+
+def test_family_token_is_separate_and_guest_id_is_reversible() -> None:
+    secret = "link-secret"
+    personal = issue_token(secret, 777)
+    family = family_issue_token(secret, 777)
+    guest_id = family_guest_id(777)
+
+    assert personal != family
+    assert verify_family_issue_token(secret, 777, family) is True
+    assert verify_family_issue_token(secret, 778, family) is False
+    assert verify_issue_token(secret, 777, family) is False
+    assert family_owner_id(guest_id) == 777
+    assert family_owner_id(777) is None
+
+
+def test_family_guest_id_rejects_non_telegram_ranges() -> None:
+    for owner_id in (0, -1, 1_000_000_000_000):
+        try:
+            family_guest_id(owner_id)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"owner id {owner_id} must be rejected")
 
 
 def test_peer_name() -> None:
@@ -182,6 +210,39 @@ def test_reconcile_matches_remnawave_entitlements(tmp_path: Path) -> None:
     assert resumed == ["sub-2"]
     assert store.awg_get_peer(1)["status"] == "suspended"
     assert store.awg_get_peer(2)["status"] == "active"
+
+
+def test_reconcile_family_peer_uses_owner_entitlement(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    owner_id = 777
+    guest_id = family_guest_id(owner_id)
+    lookups: list[int] = []
+    service = AwgFallbackService(
+        store,
+        provision=lambda name: f"[Interface]\n# {name}\n",
+        deprovision=lambda name: True,
+        suspend=lambda name: True,
+        resume=lambda name: True,
+    )
+    service.issue(guest_id)
+
+    class Entitlements:
+        @staticmethod
+        def active_user(telegram_id: int):
+            lookups.append(telegram_id)
+            return {"uuid": "owner-active"} if telegram_id == owner_id else None
+
+    result = reconcile_awg_peers(store, Entitlements(), service)
+
+    assert result == {
+        "checked": 1,
+        "suspended": 0,
+        "resumed": 0,
+        "unchanged": 1,
+        "errors": [],
+    }
+    assert lookups == [owner_id]
+    assert store.awg_get_peer(guest_id)["status"] == "active"
 
 
 def test_reconcile_circuit_breaker_skips_mass_suspend_on_panel_outage(tmp_path: Path) -> None:
