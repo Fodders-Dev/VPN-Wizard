@@ -26,16 +26,24 @@
     --soft-l:#414c72;     --soft-d:#b9c2e4;
     --muted-l:#6e789e;    --muted-d:#8e98c0;
 
-    --bg-l:#eef2ff;       --bg-d:#05070f;
-    --a1-l:#5b8cff;       --a1-d:#2a3ec9;
-    --a2-l:#a970ff;       --a2-d:#6d2bd9;
-    --a3-l:#2fd8bd;       --a3-d:#0a8f80;
+    /* Glass only reads as glass when there is something behind it to refract:
+       a near-white backdrop turns every pane into a flat white rectangle. */
+    --bg-l:#e4eaf9;       --bg-d:#05070f;
+    --a1-l:#4b82ff;       --a1-d:#2a3ec9;
+    --a2-l:#a35cff;       --a2-d:#6d2bd9;
+    --a3-l:#12d3b4;       --a3-d:#0a8f80;
 
-    --pane-l:rgba(255,255,255,.52);   --pane-d:rgba(255,255,255,.055);
+    --pane-l:rgba(255,255,255,.44);   --pane-d:rgba(255,255,255,.055);
     --pane-hi-l:rgba(255,255,255,.78);--pane-hi-d:rgba(255,255,255,.10);
     --rim-l:rgba(255,255,255,.95);    --rim-d:rgba(255,255,255,.42);
     --rim-dim-l:rgba(120,140,200,.22);--rim-dim-d:rgba(255,255,255,.05);
     --sheen-l:rgba(255,255,255,.55);  --sheen-d:rgba(255,255,255,.10);
+
+    /* Controls sit ON the glass, so they must contrast with it rather than
+       repeat it: a light tint of the ink on light, of white on dark. */
+    --fill-l:rgba(13,18,38,.055);     --fill-d:rgba(255,255,255,.085);
+    --fill-hi-l:rgba(13,18,38,.10);   --fill-hi-d:rgba(255,255,255,.15);
+    --hair-l:rgba(13,18,38,.11);      --hair-d:rgba(255,255,255,.13);
 
     --accent-l:#3f56ff;   --accent-d:#8ea3ff;
     --go1-l:#00c98d;      --go1-d:#00e0a0;
@@ -49,8 +57,10 @@
     --rim-dim:var(--rim-dim-l); --sheen:var(--sheen-l);
     --accent:var(--accent-l); --go1:var(--go1-l); --go2:var(--go2-l);
     --on-go:var(--on-go-l); --warn:var(--warn-l);
+    --fill:var(--fill-l); --fill-hi:var(--fill-hi-l); --hair:var(--hair-l);
 
     @media (prefers-color-scheme:dark){
+      --fill:var(--fill-d); --fill-hi:var(--fill-hi-d); --hair:var(--hair-d);
       --ink:var(--ink-d); --soft:var(--soft-d); --muted:var(--muted-d);
       --bg:var(--bg-d); --a1:var(--a1-d); --a2:var(--a2-d); --a3:var(--a3-d);
       --pane:var(--pane-d); --pane-hi:var(--pane-hi-d); --rim:var(--rim-d);
@@ -76,6 +86,9 @@
       --go2:light-dark(var(--go2-l),var(--go2-d));
       --on-go:light-dark(var(--on-go-l),var(--on-go-d));
       --warn:light-dark(var(--warn-l),var(--warn-d));
+      --fill:light-dark(var(--fill-l),var(--fill-d));
+      --fill-hi:light-dark(var(--fill-hi-l),var(--fill-hi-d));
+      --hair:light-dark(var(--hair-l),var(--hair-d));
     }
 
     --r-lg:1.75rem; --r-md:1.15rem; --r-sm:.85rem;
@@ -95,9 +108,9 @@
   }
   .aurora{position:fixed;inset:-20% -10%;z-index:-1;pointer-events:none;
     background:
-      radial-gradient(38rem 32rem at 12% 4%, color-mix(in oklab,var(--a1),transparent 42%), transparent 68%),
-      radial-gradient(34rem 30rem at 92% 14%, color-mix(in oklab,var(--a2),transparent 48%), transparent 66%),
-      radial-gradient(40rem 34rem at 50% 104%, color-mix(in oklab,var(--a3),transparent 52%), transparent 68%);
+      radial-gradient(36rem 30rem at 10% 2%, color-mix(in oklab,var(--a1),transparent 30%), transparent 66%),
+      radial-gradient(32rem 28rem at 94% 12%, color-mix(in oklab,var(--a2),transparent 36%), transparent 64%),
+      radial-gradient(40rem 34rem at 50% 104%, color-mix(in oklab,var(--a3),transparent 42%), transparent 66%);
     animation:drift 34s ease-in-out infinite alternate}
   @keyframes drift{from{transform:translate3d(0,0,0) scale(1)}to{transform:translate3d(0,-2.5%,0) scale(1.07)}}
   .wrap{max-width:31rem;margin-inline:auto}
@@ -142,10 +155,11 @@
   .seg{display:grid;grid-template-columns:1fr 1fr;gap:.3rem;padding:.32rem;margin-block:1.3rem .3rem;border-radius:var(--r-md)}
   .seg label{position:relative;cursor:pointer}
   .seg input{position:absolute;opacity:0;pointer-events:none}
-  .seg span{display:flex;align-items:center;justify-content:center;min-block-size:3rem;padding:.65rem .45rem;border-radius:.88rem;
-    color:var(--soft);font-size:.9rem;font-weight:650}
-  .seg input:checked+span{color:var(--ink);background:var(--pane-hi);
-    box-shadow:inset 0 0 0 1px var(--rim-dim),inset 0 1px 0 var(--rim),0 4px 12px -6px rgba(9,14,40,.3)}
+  .seg span{display:flex;align-items:center;justify-content:center;min-block-size:3rem;padding:.65rem .45rem;border-radius:.85rem;
+    color:var(--soft);font-size:.9rem;font-weight:600;transition:color .16s ease}
+  .seg input:checked+span{color:var(--ink);font-weight:650;background:var(--fill-hi);
+    box-shadow:inset 0 0 0 1px var(--hair),inset 0 1px 0 var(--rim),0 4px 12px -8px rgba(9,14,40,.35)}
+  @media (prefers-reduced-motion:reduce){ .seg span{transition:none} }
   .seg input:focus-visible+span{outline:2.5px solid var(--accent);outline-offset:2px}
 
   /* Steps */
@@ -159,36 +173,48 @@
   :where(.step .body) p:last-child{margin-block-end:0}
   .step.solo{grid-template-columns:1fr}
   .step.solo h2,.step.solo .body{grid-column:1}
+  /* Only the selected platform's instructions are shown; without this every
+     platform stacks at once and the step turns into a wall of buttons. */
+  .platform{display:none}
+  .platform.on{display:block}
   b{color:var(--ink);font-weight:650}
   .tip{font-size:.86rem;color:var(--muted)}
 
   /* Buttons */
-  .btn{position:relative;isolation:isolate;appearance:none;display:flex;align-items:center;justify-content:center;gap:.45rem;
-    inline-size:100%;min-block-size:3.25rem;padding:.85rem 1.1rem;border:0;border-radius:var(--r-md);margin-block-start:.65rem;
-    font-weight:650;font-size:1rem;letter-spacing:-.012em;text-align:center;text-decoration:none;cursor:pointer;
-    -webkit-tap-highlight-color:transparent;transition:transform .18s cubic-bezier(.2,.9,.3,1)}
+  .btn{position:relative;isolation:isolate;appearance:none;display:flex;align-items:center;justify-content:center;gap:.5rem;
+    inline-size:100%;min-block-size:3.35rem;padding:.9rem 1.15rem;border:0;border-radius:1rem;margin-block-start:.55rem;
+    font-weight:600;font-size:1.005rem;letter-spacing:-.014em;text-align:center;text-decoration:none;cursor:pointer;
+    -webkit-tap-highlight-color:transparent;transition:transform .16s cubic-bezier(.2,.9,.3,1),box-shadow .16s ease}
   @supports (corner-shape:squircle){ .btn{corner-shape:squircle} }
-  .btn::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
-    background:linear-gradient(180deg,rgba(255,255,255,.55),transparent 55%);
-    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
-    -webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
-    mask-composite:exclude}
-  .btn:active{transform:scale(.978)}
+  .btn:active{transform:scale(.975)}
   .btn:focus-visible{outline:2.5px solid var(--accent);outline-offset:3px}
   @media (prefers-reduced-motion:reduce){ .btn{transition:none} }
-  .btn-go{color:var(--on-go);background:linear-gradient(150deg,var(--go1),var(--go2));
-    box-shadow:0 8px 24px -8px color-mix(in oklab,var(--go2),transparent 35%),inset 0 1px 0 rgba(255,255,255,.4)}
-  .btn-out{color:var(--ink);background:var(--pane-hi);font-weight:600;font-size:.97rem;
-    box-shadow:inset 0 0 0 1px var(--rim-dim),inset 0 1px 0 var(--rim)}
+
+  /* Primary: lit from above — bright top edge, saturated body, coloured cast. */
+  .btn-go{color:var(--on-go);font-weight:650;
+    background:linear-gradient(168deg,
+      color-mix(in oklab,var(--go1),white 14%) 0%, var(--go1) 38%, var(--go2) 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.55),
+      inset 0 -1px 0 rgba(0,0,0,.08),
+      0 1px 2px rgba(9,14,40,.14),
+      0 10px 26px -10px color-mix(in oklab,var(--go2),transparent 30%)}
+  .btn-go:active{box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 1px 2px rgba(9,14,40,.2)}
+
+  /* Secondary: a real surface, tinted against the glass instead of blending
+     into it — near-white on a near-white pane reads as an empty placeholder. */
+  .btn-out{color:var(--ink);background:var(--fill);font-weight:600;font-size:.965rem;
+    box-shadow:inset 0 0 0 1px var(--hair),inset 0 1px 0 var(--rim)}
+  .btn-out:active{background:var(--fill-hi)}
 
   /* Pickers */
   .server-picker{margin-block-end:.9rem}
   .server-picker p{margin-block:0 .55rem;font-weight:650;color:var(--ink);font-size:.95rem}
   .server-grid{display:grid;grid-template-columns:1fr 1fr;gap:.45rem}
-  .server-btn{appearance:none;border:0;cursor:pointer;border-radius:.88rem;padding:.85rem .5rem;
-    font-weight:600;font-size:.92rem;color:var(--ink);background:var(--pane-hi);
-    box-shadow:inset 0 0 0 1px var(--rim-dim),inset 0 1px 0 var(--rim);
-    transition:transform .18s cubic-bezier(.2,.9,.3,1)}
+  .server-btn{appearance:none;border:0;cursor:pointer;border-radius:.9rem;padding:.85rem .5rem;
+    font-weight:600;font-size:.92rem;color:var(--ink);background:var(--fill);
+    box-shadow:inset 0 0 0 1px var(--hair),inset 0 1px 0 var(--rim);
+    transition:transform .16s cubic-bezier(.2,.9,.3,1)}
   .server-btn:active{transform:scale(.97)}
   .server-btn[aria-pressed="true"]{color:var(--ink);
     background:color-mix(in oklab,var(--go2),transparent 84%);
@@ -201,9 +227,9 @@
   .device-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem}
   .device-grid label{position:relative;cursor:pointer}
   .device-grid input{position:absolute;opacity:0;pointer-events:none}
-  .device-grid span{display:flex;align-items:center;justify-content:center;min-block-size:3rem;padding:.65rem;border-radius:.88rem;
-    font-size:.9rem;font-weight:650;background:var(--pane-hi);
-    box-shadow:inset 0 0 0 1px var(--rim-dim),inset 0 1px 0 var(--rim)}
+  .device-grid span{display:flex;align-items:center;justify-content:center;min-block-size:3rem;padding:.65rem;border-radius:.9rem;
+    font-size:.9rem;font-weight:600;background:var(--fill);
+    box-shadow:inset 0 0 0 1px var(--hair),inset 0 1px 0 var(--rim)}
   .device-grid input:checked+span{background:color-mix(in oklab,var(--go2),transparent 84%);
     box-shadow:inset 0 0 0 1.5px var(--go2),inset 0 1px 0 var(--rim)}
   .device-grid input:focus-visible+span{outline:2.5px solid var(--accent);outline-offset:2px}
@@ -226,8 +252,8 @@
   .access-error b{color:var(--warn)}
   .pastebox{margin-block-start:.65rem}
   .pastebox label{display:block;font-size:.84rem;color:var(--muted);margin-block-end:.4rem}
-  .pastebox input{inline-size:100%;font-family:var(--mono);font-size:.84rem;padding:.8rem .85rem;border:0;border-radius:.88rem;
-    color:var(--ink);background:var(--pane-hi);box-shadow:inset 0 0 0 1px var(--rim-dim)}
+  .pastebox input{inline-size:100%;font-family:var(--mono);font-size:.84rem;padding:.85rem;border:0;border-radius:.9rem;
+    color:var(--ink);background:var(--fill);box-shadow:inset 0 0 0 1px var(--hair)}
   .pastebox input:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px}
 
   .help{border-radius:var(--r-md);padding:1rem;margin-block-start:1.15rem;font-size:.92rem;color:var(--soft);
