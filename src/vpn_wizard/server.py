@@ -101,6 +101,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def _no_store_html(request: Request, call_next):
+    """Never let a Telegram WebView keep serving a stale HTML document.
+
+    The /portal and /wizard entry routes set no-store, but the StaticFiles mounts
+    covering the same prefixes answer first, so their responses carried only an
+    ETag. Telegram's in-app browser caches aggressively and a bumped ?v= query
+    only helps the links that carry one — family links point straight at
+    awg.html with no version at all. Set it on every HTML response instead;
+    hashed assets and API payloads keep their own caching.
+    """
+    response = await call_next(request)
+    if "text/html" in (response.headers.get("content-type") or ""):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
 XRAY_PROTOCOLS = {"xray", "vless_reality"}
 LEGACY_PROXY_PROTOCOLS = {"shadowtls_ss", "vless_reality"}
 
@@ -1175,7 +1193,7 @@ def portal_links(request: Request) -> Response:
         ok=True,
         personal_vpn_url=f"{base}/connect/awg.html?{personal_query}",
         family_vpn_url=f"{base}/connect/awg.html?{family_query}",
-        server_wizard_url=f"{base}/wizard/?v=20260722-3",
+        server_wizard_url=f"{base}/wizard/",
     )
     try:
         active_user = RemnawaveClient(RemnawaveConfig.from_env()).active_user(telegram_id)
@@ -3084,7 +3102,7 @@ async def awg_servers() -> JSONResponse:
     return JSONResponse(registry.public())
 
 
-PORTAL_ENTRY_URL = "/portal/?v=20260722-3"
+PORTAL_ENTRY_URL = "/portal/"
 STATIC_ENTRY_HEADERS = {
     "Cache-Control": "no-store, max-age=0",
     "Pragma": "no-cache",

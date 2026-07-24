@@ -26,18 +26,25 @@
     --soft-l:#414c72;     --soft-d:#b9c2e4;
     --muted-l:#6e789e;    --muted-d:#8e98c0;
 
-    /* Aurora behind the glass — this is what the material refracts. */
-    --bg-l:#eef2ff;       --bg-d:#05070f;
-    --a1-l:#5b8cff;       --a1-d:#2a3ec9;
-    --a2-l:#a970ff;       --a2-d:#6d2bd9;
-    --a3-l:#2fd8bd;       --a3-d:#0a8f80;
+    /* Aurora behind the glass — this is what the material refracts. A near-white
+       backdrop leaves it nothing to bend, turning every pane into a flat box. */
+    --bg-l:#e4eaf9;       --bg-d:#05070f;
+    --a1-l:#4b82ff;       --a1-d:#2a3ec9;
+    --a2-l:#a35cff;       --a2-d:#6d2bd9;
+    --a3-l:#12d3b4;       --a3-d:#0a8f80;
 
     /* Glass body + specular rim */
-    --pane-l:rgba(255,255,255,.52);   --pane-d:rgba(255,255,255,.055);
+    --pane-l:rgba(255,255,255,.44);   --pane-d:rgba(255,255,255,.055);
     --pane-hi-l:rgba(255,255,255,.78);--pane-hi-d:rgba(255,255,255,.10);
     --rim-l:rgba(255,255,255,.95);    --rim-d:rgba(255,255,255,.42);
     --rim-dim-l:rgba(120,140,200,.22);--rim-dim-d:rgba(255,255,255,.05);
     --sheen-l:rgba(255,255,255,.55);  --sheen-d:rgba(255,255,255,.10);
+
+    /* Controls sit ON the glass, so they must contrast with it rather than
+       repeat it: a tint of the ink on light, of white on dark. */
+    --fill-l:rgba(13,18,38,.055);     --fill-d:rgba(255,255,255,.085);
+    --fill-hi-l:rgba(13,18,38,.10);   --fill-hi-d:rgba(255,255,255,.15);
+    --hair-l:rgba(13,18,38,.11);      --hair-d:rgba(255,255,255,.13);
 
     --accent-l:#3f56ff;   --accent-d:#8ea3ff;
     --go1-l:#00c98d;      --go1-d:#00e0a0;
@@ -49,8 +56,10 @@
     --pane:var(--pane-l); --pane-hi:var(--pane-hi-l); --rim:var(--rim-l);
     --rim-dim:var(--rim-dim-l); --sheen:var(--sheen-l);
     --accent:var(--accent-l); --go1:var(--go1-l); --go2:var(--go2-l); --on-go:var(--on-go-l);
+    --fill:var(--fill-l); --fill-hi:var(--fill-hi-l); --hair:var(--hair-l);
 
     @media (prefers-color-scheme:dark){
+      --fill:var(--fill-d); --fill-hi:var(--fill-hi-d); --hair:var(--hair-d);
       --ink:var(--ink-d); --soft:var(--soft-d); --muted:var(--muted-d);
       --bg:var(--bg-d); --a1:var(--a1-d); --a2:var(--a2-d); --a3:var(--a3-d);
       --pane:var(--pane-d); --pane-hi:var(--pane-hi-d); --rim:var(--rim-d);
@@ -74,6 +83,9 @@
       --go1:light-dark(var(--go1-l),var(--go1-d));
       --go2:light-dark(var(--go2-l),var(--go2-d));
       --on-go:light-dark(var(--on-go-l),var(--on-go-d));
+      --fill:light-dark(var(--fill-l),var(--fill-d));
+      --fill-hi:light-dark(var(--fill-hi-l),var(--fill-hi-d));
+      --hair:light-dark(var(--hair-l),var(--hair-d));
     }
 
     --r-lg:1.75rem; --r-md:1.15rem; --r-sm:.85rem;
@@ -93,10 +105,10 @@
   /* Fixed layer, not background-attachment: iOS WebViews jitter badly on the latter. */
   .aurora{position:fixed;inset:-20% -10%;z-index:-1;pointer-events:none;
     background:
-      radial-gradient(38rem 32rem at 12% 4%, color-mix(in oklab,var(--a1),transparent 42%), transparent 68%),
-      radial-gradient(34rem 30rem at 92% 14%, color-mix(in oklab,var(--a2),transparent 48%), transparent 66%),
-      radial-gradient(40rem 34rem at 50% 104%, color-mix(in oklab,var(--a3),transparent 52%), transparent 68%);
-    filter:blur(.5px);animation:drift 34s ease-in-out infinite alternate}
+      radial-gradient(36rem 30rem at 10% 2%, color-mix(in oklab,var(--a1),transparent 30%), transparent 66%),
+      radial-gradient(32rem 28rem at 94% 12%, color-mix(in oklab,var(--a2),transparent 36%), transparent 64%),
+      radial-gradient(40rem 34rem at 50% 104%, color-mix(in oklab,var(--a3),transparent 42%), transparent 66%);
+    animation:drift 34s ease-in-out infinite alternate}
   @keyframes drift{
     from{transform:translate3d(0,0,0) scale(1)}
     to{transform:translate3d(0,-2.5%,0) scale(1.07)}
@@ -153,31 +165,40 @@
 
   .tiles{display:grid;grid-template-columns:1fr 1fr;gap:.45rem;margin-block-start:.9rem}
   .tile{padding:.65rem .7rem;border-radius:var(--r-sm);font-size:.82rem;color:var(--soft);
-    background:var(--pane-hi);box-shadow:inset 0 0 0 1px var(--rim-dim),inset 0 1px 0 var(--rim)}
+    background:var(--fill);box-shadow:inset 0 0 0 1px var(--hair),inset 0 1px 0 var(--rim)}
   .tile b{display:block;color:var(--ink);font-size:.89rem;font-weight:650;margin-block-end:.05rem}
 
   .actions{display:grid;gap:.5rem;margin-block-start:1rem}
-  .btn{position:relative;isolation:isolate;appearance:none;display:flex;align-items:center;justify-content:center;gap:.4rem;
-    inline-size:100%;min-block-size:3.25rem;padding:.85rem 1.1rem;border:0;border-radius:var(--r-md);
-    font-weight:650;font-size:1rem;letter-spacing:-.012em;text-align:center;text-decoration:none;cursor:pointer;
-    -webkit-tap-highlight-color:transparent;transition:transform .18s cubic-bezier(.2,.9,.3,1),filter .18s}
+  .btn{position:relative;isolation:isolate;appearance:none;display:flex;align-items:center;justify-content:center;gap:.5rem;
+    inline-size:100%;min-block-size:3.35rem;padding:.9rem 1.15rem;border:0;border-radius:1rem;
+    font-weight:600;font-size:1.005rem;letter-spacing:-.014em;text-align:center;text-decoration:none;cursor:pointer;
+    -webkit-tap-highlight-color:transparent;transition:transform .16s cubic-bezier(.2,.9,.3,1),box-shadow .16s ease}
   @supports (corner-shape:squircle){ .btn{corner-shape:squircle} }
-  .btn::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
-    background:linear-gradient(180deg,rgba(255,255,255,.55),transparent 55%);
-    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
-    -webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
-    mask-composite:exclude}
-  .btn:active{transform:scale(.978)}
+  .btn:active{transform:scale(.975)}
   .btn:focus-visible{outline:2.5px solid var(--accent);outline-offset:3px}
   @media (prefers-reduced-motion:reduce){ .btn{transition:none} }
-  .btn-go{color:var(--on-go);background:linear-gradient(150deg,var(--go1),var(--go2));
-    box-shadow:0 8px 24px -8px color-mix(in oklab,var(--go2),transparent 35%),inset 0 1px 0 rgba(255,255,255,.4)}
-  .btn-soft{color:var(--ink);background:var(--pane-hi);box-shadow:inset 0 0 0 1px var(--rim-dim),inset 0 1px 0 var(--rim)}
-  .btn-quiet{color:var(--accent);background:transparent;box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--accent),transparent 62%)}
+  /* Primary: lit from above — bright top edge, saturated body, coloured cast. */
+  .btn-go{color:var(--on-go);font-weight:650;
+    background:linear-gradient(168deg,
+      color-mix(in oklab,var(--go1),white 14%) 0%, var(--go1) 38%, var(--go2) 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.55),
+      inset 0 -1px 0 rgba(0,0,0,.08),
+      0 1px 2px rgba(9,14,40,.14),
+      0 10px 26px -10px color-mix(in oklab,var(--go2),transparent 30%)}
+  .btn-go:active{box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 1px 2px rgba(9,14,40,.2)}
+  /* Secondary: its own surface — near-white on a near-white pane reads as an
+     empty placeholder rather than a control. */
+  .btn-soft{color:var(--ink);background:var(--fill);
+    box-shadow:inset 0 0 0 1px var(--hair),inset 0 1px 0 var(--rim)}
+  .btn-soft:active{background:var(--fill-hi)}
+  .btn-quiet{color:var(--accent);background:transparent;font-weight:650;
+    box-shadow:inset 0 0 0 1.5px color-mix(in oklab,var(--accent),transparent 66%)}
+  .btn-quiet:active{background:color-mix(in oklab,var(--accent),transparent 92%)}
 
   .status{display:flex;align-items:flex-start;gap:.8rem;padding:1rem 1.1rem}
   .status-icon{inline-size:2.2rem;block-size:2.2rem;flex:none;border-radius:50%;display:grid;place-items:center;font-size:1rem;
-    background:var(--pane-hi);box-shadow:inset 0 0 0 1px var(--rim-dim),inset 0 1px 0 var(--rim)}
+    background:var(--fill);box-shadow:inset 0 0 0 1px var(--hair),inset 0 1px 0 var(--rim)}
   .status b{display:block;font-weight:650;letter-spacing:-.015em}
   .status span{display:block;color:var(--soft);font-size:.88rem;margin-block-start:.12rem;text-wrap:pretty}
   .spinner{inline-size:1.05rem;block-size:1.05rem;border:.15rem solid color-mix(in oklab,var(--accent),transparent 74%);
@@ -188,29 +209,29 @@
   .nav{display:grid;grid-template-columns:1fr 1fr;gap:.3rem;padding:.32rem;border-radius:var(--r-md)}
   .nav a{display:flex;align-items:center;justify-content:center;min-block-size:2.85rem;padding:.6rem;border-radius:.88rem;
     color:var(--soft);font-weight:650;font-size:.9rem;text-decoration:none;text-align:center}
-  .nav a[aria-current="page"]{color:var(--ink);background:var(--pane-hi);
-    box-shadow:inset 0 0 0 1px var(--rim-dim),inset 0 1px 0 var(--rim),0 4px 12px -6px rgba(9,14,40,.3)}
+  .nav a[aria-current="page"]{color:var(--ink);background:var(--fill-hi);
+    box-shadow:inset 0 0 0 1px var(--hair),inset 0 1px 0 var(--rim),0 4px 12px -8px rgba(9,14,40,.35)}
   .nav a:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px}
 
   .plans{display:grid;gap:.5rem;margin-block-start:.9rem}
   .plan{display:grid;grid-template-columns:1fr auto;gap:.15rem .8rem;align-items:baseline;padding:.85rem .9rem;
-    border-radius:var(--r-sm);background:var(--pane-hi);box-shadow:inset 0 0 0 1px var(--rim-dim),inset 0 1px 0 var(--rim)}
+    border-radius:var(--r-sm);background:var(--fill);box-shadow:inset 0 0 0 1px var(--hair),inset 0 1px 0 var(--rim)}
   .plan b{font-size:.95rem;font-weight:650}
   .plan strong{font-size:1.06rem;font-weight:700;letter-spacing:-.02em;
     background:linear-gradient(150deg,var(--go1),var(--go2));-webkit-background-clip:text;background-clip:text;color:transparent}
   .plan span{grid-column:1/-1;color:var(--muted);font-size:.81rem;margin-block-start:.15rem}
   .chips{display:flex;flex-wrap:wrap;gap:.32rem;margin-block-start:.7rem}
   .chips span{padding:.3rem .6rem;border-radius:999px;color:var(--soft);font-size:.79rem;
-    background:var(--pane-hi);box-shadow:inset 0 0 0 1px var(--rim-dim)}
+    background:var(--fill);box-shadow:inset 0 0 0 1px var(--hair)}
 
   .gift{padding:1rem;border-radius:var(--r-md);margin-block:.85rem;
     background:linear-gradient(140deg,color-mix(in oklab,var(--go1),transparent 84%),color-mix(in oklab,var(--accent),transparent 86%));
     box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--go2),transparent 62%),inset 0 1px 0 var(--rim)}
   .gift strong{display:block;font-size:1.5rem;font-weight:700;letter-spacing:-.03em}
   .gift span{display:block;color:var(--soft);font-size:.89rem;margin-block-start:.15rem;text-wrap:pretty}
-  .linkbox{display:block;inline-size:100%;margin-block-start:.7rem;padding:.7rem .8rem;border-radius:var(--r-sm);
+  .linkbox{display:block;inline-size:100%;margin-block-start:.7rem;padding:.8rem .85rem;border-radius:.9rem;
     font:inherit;font-size:.84rem;color:var(--ink);word-break:break-all;text-align:start;
-    background:var(--pane-hi);box-shadow:inset 0 0 0 1px var(--rim-dim)}
+    background:var(--fill);box-shadow:inset 0 0 0 1px var(--hair)}
 }
 </style>
 </head>
@@ -226,8 +247,8 @@
 
   <div class="stack">
     <nav class="glass nav" aria-label="Разделы Fodder VPN">
-      <a href="/portal/?v=20260722-3" aria-current="page">🛡 VPN-подписка</a>
-      <a href="/wizard/?v=20260722-3">🛠 Свой сервер</a>
+      <a href="/portal/" aria-current="page">🛡 VPN-подписка</a>
+      <a href="/wizard/">🛠 Свой сервер</a>
     </nav>
 
     <section class="glass status" id="loading" aria-live="polite">
@@ -314,7 +335,7 @@
         <h2>🛠 Настроить свой сервер</h2>
         <p>Есть собственный VPS? Прежний мастер установит AmneziaWG, создаст профили и поможет управлять серверами.</p>
         <div class="actions">
-          <a class="btn btn-soft" id="wizard-link" href="/wizard/?v=20260722-3">Открыть мастер своего сервера →</a>
+          <a class="btn btn-soft" id="wizard-link" href="/wizard/">Открыть мастер своего сервера →</a>
         </div>
       </section>
 

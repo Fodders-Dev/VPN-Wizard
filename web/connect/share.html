@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Раздать доступ · Fodder VPN</title>
+<style>
+  :root{
+    --ink:#101a3c; --ink-soft:#39426b; --muted:#5b6690;
+    --card:#ffffff; --card-2:#f4f6fc; --line:#e2e7f2;
+    --go1:#10c48a; --go2:#0bb6c6; --on-go:#04150f; --accent:#4b5cff;
+    --shadow:0 1px 2px rgba(16,26,60,.05), 0 12px 30px rgba(16,26,60,.12);
+    --sans:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"SF Pro Text",Roboto,sans-serif;
+    --mono:"SF Mono","Cascadia Mono",Consolas,ui-monospace,monospace;
+    --b1:#7aa8ff; --b2:#b98cff; --b3:#5fe6cf; --base-a:#eaf1ff; --base-b:#f3edff;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --ink:#eef1fb; --ink-soft:#c2cae6; --muted:#95a0c8;
+    --card:#161d38; --card-2:#101830; --line:#26305a;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 16px 38px rgba(0,0,0,.5);
+    --b1:#2f45c9; --b2:#7a34e6; --b3:#0f9f8c; --base-a:#0a0f22; --base-b:#150a26;
+  }}
+  *{box-sizing:border-box} html{font-size:100%}
+  body{margin:0;min-height:100dvh;color:var(--ink);font-family:var(--sans);font-size:1.0625rem;line-height:1.55;
+    -webkit-font-smoothing:antialiased;padding:max(1rem,env(safe-area-inset-top)) 1rem 3rem;
+    background:
+      radial-gradient(58vw 58vw at 10% 4%, color-mix(in srgb,var(--b1),transparent 46%), transparent 60%),
+      radial-gradient(52vw 52vw at 96% 10%, color-mix(in srgb,var(--b2),transparent 48%), transparent 60%),
+      radial-gradient(60vw 60vw at 50% 100%, color-mix(in srgb,var(--b3),transparent 50%), transparent 64%),
+      linear-gradient(160deg,var(--base-a),var(--base-b)); background-attachment:fixed;}
+  .wrap{max-width:34rem;margin:0 auto}
+  header{padding:.5rem .25rem 1rem}
+  .eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 .4rem}
+  h1{font-size:clamp(1.5rem,5.5vw,1.9rem);letter-spacing:-.02em;margin:0 0 .3rem;text-wrap:balance}
+  .sub{color:var(--ink-soft);margin:0;font-size:.98rem;max-width:44ch}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:1.25rem;box-shadow:var(--shadow);padding:1.15rem 1.15rem 1.25rem;margin-bottom:1rem}
+  label{display:block;font-weight:600;font-size:.92rem;margin:.7rem 0 .35rem}
+  label:first-child{margin-top:0}
+  input,textarea{width:100%;font-family:var(--mono);font-size:.9rem;padding:.8rem .85rem;border-radius:.85rem;border:1px solid var(--line);background:var(--card-2);color:var(--ink);resize:vertical}
+  textarea{font-family:var(--sans);min-height:6.5rem;line-height:1.5}
+  input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+  .hint{font-size:.83rem;color:var(--muted);margin:.4rem 0 0}
+  #out{display:none}
+  #out.on{display:block}
+  .row{margin-bottom:1rem}
+  .row h3{margin:0 0 .5rem;font-size:.95rem;display:flex;align-items:center;gap:.5rem}
+  .row h3 .n{width:1.5rem;height:1.5rem;border-radius:50%;background:linear-gradient(150deg,var(--go1),var(--go2));color:var(--on-go);font-size:.8rem;font-weight:800;display:grid;place-items:center}
+  .valuebox{display:flex;gap:.5rem;align-items:stretch}
+  .valuebox code{flex:1;font-family:var(--mono);font-size:.8rem;color:var(--ink-soft);background:var(--card-2);border:1px solid var(--line);border-radius:.7rem;padding:.65rem .7rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:anywhere}
+  .copy{flex:none;font-family:inherit;font-size:.85rem;font-weight:650;border:1px solid transparent;background:linear-gradient(150deg,var(--go1),var(--go2));color:var(--on-go);border-radius:.7rem;padding:.65rem .95rem;cursor:pointer}
+  .copy:active{transform:scale(.97)}
+  .copy.ghost{background:var(--card);color:var(--ink);border-color:var(--line)}
+  .apps{display:flex;flex-wrap:wrap;gap:.5rem}
+  .apps a{text-decoration:none;font-weight:600;font-size:.85rem;padding:.55rem .8rem;border-radius:.7rem;border:1px solid var(--line);background:var(--card-2);color:var(--ink)}
+  .tip{background:color-mix(in srgb,var(--accent),transparent 88%);border:1px solid color-mix(in srgb,var(--accent),transparent 70%);border-radius:1rem;padding:.9rem 1rem;font-size:.9rem;color:var(--ink-soft)}
+  .tip b{color:var(--ink)}
+  footer{text-align:center;color:var(--muted);font-size:.78rem;margin-top:.5rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Внутренний инструмент · для тебя, не для клиента</p>
+    <h1>Раздать доступ человеку</h1>
+    <p class="sub">Вставь ссылку-подписку из панели — получишь готовую ссылку и готовое сообщение, чтобы отправить любым способом (SMS, WhatsApp, лично). Работает без Telegram.</p>
+  </header>
+
+  <div class="card">
+    <label for="sub">Ссылка-подписка (Subscription URL из панели Remnawave)</label>
+    <input id="sub" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://sub.твойдомен/xxxxx">
+    <label for="name">Имя человека (необязательно — подставится в сообщение)</label>
+    <input id="name" type="text" autocomplete="off" placeholder="например, Дима">
+    <p class="hint">Ссылку берёшь: панель → Users → карточка юзера → Subscription URL. У тебя VPN уже есть, поэтому панель у тебя открывается.</p>
+  </div>
+
+  <div class="card" id="out">
+    <div class="row">
+      <h3><span class="n">1</span> Ссылка-инструкция (открывается на телефоне)</h3>
+      <div class="valuebox"><code id="link"></code><button class="copy" data-copy="link">Копировать</button></div>
+      <p class="hint">Человек откроет её на телефоне → поставит приложение → нажмёт «Открыть мой профиль».</p>
+    </div>
+    <div class="row">
+      <h3><span class="n">2</span> Готовое сообщение (скопируй и отправь)</h3>
+      <textarea id="msg" rows="7"></textarea>
+      <div class="valuebox" style="margin-top:.5rem"><button class="copy" data-copy="msg" style="flex:1">Скопировать сообщение</button></div>
+    </div>
+    <div class="row">
+      <h3><span class="n">3</span> Прямой импорт в приложение (если нужно)</h3>
+      <div class="apps" id="apps">
+        <a id="a-hiddify" href="#">Hiddify</a>
+        <a id="a-happ" href="#">Happ</a>
+        <a id="a-v2raytun" href="#">v2RayTun</a>
+        <a id="a-streisand" href="#">Streisand</a>
+      </div>
+      <p class="hint">Эти ссылки сразу добавляют профиль в конкретное приложение — на случай, если «Открыть мой профиль» не сработал.</p>
+    </div>
+    <div class="tip">
+      <b>Если у человека даже сайт не открывается</b> (всё заблокировано): не шли ссылку — шли <b>QR или файл конфига</b>. QR возьми в панели в карточке юзера и отправь картинкой: адрес сервера зашит внутри, никакой сайт открывать не надо.
+    </div>
+  </div>
+
+  <footer>Fodder VPN · раздача мимо Telegram</footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var $=function(id){return document.getElementById(id);};
+  function base(){
+    var o=location.origin;
+    if(/^https?:/i.test(o)) return o.replace(/\/$/,"")+"/connect/";
+    return "https://212-69-84-167.nip.io/connect/"; // fallback when opened as a local file
+  }
+  function isHttp(u){return /^https?:\/\//i.test(u);}
+  var state={link:"",msg:""};
+
+  function render(){
+    var sub=($("sub").value||"").trim();
+    var name=($("name").value||"").trim();
+    if(!isHttp(sub)){ $("out").classList.remove("on"); return; }
+    var link=base()+"?sub="+encodeURIComponent(sub);
+    state.link=link;
+    var hi=name?("Привет, "+name+"! "):"Привет! ";
+    state.msg=hi+"Держи доступ к VPN (без рекламы, работает в РФ):\n"+link+"\n\n"
+      +"Открой ссылку на телефоне, поставь приложение по инструкции на странице и нажми «Открыть мой профиль». "
+      +"После подключения интернет и Telegram заработают. Если что — пиши, помогу подключить.";
+    $("link").textContent=link;
+    $("msg").value=state.msg;
+    $("a-hiddify").href="hiddify://import/"+sub;
+    $("a-happ").href="happ://add/"+sub;
+    $("a-v2raytun").href="v2raytun://import/"+sub;
+    $("a-streisand").href="streisand://import/"+sub;
+    $("out").classList.add("on");
+  }
+  $("sub").addEventListener("input",render);
+  $("name").addEventListener("input",render);
+
+  document.addEventListener("click",function(e){
+    var btn=e.target.closest("[data-copy]"); if(!btn) return;
+    var which=btn.getAttribute("data-copy");
+    var text = which==="msg" ? $("msg").value : state.link;
+    var done=function(){var t=btn.textContent;btn.textContent="Готово";setTimeout(function(){btn.textContent=t;},1400);};
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,done);}
+    else{try{var ta=which==="msg"?$("msg"):null;if(ta){ta.select();document.execCommand("copy");}done();}catch(_){}}
+  });
+})();
+</script>
+</body>
+</html>

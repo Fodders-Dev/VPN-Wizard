@@ -1,6 +1,6 @@
 const CANONICAL_API_BASE = "https://212-69-84-167.nip.io";
-const CANONICAL_MINIAPP_URL = `${CANONICAL_API_BASE}/wizard/?v=20260722-3`;
-const CANONICAL_PORTAL_URL = `${CANONICAL_API_BASE}/portal/?v=20260722-3`;
+const CANONICAL_MINIAPP_URL = `${CANONICAL_API_BASE}/wizard/`;
+const CANONICAL_PORTAL_URL = `${CANONICAL_API_BASE}/portal/`;
 const API_OVERRIDE_KEY = "vpnw_api_base";
 const LANG_KEY = "vpnw_lang";
 const SETTINGS_KEY = "vpnw_settings_v3";
@@ -557,7 +557,7 @@ function openExternal(url) {
 
 function currentMiniappUrl() {
   try {
-    return new URL("/wizard/?v=20260722-3", window.location.origin).toString();
+    return new URL("/wizard/", window.location.origin).toString();
   } catch {
     return CANONICAL_MINIAPP_URL;
   }
@@ -565,7 +565,7 @@ function currentMiniappUrl() {
 
 function currentPortalUrl() {
   try {
-    return new URL("/portal/?v=20260722-3", window.location.origin).toString();
+    return new URL("/portal/", window.location.origin).toString();
   } catch {
     return CANONICAL_PORTAL_URL;
   }

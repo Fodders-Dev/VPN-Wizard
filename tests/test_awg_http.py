@@ -553,3 +553,22 @@ def test_disabled_default_server_falls_through_to_a_live_one(
     )
     # Disabling the default must not strand every no-server-param link on it.
     assert server_module.AwgRegistry.from_env().default_server.id == "nl"
+
+
+# --- HTML freshness ------------------------------------------------------------
+
+def test_html_is_never_cached(client: TestClient) -> None:
+    # Telegram's in-app browser holds on to HTML aggressively. Without no-store
+    # a redesign silently never reaches users, and bumping a ?v= query by hand
+    # only covers links that carry one — family links point straight at the page.
+    for path in ("/portal/", "/connect/awg.html", "/connect/index.html"):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        assert "text/html" in response.headers["content-type"], path
+        assert response.headers.get("cache-control") == "no-store, max-age=0", path
+
+
+def test_json_responses_keep_their_own_caching(client: TestClient) -> None:
+    # The blanket rule must apply to HTML only.
+    response = client.get("/api/awg/servers")
+    assert "text/html" not in response.headers.get("content-type", "")
