@@ -144,9 +144,11 @@
   .card{padding:1.15rem}
   .eyebrow{font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-block:0 .3rem}
   .card h2{font-size:1.24rem;letter-spacing:-.026em;font-weight:650;margin-block:.1rem .4rem;text-wrap:balance}
-  .card p{color:var(--soft);margin-block:.4rem;font-size:.93rem;text-wrap:pretty}
-  .card p b{color:var(--ink);font-weight:650}
-  .fine{font-size:.78rem;color:var(--muted)}
+  /* :where() keeps the base paragraph rule at zero specificity, so modifiers
+     like .fine win on their own merit instead of needing !important. */
+  :where(.card) p{color:var(--soft);margin-block:.4rem;font-size:.93rem;text-wrap:pretty}
+  :where(.card) p b{color:var(--ink);font-weight:650}
+  .fine{font-size:.79rem;color:var(--muted)}
   .legacy::before{background:linear-gradient(150deg,var(--rim-dim),transparent 60%,var(--rim-dim))}
 
   .tiles{display:grid;grid-template-columns:1fr 1fr;gap:.45rem;margin-block-start:.9rem}

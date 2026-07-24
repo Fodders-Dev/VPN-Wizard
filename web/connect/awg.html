@@ -8,89 +8,239 @@
 <link rel="icon" href="data:,">
 <title>Подключить AmneziaWG · Fodder VPN</title>
 <style>
-  :root{
-    --ink:#101a3c; --ink-soft:#39426b; --muted:#5b6690;
-    --card:#ffffff; --card-2:#f4f6fc; --line:#e2e7f2;
-    --go1:#10c48a; --go2:#0bb6c6; --on-go:#04150f; --accent:#4b5cff;
-    --warn-ink:#8a5a12; --warn-bg:rgba(255,196,92,.22); --warn-edge:rgba(212,150,40,.4);
-    --shadow:0 1px 2px rgba(16,26,60,.05), 0 12px 30px rgba(16,26,60,.12);
-    --sans:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"SF Pro Text",Roboto,sans-serif;
-    --mono:"SF Mono","Cascadia Mono",Consolas,ui-monospace,monospace;
-    --b1:#7aa8ff; --b2:#b98cff; --b3:#5fe6cf; --base-a:#eaf1ff; --base-b:#f3edff;
-  }
-  @media (prefers-color-scheme:dark){:root{
-    --ink:#eef1fb; --ink-soft:#c2cae6; --muted:#95a0c8;
-    --card:#161d38; --card-2:#101830; --line:#26305a;
-    --warn-ink:#f0c070; --warn-bg:rgba(224,169,85,.14); --warn-edge:rgba(224,169,85,.32);
-    --shadow:0 1px 2px rgba(0,0,0,.3), 0 16px 38px rgba(0,0,0,.5);
-    --b1:#2f45c9; --b2:#7a34e6; --b3:#0f9f8c; --base-a:#0a0f22; --base-b:#150a26;
-  }}
-  *{box-sizing:border-box} html{font-size:100%}
-  body{margin:0;min-height:100dvh;color:var(--ink);font-family:var(--sans);font-size:1.0625rem;line-height:1.55;
-    -webkit-font-smoothing:antialiased;padding:max(1rem,env(safe-area-inset-top)) 1rem calc(2.5rem + env(safe-area-inset-bottom));
-    background:
-      radial-gradient(58vw 58vw at 10% 4%, color-mix(in srgb,var(--b1),transparent 46%), transparent 60%),
-      radial-gradient(52vw 52vw at 96% 10%, color-mix(in srgb,var(--b2),transparent 48%), transparent 60%),
-      radial-gradient(60vw 60vw at 50% 100%, color-mix(in srgb,var(--b3),transparent 50%), transparent 64%),
-      linear-gradient(160deg,var(--base-a),var(--base-b)); background-attachment:fixed;}
-  .wrap{max-width:30rem;margin:0 auto}
-  header{text-align:center;padding:.5rem .25rem .25rem}
-  .logo{display:inline-flex;align-items:center;gap:.55rem;font-weight:700;font-size:.94rem}
-  .logo .mark{width:2rem;height:2rem;border-radius:.66rem;background:linear-gradient(150deg,var(--go1),var(--accent));display:grid;place-items:center;color:#fff;font-size:1rem}
-  h1{font-size:clamp(1.55rem,6vw,1.95rem);letter-spacing:-.02em;margin:1rem 0 .35rem;text-wrap:balance}
-  .sub{color:var(--ink-soft);margin:0 auto;max-width:32ch;font-size:.98rem}
+@layer reset, tokens, material, layout, components;
 
-  .seg{display:grid;grid-template-columns:1fr 1fr;gap:.3rem;padding:.32rem;margin:1.25rem 0 .3rem;background:var(--card);border:1px solid var(--line);border-radius:1.05rem;box-shadow:var(--shadow)}
-  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-  .seg label,.device-grid label{position:relative;cursor:pointer}
-  .seg input,.device-grid input{position:absolute;opacity:0;pointer-events:none}
-  .seg span{display:flex;align-items:center;justify-content:center;min-height:3rem;color:var(--ink-soft);font-size:.92rem;font-weight:650;padding:.65rem .45rem;border-radius:.78rem}
-  .seg input:checked+span{background:var(--card-2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
-  .seg input:focus-visible+span,.device-grid input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
-
-  .step{background:var(--card);border:1px solid var(--line);border-radius:1.25rem;box-shadow:var(--shadow);padding:1.15rem 1.1rem;margin-top:.9rem;display:grid;grid-template-columns:2.1rem 1fr;gap:.1rem .8rem}
-  .num{grid-row:1/3;width:2.1rem;height:2.1rem;border-radius:50%;background:linear-gradient(150deg,var(--go1),var(--go2));color:var(--on-go);font-weight:800;display:grid;place-items:center}
-  .step h2{grid-column:2;margin:.3rem 0 0;font-size:1.1rem}
-  .step .body{grid-column:2;color:var(--ink-soft);font-size:.97rem;margin-top:.35rem}
-  .step .body p{margin:0 0 .55rem} .step .body p:last-child{margin-bottom:0}
-  .platform{display:none} .platform.on{display:block}
-  b{color:var(--ink)}
-
-  .btn{display:flex;align-items:center;justify-content:center;gap:.55rem;width:100%;text-decoration:none;text-align:center;
-    font-family:inherit;font-size:1.05rem;font-weight:700;padding:1rem;border-radius:.95rem;border:1px solid transparent;cursor:pointer;margin-top:.7rem;transition:transform .08s;-webkit-tap-highlight-color:transparent}
-  .btn:active{transform:scale(.985)}
-  .btn-go{background:linear-gradient(150deg,var(--go1),var(--go2));color:var(--on-go);box-shadow:var(--shadow)}
-  .btn-out{background:var(--card-2);color:var(--ink);border-color:var(--line);font-weight:600;font-size:.98rem}
-  .qrwrap{margin-top:.9rem;text-align:center}
-  .qrwrap img{width:190px;height:190px;border-radius:1rem;border:1px solid var(--line);background:#fff;padding:.5rem}
-  .qrwrap .cap{font-size:.85rem;color:var(--muted);margin-top:.5rem}
-  .callout{margin-top:.7rem;background:var(--warn-bg);border:1px solid var(--warn-edge);border-radius:.85rem;padding:.75rem .8rem;font-size:.9rem}
-  .callout b{color:var(--warn-ink)}
-  .tip{margin-top:.6rem;font-size:.87rem;color:var(--muted)}
-  .srv{display:inline-block;margin:0 0 .7rem;padding:.3rem .7rem;border-radius:999px;
-       background:rgba(120,170,255,.14);font-size:.9rem;font-weight:600}
-  .srv b{font-weight:700}
-  .server-picker{margin:0 0 .85rem}
-  .server-picker p{margin:0 0 .5rem;font-weight:650;color:var(--ink)}
-  .server-grid{display:grid;grid-template-columns:1fr 1fr;gap:.45rem}
-  .server-btn{appearance:none;border:1px solid var(--line);background:var(--card-2);color:var(--ink);
-    border-radius:.78rem;padding:.72rem .5rem;font:600 .9rem var(--sans);cursor:pointer}
-  .server-btn[aria-pressed="true"]{border-color:var(--go2);box-shadow:inset 0 0 0 1px var(--go2);background:color-mix(in srgb,var(--go2),transparent 86%)}
-  .device-picker{border:0;padding:0;margin:0 0 .9rem}
-  .device-picker legend{font-weight:700;color:var(--ink);margin-bottom:.5rem}
-  .device-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem}
-  .device-grid span{display:flex;align-items:center;justify-content:center;min-height:3rem;padding:.65rem;border:1px solid var(--line);border-radius:.78rem;background:var(--card-2);font-size:.9rem;font-weight:650}
-  .device-grid input:checked+span{border-color:var(--go2);box-shadow:inset 0 0 0 1px var(--go2);background:color-mix(in srgb,var(--go2),transparent 86%)}
-  .access-error{border:1px solid var(--warn-edge);background:var(--warn-bg);border-radius:.85rem;padding:.8rem;color:var(--warn-ink)}
-  .pastebox{margin-top:.6rem}
-  .pastebox label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:.35rem}
-  .pastebox input{width:100%;font-family:var(--mono);font-size:.85rem;padding:.75rem .8rem;border-radius:.78rem;border:1px solid var(--line);background:var(--card-2);color:var(--ink)}
+@layer reset{
+  *,*::before,*::after{box-sizing:border-box}
   [hidden]{display:none!important}
-  .help{background:color-mix(in srgb,var(--accent),transparent 88%);border:1px solid color-mix(in srgb,var(--accent),transparent 70%);border-radius:1.1rem;padding:1rem;margin-top:1.1rem;font-size:.93rem;color:var(--ink-soft)}
-  footer{text-align:center;color:var(--muted);font-size:.78rem;margin-top:1.1rem}
+  body,h1,h2,p,fieldset,legend{margin:0}
+  fieldset{border:0;padding:0}
+  button,input{font:inherit;color:inherit}
+}
+
+@layer tokens{
+  :root{
+    color-scheme:light dark;
+
+    --ink-l:#0d1226;      --ink-d:#f3f5ff;
+    --soft-l:#414c72;     --soft-d:#b9c2e4;
+    --muted-l:#6e789e;    --muted-d:#8e98c0;
+
+    --bg-l:#eef2ff;       --bg-d:#05070f;
+    --a1-l:#5b8cff;       --a1-d:#2a3ec9;
+    --a2-l:#a970ff;       --a2-d:#6d2bd9;
+    --a3-l:#2fd8bd;       --a3-d:#0a8f80;
+
+    --pane-l:rgba(255,255,255,.52);   --pane-d:rgba(255,255,255,.055);
+    --pane-hi-l:rgba(255,255,255,.78);--pane-hi-d:rgba(255,255,255,.10);
+    --rim-l:rgba(255,255,255,.95);    --rim-d:rgba(255,255,255,.42);
+    --rim-dim-l:rgba(120,140,200,.22);--rim-dim-d:rgba(255,255,255,.05);
+    --sheen-l:rgba(255,255,255,.55);  --sheen-d:rgba(255,255,255,.10);
+
+    --accent-l:#3f56ff;   --accent-d:#8ea3ff;
+    --go1-l:#00c98d;      --go1-d:#00e0a0;
+    --go2-l:#0aa7d8;      --go2-d:#22bdea;
+    --on-go-l:#00160f;    --on-go-d:#00160f;
+    --warn-l:#8a5a12;     --warn-d:#f3c983;
+
+    --ink:var(--ink-l); --soft:var(--soft-l); --muted:var(--muted-l);
+    --bg:var(--bg-l); --a1:var(--a1-l); --a2:var(--a2-l); --a3:var(--a3-l);
+    --pane:var(--pane-l); --pane-hi:var(--pane-hi-l); --rim:var(--rim-l);
+    --rim-dim:var(--rim-dim-l); --sheen:var(--sheen-l);
+    --accent:var(--accent-l); --go1:var(--go1-l); --go2:var(--go2-l);
+    --on-go:var(--on-go-l); --warn:var(--warn-l);
+
+    @media (prefers-color-scheme:dark){
+      --ink:var(--ink-d); --soft:var(--soft-d); --muted:var(--muted-d);
+      --bg:var(--bg-d); --a1:var(--a1-d); --a2:var(--a2-d); --a3:var(--a3-d);
+      --pane:var(--pane-d); --pane-hi:var(--pane-hi-d); --rim:var(--rim-d);
+      --rim-dim:var(--rim-dim-d); --sheen:var(--sheen-d);
+      --accent:var(--accent-d); --go1:var(--go1-d); --go2:var(--go2-d);
+      --on-go:var(--on-go-d); --warn:var(--warn-d);
+    }
+    @supports (color:light-dark(white,black)){
+      --ink:light-dark(var(--ink-l),var(--ink-d));
+      --soft:light-dark(var(--soft-l),var(--soft-d));
+      --muted:light-dark(var(--muted-l),var(--muted-d));
+      --bg:light-dark(var(--bg-l),var(--bg-d));
+      --a1:light-dark(var(--a1-l),var(--a1-d));
+      --a2:light-dark(var(--a2-l),var(--a2-d));
+      --a3:light-dark(var(--a3-l),var(--a3-d));
+      --pane:light-dark(var(--pane-l),var(--pane-d));
+      --pane-hi:light-dark(var(--pane-hi-l),var(--pane-hi-d));
+      --rim:light-dark(var(--rim-l),var(--rim-d));
+      --rim-dim:light-dark(var(--rim-dim-l),var(--rim-dim-d));
+      --sheen:light-dark(var(--sheen-l),var(--sheen-d));
+      --accent:light-dark(var(--accent-l),var(--accent-d));
+      --go1:light-dark(var(--go1-l),var(--go1-d));
+      --go2:light-dark(var(--go2-l),var(--go2-d));
+      --on-go:light-dark(var(--on-go-l),var(--on-go-d));
+      --warn:light-dark(var(--warn-l),var(--warn-d));
+    }
+
+    --r-lg:1.75rem; --r-md:1.15rem; --r-sm:.85rem;
+    --lift:0 .5px 1px rgba(9,14,40,.10), 0 6px 16px -6px rgba(9,14,40,.22), 0 22px 48px -22px rgba(9,14,40,.42);
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI Variable Text","Segoe UI",system-ui,Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    accent-color:var(--accent);
+  }
+}
+
+@layer layout{
+  body{
+    min-height:100dvh;color:var(--ink);background:var(--bg);
+    font-family:var(--sans);font-size:1.02rem;line-height:1.55;letter-spacing:-.011em;
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+    padding:max(.75rem,env(safe-area-inset-top)) 1rem calc(2.75rem + env(safe-area-inset-bottom));
+  }
+  .aurora{position:fixed;inset:-20% -10%;z-index:-1;pointer-events:none;
+    background:
+      radial-gradient(38rem 32rem at 12% 4%, color-mix(in oklab,var(--a1),transparent 42%), transparent 68%),
+      radial-gradient(34rem 30rem at 92% 14%, color-mix(in oklab,var(--a2),transparent 48%), transparent 66%),
+      radial-gradient(40rem 34rem at 50% 104%, color-mix(in oklab,var(--a3),transparent 52%), transparent 68%);
+    animation:drift 34s ease-in-out infinite alternate}
+  @keyframes drift{from{transform:translate3d(0,0,0) scale(1)}to{transform:translate3d(0,-2.5%,0) scale(1.07)}}
+  .wrap{max-width:31rem;margin-inline:auto}
+  header{text-align:center;padding:1.1rem .25rem .3rem}
+  footer{text-align:center;color:var(--muted);font-size:.76rem;margin-block-start:1.5rem;text-wrap:balance}
+}
+
+@layer material{
+  .glass{position:relative;isolation:isolate;background:var(--pane);border-radius:var(--r-lg);box-shadow:var(--lift)}
+  .glass::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
+    background:linear-gradient(150deg,var(--rim),var(--rim-dim) 34%,transparent 62%,var(--rim) 100%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    mask-composite:exclude}
+  .glass::after{content:"";position:absolute;inset:0 0 auto;height:52%;border-radius:inherit;pointer-events:none;
+    background:linear-gradient(180deg,var(--sheen),transparent 78%);opacity:.75;z-index:-1}
+  @supports (backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px)){
+    .glass{-webkit-backdrop-filter:blur(28px) saturate(190%);backdrop-filter:blur(28px) saturate(190%)}
+  }
+  @supports (corner-shape:squircle){ .glass{corner-shape:squircle} }
+
+  @media (prefers-reduced-transparency:reduce){
+    .glass{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--bg)}
+    .glass::after{display:none}
+    .aurora{opacity:.35}
+  }
+  @media (prefers-reduced-motion:reduce){ .aurora{animation:none} }
+  @media (prefers-contrast:more){ .glass{background:var(--bg)} }
+}
+
+@layer components{
+  .sr-only{position:absolute;inline-size:1px;block-size:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .logo{display:inline-flex;align-items:center;gap:.6rem;font-weight:700;font-size:.92rem}
+  .logo .mark{inline-size:2.15rem;block-size:2.15rem;border-radius:.72rem;display:grid;place-items:center;color:#fff;font-size:1.05rem;
+    background:linear-gradient(145deg,var(--go1),var(--accent));
+    box-shadow:0 6px 18px -6px color-mix(in oklab,var(--accent),transparent 40%),inset 0 1px 0 rgba(255,255,255,.45)}
+  h1{font-size:clamp(1.75rem,7.5vw,2.3rem);line-height:1.06;letter-spacing:-.036em;font-weight:700;
+    margin-block:1.1rem .45rem;text-wrap:balance}
+  .sub{color:var(--soft);margin-inline:auto;max-width:31ch;font-size:.97rem;text-wrap:pretty}
+
+  /* Platform switch */
+  .seg{display:grid;grid-template-columns:1fr 1fr;gap:.3rem;padding:.32rem;margin-block:1.3rem .3rem;border-radius:var(--r-md)}
+  .seg label{position:relative;cursor:pointer}
+  .seg input{position:absolute;opacity:0;pointer-events:none}
+  .seg span{display:flex;align-items:center;justify-content:center;min-block-size:3rem;padding:.65rem .45rem;border-radius:.88rem;
+    color:var(--soft);font-size:.9rem;font-weight:650}
+  .seg input:checked+span{color:var(--ink);background:var(--pane-hi);
+    box-shadow:inset 0 0 0 1px var(--rim-dim),inset 0 1px 0 var(--rim),0 4px 12px -6px rgba(9,14,40,.3)}
+  .seg input:focus-visible+span{outline:2.5px solid var(--accent);outline-offset:2px}
+
+  /* Steps */
+  .step{padding:1.2rem 1.15rem;margin-block-start:.85rem;display:grid;grid-template-columns:2.2rem 1fr;gap:.15rem .85rem}
+  .num{grid-row:1/3;inline-size:2.2rem;block-size:2.2rem;border-radius:50%;display:grid;place-items:center;
+    font-weight:700;font-size:.98rem;color:var(--on-go);background:linear-gradient(150deg,var(--go1),var(--go2));
+    box-shadow:0 6px 16px -8px color-mix(in oklab,var(--go2),transparent 30%),inset 0 1px 0 rgba(255,255,255,.45)}
+  .step h2{grid-column:2;margin-block:.32rem 0;font-size:1.14rem;font-weight:650;letter-spacing:-.024em;text-wrap:balance}
+  .step .body{grid-column:2;color:var(--soft);font-size:.95rem;margin-block-start:.4rem}
+  :where(.step .body) p{margin-block:0 .55rem;text-wrap:pretty}
+  :where(.step .body) p:last-child{margin-block-end:0}
+  .step.solo{grid-template-columns:1fr}
+  .step.solo h2,.step.solo .body{grid-column:1}
+  b{color:var(--ink);font-weight:650}
+  .tip{font-size:.86rem;color:var(--muted)}
+
+  /* Buttons */
+  .btn{position:relative;isolation:isolate;appearance:none;display:flex;align-items:center;justify-content:center;gap:.45rem;
+    inline-size:100%;min-block-size:3.25rem;padding:.85rem 1.1rem;border:0;border-radius:var(--r-md);margin-block-start:.65rem;
+    font-weight:650;font-size:1rem;letter-spacing:-.012em;text-align:center;text-decoration:none;cursor:pointer;
+    -webkit-tap-highlight-color:transparent;transition:transform .18s cubic-bezier(.2,.9,.3,1)}
+  @supports (corner-shape:squircle){ .btn{corner-shape:squircle} }
+  .btn::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
+    background:linear-gradient(180deg,rgba(255,255,255,.55),transparent 55%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    mask-composite:exclude}
+  .btn:active{transform:scale(.978)}
+  .btn:focus-visible{outline:2.5px solid var(--accent);outline-offset:3px}
+  @media (prefers-reduced-motion:reduce){ .btn{transition:none} }
+  .btn-go{color:var(--on-go);background:linear-gradient(150deg,var(--go1),var(--go2));
+    box-shadow:0 8px 24px -8px color-mix(in oklab,var(--go2),transparent 35%),inset 0 1px 0 rgba(255,255,255,.4)}
+  .btn-out{color:var(--ink);background:var(--pane-hi);font-weight:600;font-size:.97rem;
+    box-shadow:inset 0 0 0 1px var(--rim-dim),inset 0 1px 0 var(--rim)}
+
+  /* Pickers */
+  .server-picker{margin-block-end:.9rem}
+  .server-picker p{margin-block:0 .55rem;font-weight:650;color:var(--ink);font-size:.95rem}
+  .server-grid{display:grid;grid-template-columns:1fr 1fr;gap:.45rem}
+  .server-btn{appearance:none;border:0;cursor:pointer;border-radius:.88rem;padding:.85rem .5rem;
+    font-weight:600;font-size:.92rem;color:var(--ink);background:var(--pane-hi);
+    box-shadow:inset 0 0 0 1px var(--rim-dim),inset 0 1px 0 var(--rim);
+    transition:transform .18s cubic-bezier(.2,.9,.3,1)}
+  .server-btn:active{transform:scale(.97)}
+  .server-btn[aria-pressed="true"]{color:var(--ink);
+    background:color-mix(in oklab,var(--go2),transparent 84%);
+    box-shadow:inset 0 0 0 1.5px var(--go2),inset 0 1px 0 var(--rim),0 6px 16px -10px var(--go2)}
+  .server-btn:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px}
+  @media (prefers-reduced-motion:reduce){ .server-btn{transition:none} }
+
+  .device-picker{margin-block-end:.95rem}
+  .device-picker legend{font-weight:650;color:var(--ink);margin-block-end:.55rem;font-size:.95rem}
+  .device-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem}
+  .device-grid label{position:relative;cursor:pointer}
+  .device-grid input{position:absolute;opacity:0;pointer-events:none}
+  .device-grid span{display:flex;align-items:center;justify-content:center;min-block-size:3rem;padding:.65rem;border-radius:.88rem;
+    font-size:.9rem;font-weight:650;background:var(--pane-hi);
+    box-shadow:inset 0 0 0 1px var(--rim-dim),inset 0 1px 0 var(--rim)}
+  .device-grid input:checked+span{background:color-mix(in oklab,var(--go2),transparent 84%);
+    box-shadow:inset 0 0 0 1.5px var(--go2),inset 0 1px 0 var(--rim)}
+  .device-grid input:focus-visible+span{outline:2.5px solid var(--accent);outline-offset:2px}
+
+  .srv{display:inline-block;margin-block-end:.75rem;padding:.35rem .8rem;border-radius:999px;font-size:.88rem;font-weight:600;
+    color:var(--ink);background:color-mix(in oklab,var(--accent),transparent 88%);
+    box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--accent),transparent 70%)}
+  .srv b{font-weight:700}
+
+  /* QR */
+  .qrwrap{margin-block-start:1rem;text-align:center}
+  .qrwrap img{inline-size:190px;block-size:190px;border-radius:var(--r-md);background:#fff;padding:.55rem;
+    box-shadow:0 8px 24px -12px rgba(9,14,40,.5),inset 0 0 0 1px var(--rim-dim)}
+  .qrwrap .cap{font-size:.84rem;color:var(--muted);margin-block-start:.6rem;text-wrap:pretty}
+
+  /* Error + paste */
+  .access-error{border-radius:var(--r-md);padding:.95rem 1rem;color:var(--ink);font-size:.94rem;
+    background:color-mix(in oklab,var(--warn),transparent 88%);
+    box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--warn),transparent 62%)}
+  .access-error b{color:var(--warn)}
+  .pastebox{margin-block-start:.65rem}
+  .pastebox label{display:block;font-size:.84rem;color:var(--muted);margin-block-end:.4rem}
+  .pastebox input{inline-size:100%;font-family:var(--mono);font-size:.84rem;padding:.8rem .85rem;border:0;border-radius:.88rem;
+    color:var(--ink);background:var(--pane-hi);box-shadow:inset 0 0 0 1px var(--rim-dim)}
+  .pastebox input:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px}
+
+  .help{border-radius:var(--r-md);padding:1rem;margin-block-start:1.15rem;font-size:.92rem;color:var(--soft);
+    background:color-mix(in oklab,var(--accent),transparent 90%);
+    box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--accent),transparent 74%)}
+  .help b{color:var(--ink)}
+  a{color:var(--accent)}
+}
 </style>
 </head>
 <body>
+<div class="aurora" aria-hidden="true"></div>
+
 <div class="wrap">
   <header>
     <span class="logo"><span class="mark" aria-hidden="true">🛡</span> Fodder VPN</span>
@@ -98,7 +248,7 @@
     <p class="sub">Стабильно работает в РФ. Российские сайты и банки — как обычно.</p>
   </header>
 
-  <fieldset class="seg">
+  <fieldset class="glass seg">
     <legend class="sr-only">Выберите устройство</legend>
     <label><input type="radio" name="platform" value="and" checked><span>🤖 Android</span></label>
     <label><input type="radio" name="platform" value="ios"><span>📱 iPhone / iPad</span></label>
@@ -106,7 +256,7 @@
     <label><input type="radio" name="platform" value="mac"><span>🍎 Mac</span></label>
   </fieldset>
 
-  <section class="step">
+  <section class="glass step">
     <div class="num">1</div>
     <h2>Установите AmneziaWG</h2>
     <div class="body">
@@ -131,7 +281,7 @@
     </div>
   </section>
 
-  <section class="step">
+  <section class="glass step">
     <div class="num">2</div>
     <h2>Получите свой конфиг</h2>
     <div class="body">
@@ -165,7 +315,7 @@
     </div>
   </section>
 
-  <section class="step">
+  <section class="glass step">
     <div class="num">3</div>
     <h2>Импортируйте и включите</h2>
     <div class="body">
@@ -174,19 +324,19 @@
     </div>
   </section>
 
-  <section class="step" id="personal-access" style="display:block">
-    <h2 style="margin:0 0 .55rem;font-size:1.1rem">💡 Как это работает</h2>
-    <div class="body" style="margin:0">
+  <section class="glass step solo" id="personal-access">
+    <h2>💡 Как это работает</h2>
+    <div class="body">
       <p>🔐 Каждый номер устройства получает <b>отдельный ключ</b>. Сервер выдаст не больше профилей, чем включено в подписку.</p>
       <p>🔁 Срок закончился — все ключи отключатся. После продления те же профили заработают снова, импортировать их заново не нужно.</p>
-      <p>💳 Управление подпиской — в <b><a href="https://t.me/foddervpnbot" style="color:var(--accent)">@foddervpnbot</a></b>.</p>
+      <p>💳 Управление подпиской — в <b><a href="https://t.me/foddervpnbot">@foddervpnbot</a></b>.</p>
       <p class="tip">Не пересылайте личную ссылку: для близкого есть отдельная семейная ссылка.</p>
     </div>
   </section>
 
-  <section class="step" id="family-access" style="display:block" hidden>
-    <h2 style="margin:0 0 .55rem;font-size:1.1rem">👵 Вам дали семейный доступ</h2>
-    <div class="body" style="margin:0">
+  <section class="glass step solo" id="family-access" hidden>
+    <h2>👵 Вам дали семейный доступ</h2>
+    <div class="body">
       <p>Это <b>отдельный VPN-профиль</b>: он не отключит устройство того, кто прислал ссылку.</p>
       <p>Ни Telegram, ни регистрация не нужны — установите AmneziaWG, выберите страну и скачайте конфиг.</p>
       <p>Профиль работает, пока активна подписка у пригласившего. После продления этот же профиль включится снова — скачивать новый не придётся.</p>
@@ -266,6 +416,39 @@
   $("family-access").hidden=!u.family;
   if(u.cfg&&!u.access)render();
 
+  // The API states the real reason in English; collapsing every 403 into
+  // "subscription inactive" told active subscribers something false, so map the
+  // known causes and always offer a way out.
+  function explain(status,detail){
+    var text=String(detail||"");
+    if(/at least two devices/i.test(text))
+      return {msg:"Семейная ссылка доступна на тарифах от 3 устройств. На текущем тарифе оплачен один профиль.",cta:"Сменить тариф в боте"};
+    if(/temporarily unavailable|pick another/i.test(text))
+      return {msg:"Эта страна сейчас недоступна. Выберите другую — остальные работают.",cta:""};
+    if(/No active subscription/i.test(text))
+      return {msg:"Подписка неактивна или закончилась. Продлите её — уже импортированный профиль заработает снова.",cta:"Продлить в боте"};
+    if(/Invalid or missing/i.test(text)||status===403)
+      return {msg:"Ссылка недействительна или устарела. Попросите новую у того, кто её прислал.",cta:""};
+    if(status===503)
+      return {msg:"Сервис временно недоступен. Попробуйте через минуту.",cta:""};
+    return {msg:"Не удалось проверить подписку. Попробуйте ещё раз.",cta:""};
+  }
+  function showError(info){
+    var box=$("access-error");
+    box.textContent="";
+    var line=document.createElement("p");
+    line.style.margin="0";
+    line.textContent=info.msg;
+    box.appendChild(line);
+    if(info.cta){
+      var link=document.createElement("a");
+      link.className="btn btn-go";link.href="https://t.me/foddervpnbot";
+      link.target="_blank";link.rel="noopener noreferrer";link.textContent=info.cta;
+      box.appendChild(link);
+    }
+    $("have").hidden=true;$("nolink").hidden=true;box.hidden=false;
+  }
+
   function selectDevice(slot,limit){
     u.device=Math.max(1,Math.min(slot,limit));
     var inputs=$("device-buttons").querySelectorAll("input");
@@ -282,7 +465,11 @@
     fetch(u.access,{credentials:"omit",headers:{"Accept":"application/json"}})
       .then(function(response){
         return response.json().catch(function(){return {};}).then(function(body){
-          if(!response.ok)throw new Error(response.status===403?"Подписка не активна или ссылка недействительна.":"Не удалось проверить подписку. Попробуйте ещё раз.");
+          if(!response.ok){
+            var err=new Error("access");
+            err.info=explain(response.status,body&&body.detail);
+            throw err;
+          }
           return body;
         });
       })
@@ -300,14 +487,13 @@
               label.appendChild(input);label.appendChild(span);box.appendChild(label);
             })(i);
           }
-          $("device-picker").hidden=false;
+          // A one-device plan has nothing to choose between.
+          $("device-picker").hidden=limit<2;
           selectDevice(u.device,limit);
         }else render();
       })
       .catch(function(error){
-        $("have").hidden=true;$("nolink").hidden=true;
-        $("access-error").textContent=error&&error.message?error.message:"Не удалось проверить подписку.";
-        $("access-error").hidden=false;
+        showError(error&&error.info?error.info:{msg:"Не удалось проверить подписку. Попробуйте ещё раз.",cta:""});
       });
   }
 
