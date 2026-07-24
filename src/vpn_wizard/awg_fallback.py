@@ -30,6 +30,10 @@ from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
 
 
 _SERVER_ID_RE = re.compile(r"[^a-z0-9-]")
+# An HTTP caller waits on this SSH, the service runs a single uvicorn worker, and a
+# Russia-facing exit can be blackholed at any moment (that is why there are four of
+# them). Fail fast instead of tying up a worker thread for ~2 minutes on a dead box.
+FALLBACK_SSH_TIMEOUT = 6
 DEVICE_PEER_ID_OFFSET = 3_000_000_000_000_000
 FAMILY_GUEST_ID_OFFSET = 4_000_000_000_000_000
 _MAX_FAMILY_OWNER_ID = 999_999_999_999
@@ -339,6 +343,10 @@ class AwgFallbackService:
             port=self.config.port,
             password=self.config.password,
             key_path=key_path,
+            timeout=FALLBACK_SSH_TIMEOUT,
+            banner_timeout=FALLBACK_SSH_TIMEOUT,
+            auth_timeout=FALLBACK_SSH_TIMEOUT,
+            connect_retries=1,
         )
         try:
             with SSHRunner(cfg) as ssh:

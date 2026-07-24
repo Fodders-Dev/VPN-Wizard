@@ -21,6 +21,7 @@ import re
 import uuid
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -2697,6 +2698,35 @@ def _awg_all_services() -> list[AwgFallbackService]:
     ]
 
 
+def _awg_demote_peer_elsewhere(
+    registry: AwgRegistry, keep_server: object, peer_id: int
+) -> None:
+    """Keep one device slot on exactly one server: suspend it on the others.
+
+    The device-limit check only caps the slot *number*; without this, a 1-device
+    buyer who taps all four countries gets four parallel live tunnels. Re-homing
+    the same peer_id makes a second country a MOVE, not a multiplication.
+
+    Best-effort: ``suspend`` is a cheap DB read when no peer exists on a server, so
+    a first issue pays nothing and only a real switch triggers SSH (bounded by the
+    short fallback timeout). A failure must not fail the issue that already
+    succeeded — the 2-minute reconcile is the backstop.
+    """
+    keep_id = getattr(keep_server, "id", None)
+    for server in registry.servers:
+        if not server.usable or server.id == keep_id:
+            continue
+        try:
+            _awg_service_for(server, registry).suspend(peer_id)
+        except Exception as exc:
+            logger.warning(
+                "awg.demote_failed server=%s peer=%s err=%s",
+                server.id,
+                peer_id,
+                _error_message(exc),
+            )
+
+
 # The AmneziaWG Android client takes the tunnel name from the file's base name and
 # validates it against [a-zA-Z0-9_=+.-]{1,15}. It raises instead of truncating, so an
 # over-long name makes the config unimportable on the most common client.
@@ -2824,6 +2854,9 @@ def _awg_issue_entitled_config(
         )
     except Exception as exc:  # provisioning/SSH failure
         raise HTTPException(status_code=502, detail=f"AWG provisioning failed: {_error_message(exc)}") from exc
+    # This slot now lives on `server`; drop it from the other exits so device_limit
+    # cannot be multiplied by the number of countries.
+    _awg_demote_peer_elsewhere(registry, server, peer_id)
     return _awg_label_config(result["config"], server), server
 
 
@@ -2894,6 +2927,45 @@ def _awg_peer_ids_for_owner(service: object, owner_telegram_id: int) -> list[int
         return [owner_telegram_id, family_guest_id(owner_telegram_id)]
 
 
+def _awg_webhook_apply(action: str, telegram_id: int) -> None:
+    """Suspend/resume every AWG peer a user owns, across all exit servers.
+
+    Blocking (SSH per server): the caller offloads it to a worker thread so a slow
+    exit does not stall the event loop while Remnawave waits on the webhook.
+    """
+    try:
+        services = _awg_all_services()
+    except Exception as exc:
+        logger.warning(
+            "awg.webhook.registry_failed action=%s tid=%s err=%s",
+            action,
+            telegram_id,
+            _error_message(exc),
+        )
+        return
+    for service in services:
+        try:
+            peer_ids = _awg_peer_ids_for_owner(service, telegram_id)
+        except ValueError:
+            peer_ids = [telegram_id]
+            logger.warning("awg.webhook.invalid_telegram_id tid=%s", telegram_id)
+        for peer_id in peer_ids:
+            try:
+                if action == "disable":
+                    service.suspend(peer_id)
+                else:
+                    service.resume(peer_id)
+            except Exception as exc:
+                logger.warning(
+                    "awg.webhook.sync_failed action=%s tid=%s peer=%s server=%s err=%s",
+                    action,
+                    telegram_id,
+                    peer_id,
+                    service.server_id or "default",
+                    _error_message(exc),
+                )
+
+
 @app.post("/api/integrations/remnawave/webhook")
 async def remnawave_webhook(request: Request) -> JSONResponse:
     cfg = RemnawaveConfig.from_env()
@@ -2910,47 +2982,21 @@ async def remnawave_webhook(request: Request) -> JSONResponse:
     # Keep the peer keys/config on disk. Disabling only removes its public key from
     # the live interface; enabling restores the same key so imported configs recover.
     if action in {"disable", "enable"} and telegram_id is not None:
-        try:
-            services = _awg_all_services()
-        except Exception as exc:
-            services = []
-            logger.warning(
-                "awg.webhook.registry_failed action=%s tid=%s err=%s",
-                action,
-                telegram_id,
-                _error_message(exc),
-            )
-        for service in services:
-            try:
-                peer_ids = _awg_peer_ids_for_owner(service, telegram_id)
-            except ValueError:
-                peer_ids = [telegram_id]
-                logger.warning("awg.webhook.invalid_telegram_id tid=%s", telegram_id)
-            for peer_id in peer_ids:
-                try:
-                    if action == "disable":
-                        service.suspend(peer_id)
-                    else:
-                        service.resume(peer_id)
-                except Exception as exc:
-                    logger.warning(
-                        "awg.webhook.sync_failed action=%s tid=%s peer=%s server=%s err=%s",
-                        action,
-                        telegram_id,
-                        peer_id,
-                        service.server_id or "default",
-                        _error_message(exc),
-                    )
+        await run_in_threadpool(_awg_webhook_apply, action, telegram_id)
     return JSONResponse({"ok": True, "event": event, "action": action})
 
 
 @app.get("/api/awg/{telegram_id}/config")
-async def awg_config(
+def awg_config(
     telegram_id: int,
     token: str,
     server: Optional[str] = None,
     device: int = 1,
 ) -> Response:
+    # Plain `def`, not `async`: _awg_issue_config makes a blocking Remnawave HTTP
+    # call and a blocking SSH provision. FastAPI runs sync path-ops in a worker
+    # thread, so one slow/dead exit can no longer freeze every other request (and
+    # the billing webhook) on the single uvicorn worker.
     config_text, selected_server = _awg_issue_config(telegram_id, token, server, device)
     # The body carries a private key: never let a proxy/browser/link-preview cache it.
     # octet-stream (not text/plain) so browsers/Telegram keep the ".conf" name as-is
@@ -2968,7 +3014,7 @@ async def awg_config(
 
 
 @app.get("/api/awg/{telegram_id}/qr")
-async def awg_qr(
+def awg_qr(
     telegram_id: int,
     token: str,
     server: Optional[str] = None,
@@ -2983,12 +3029,12 @@ async def awg_qr(
 
 
 @app.get("/api/awg/{telegram_id}/access", response_model=AwgAccessResponse)
-async def awg_access(telegram_id: int, token: str) -> AwgAccessResponse:
+def awg_access(telegram_id: int, token: str) -> AwgAccessResponse:
     return _awg_access(telegram_id, token)
 
 
 @app.get("/api/awg/family/{owner_telegram_id}/config")
-async def awg_family_config(
+def awg_family_config(
     owner_telegram_id: int,
     token: str,
     server: Optional[str] = None,
@@ -3014,12 +3060,12 @@ async def awg_family_config(
     "/api/awg/family/{owner_telegram_id}/access",
     response_model=AwgAccessResponse,
 )
-async def awg_family_access(owner_telegram_id: int, token: str) -> AwgAccessResponse:
+def awg_family_access(owner_telegram_id: int, token: str) -> AwgAccessResponse:
     return _awg_access(owner_telegram_id, token, family=True)
 
 
 @app.get("/api/awg/family/{owner_telegram_id}/qr")
-async def awg_family_qr(
+def awg_family_qr(
     owner_telegram_id: int,
     token: str,
     server: Optional[str] = None,

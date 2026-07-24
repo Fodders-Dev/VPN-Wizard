@@ -345,6 +345,50 @@ def test_reconcile_circuit_breaker_skips_mass_suspend_on_panel_outage(tmp_path: 
         assert store.awg_get_peer(tid)["status"] == "active"  # untouched
 
 
+def test_fallback_ssh_fails_fast_on_a_dead_exit(tmp_path: Path) -> None:
+    # An HTTP caller waits on this SSH on a single worker; a blackholed exit must
+    # not tie the connection up for ~2 minutes of banner/connect retries.
+    import vpn_wizard.awg_fallback as fb
+
+    assert fb.FALLBACK_SSH_TIMEOUT <= 10
+
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, cfg, *args, **kwargs) -> None:
+            captured["cfg"] = cfg
+
+        def __enter__(self):
+            raise RuntimeError("stop before connecting")
+
+        def __exit__(self, *args) -> bool:
+            return False
+
+    import contextlib
+
+    original = fb.SSHRunner
+    fb.SSHRunner = FakeRunner
+    try:
+        service = fb.AwgFallbackService(
+            account=object(),
+            config=fb.AwgFallbackConfig(
+                host="10.0.0.1", user="root", port=22, password="p",
+                key_path=None, key_content=None, listen_port=443, link_secret="s",
+            ),
+        )
+        with contextlib.suppress(RuntimeError):
+            with service._ssh():
+                pass
+    finally:
+        fb.SSHRunner = original
+
+    cfg = captured["cfg"]
+    assert cfg.timeout == fb.FALLBACK_SSH_TIMEOUT
+    assert cfg.banner_timeout == fb.FALLBACK_SSH_TIMEOUT
+    assert cfg.auth_timeout == fb.FALLBACK_SSH_TIMEOUT
+    assert cfg.connect_retries == 1
+
+
 def test_config_stored_encrypted_at_rest(tmp_path: Path) -> None:
     store = _store(tmp_path)
     service = AwgFallbackService(

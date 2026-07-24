@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import inspect
 import json
 import re
 
@@ -438,3 +439,76 @@ def test_unknown_selected_server_is_rejected_before_provisioning(
     token = issue_token(secret, 1)
     response = client.get("/api/awg/1/config", params={"token": token, "server": "moon"})
     assert response.status_code == 404
+
+
+# --- blocker 1: the read endpoints must not block the single event loop --------
+
+def test_awg_read_endpoints_run_off_the_event_loop() -> None:
+    # These make a blocking Remnawave HTTP call + a blocking SSH provision. As
+    # `async def` on a single uvicorn worker, one slow exit froze config/QR/portal
+    # AND the billing webhook for everyone. Plain `def` offloads them to a thread.
+    for fn in (
+        server_module.awg_config,
+        server_module.awg_qr,
+        server_module.awg_access,
+        server_module.awg_family_config,
+        server_module.awg_family_qr,
+        server_module.awg_family_access,
+    ):
+        assert not inspect.iscoroutinefunction(fn), f"{fn.__name__} must be sync"
+    # The webhook stays async: it awaits the request body, then offloads the
+    # blocking suspend/resume to a thread itself.
+    assert inspect.iscoroutinefunction(server_module.remnawave_webhook)
+
+
+# --- blocker 2: one device slot lives on exactly one server --------------------
+
+def test_issuing_on_a_new_server_demotes_the_same_slot_elsewhere(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    # A 1-device buyer tapping several countries must not accumulate parallel live
+    # tunnels: issuing a slot on server B suspends that same slot on the others.
+    secret = "link-secret"
+    owner = 449066726
+    monkeypatch.setenv("VPNW_AWG_LINK_SECRET", secret)
+    monkeypatch.setenv(
+        "VPNW_AWG_SERVERS",
+        json.dumps([
+            {"id": "nl", "label": "Нидерланды", "host": "127.0.0.1", "password": "p", "listen_port": 443},
+            {"id": "fi", "label": "Финляндия", "host": "2.2.2.2", "password": "p", "listen_port": 3478},
+            {"id": "tr", "label": "Турция", "host": "3.3.3.3", "password": "p", "listen_port": 3478},
+        ]),
+    )
+
+    class ActiveRemnawave:
+        def __init__(self, config) -> None:
+            self.config = config
+
+        def active_user(self, telegram_id: int):
+            return {"uuid": "u", "hwidDeviceLimit": 1}
+
+    issued: list[tuple[object, int]] = []
+    suspended: list[tuple[object, int]] = []
+
+    def issue(self, telegram_id: int, *, remnawave_uuid=None):
+        issued.append((self.server_id, telegram_id))
+        return {"config": "[Interface]\nPrivateKey = k\n", "client_name": "x", "reused": False}
+
+    def suspend(self, telegram_id: int) -> bool:
+        suspended.append((self.server_id, telegram_id))
+        return True
+
+    monkeypatch.setattr(server_module, "RemnawaveClient", ActiveRemnawave)
+    monkeypatch.setattr(server_module.AwgFallbackService, "issue", issue)
+    monkeypatch.setattr(server_module.AwgFallbackService, "suspend", suspend)
+    token = issue_token(secret, owner)
+
+    response = client.get(f"/api/awg/{owner}/config", params={"token": token, "server": "fi"})
+    assert response.status_code == 200
+
+    # Issued on fi; slot 1's peer id == the owner id.
+    assert issued == [("fi", owner)]
+    # Demoted on the OTHER usable servers only. nl is the default -> legacy storage
+    # (server_id None); tr keeps its own id. fi (the one just issued) is never suspended.
+    assert set(suspended) == {(None, owner), ("tr", owner)}
+    assert ("fi", owner) not in suspended
