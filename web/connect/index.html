@@ -8,184 +8,322 @@
 <link rel="icon" href="data:,">
 <title>Fodder VPN</title>
 <style>
+@layer reset, tokens, material, layout, components;
+
+@layer reset{
+  *,*::before,*::after{box-sizing:border-box}
+  [hidden]{display:none!important}
+  body,h1,h2,p,figure{margin:0}
+  button{font:inherit;color:inherit}
+}
+
+@layer tokens{
   :root{
-    --ink:#101a3c;--soft:#3b466f;--muted:#69739a;--card:rgba(255,255,255,.72);
-    --card-strong:rgba(255,255,255,.88);--edge:rgba(255,255,255,.82);
-    --accent:#4b5cff;--go1:#10c48a;--go2:#0bb6c6;--on-go:#04150f;
-    --shadow:0 1px 2px rgba(16,26,60,.06),0 16px 38px rgba(16,26,60,.14);
-    --base-a:#e9f1ff;--base-b:#f4edff;--b1:#7aa8ff;--b2:#b98cff;--b3:#5fe6cf;
-    --sans:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"SF Pro Text",Roboto,sans-serif;
+    color-scheme:light dark;
+
+    /* Ink */
+    --ink-l:#0d1226;      --ink-d:#f3f5ff;
+    --soft-l:#414c72;     --soft-d:#b9c2e4;
+    --muted-l:#6e789e;    --muted-d:#8e98c0;
+
+    /* Aurora behind the glass — this is what the material refracts. */
+    --bg-l:#eef2ff;       --bg-d:#05070f;
+    --a1-l:#5b8cff;       --a1-d:#2a3ec9;
+    --a2-l:#a970ff;       --a2-d:#6d2bd9;
+    --a3-l:#2fd8bd;       --a3-d:#0a8f80;
+
+    /* Glass body + specular rim */
+    --pane-l:rgba(255,255,255,.52);   --pane-d:rgba(255,255,255,.055);
+    --pane-hi-l:rgba(255,255,255,.78);--pane-hi-d:rgba(255,255,255,.10);
+    --rim-l:rgba(255,255,255,.95);    --rim-d:rgba(255,255,255,.42);
+    --rim-dim-l:rgba(120,140,200,.22);--rim-dim-d:rgba(255,255,255,.05);
+    --sheen-l:rgba(255,255,255,.55);  --sheen-d:rgba(255,255,255,.10);
+
+    --accent-l:#3f56ff;   --accent-d:#8ea3ff;
+    --go1-l:#00c98d;      --go1-d:#00e0a0;
+    --go2-l:#0aa7d8;      --go2-d:#22bdea;
+    --on-go-l:#00160f;    --on-go-d:#00160f;
+
+    --ink:var(--ink-l); --soft:var(--soft-l); --muted:var(--muted-l);
+    --bg:var(--bg-l); --a1:var(--a1-l); --a2:var(--a2-l); --a3:var(--a3-l);
+    --pane:var(--pane-l); --pane-hi:var(--pane-hi-l); --rim:var(--rim-l);
+    --rim-dim:var(--rim-dim-l); --sheen:var(--sheen-l);
+    --accent:var(--accent-l); --go1:var(--go1-l); --go2:var(--go2-l); --on-go:var(--on-go-l);
+
+    @media (prefers-color-scheme:dark){
+      --ink:var(--ink-d); --soft:var(--soft-d); --muted:var(--muted-d);
+      --bg:var(--bg-d); --a1:var(--a1-d); --a2:var(--a2-d); --a3:var(--a3-d);
+      --pane:var(--pane-d); --pane-hi:var(--pane-hi-d); --rim:var(--rim-d);
+      --rim-dim:var(--rim-dim-d); --sheen:var(--sheen-d);
+      --accent:var(--accent-d); --go1:var(--go1-d); --go2:var(--go2-d); --on-go:var(--on-go-d);
+    }
+    @supports (color:light-dark(white,black)){
+      --ink:light-dark(var(--ink-l),var(--ink-d));
+      --soft:light-dark(var(--soft-l),var(--soft-d));
+      --muted:light-dark(var(--muted-l),var(--muted-d));
+      --bg:light-dark(var(--bg-l),var(--bg-d));
+      --a1:light-dark(var(--a1-l),var(--a1-d));
+      --a2:light-dark(var(--a2-l),var(--a2-d));
+      --a3:light-dark(var(--a3-l),var(--a3-d));
+      --pane:light-dark(var(--pane-l),var(--pane-d));
+      --pane-hi:light-dark(var(--pane-hi-l),var(--pane-hi-d));
+      --rim:light-dark(var(--rim-l),var(--rim-d));
+      --rim-dim:light-dark(var(--rim-dim-l),var(--rim-dim-d));
+      --sheen:light-dark(var(--sheen-l),var(--sheen-d));
+      --accent:light-dark(var(--accent-l),var(--accent-d));
+      --go1:light-dark(var(--go1-l),var(--go1-d));
+      --go2:light-dark(var(--go2-l),var(--go2-d));
+      --on-go:light-dark(var(--on-go-l),var(--on-go-d));
+    }
+
+    --r-lg:1.75rem; --r-md:1.15rem; --r-sm:.85rem;
+    --lift:0 .5px 1px rgba(9,14,40,.10), 0 6px 16px -6px rgba(9,14,40,.22), 0 22px 48px -22px rgba(9,14,40,.42);
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI Variable Text","Segoe UI",system-ui,Roboto,sans-serif;
+    accent-color:var(--accent);
   }
-  @media (prefers-color-scheme:dark){:root{
-    --ink:#f0f3ff;--soft:#c5cce8;--muted:#98a3c9;--card:rgba(22,29,56,.7);
-    --card-strong:rgba(28,36,66,.88);--edge:rgba(255,255,255,.15);
-    --shadow:0 1px 2px rgba(0,0,0,.3),0 18px 44px rgba(0,0,0,.5);
-    --base-a:#090f22;--base-b:#160a27;--b1:#2f45c9;--b2:#7a34e6;--b3:#0f9f8c;
-  }}
-  *{box-sizing:border-box} [hidden]{display:none!important}
-  html{font-size:100%}
-  body{margin:0;min-height:100dvh;color:var(--ink);font-family:var(--sans);font-size:1.04rem;line-height:1.5;
-    -webkit-font-smoothing:antialiased;padding:max(1rem,env(safe-area-inset-top)) 1rem calc(2.5rem + env(safe-area-inset-bottom));
-    background:radial-gradient(58vw 58vw at 8% 2%,color-mix(in srgb,var(--b1),transparent 44%),transparent 62%),
-      radial-gradient(52vw 52vw at 96% 12%,color-mix(in srgb,var(--b2),transparent 48%),transparent 62%),
-      radial-gradient(64vw 64vw at 50% 100%,color-mix(in srgb,var(--b3),transparent 52%),transparent 64%),
-      linear-gradient(155deg,var(--base-a),var(--base-b));background-attachment:fixed}
-  .wrap{max-width:31rem;margin:0 auto}
-  header{text-align:center;padding:.45rem .25rem 1rem}
-  .brand{display:inline-flex;align-items:center;gap:.55rem;font-weight:750;font-size:.94rem}
-  .mark{width:2rem;height:2rem;border-radius:.65rem;background:linear-gradient(145deg,var(--go1),var(--accent));display:grid;place-items:center;color:#fff}
-  h1{font-size:clamp(1.65rem,7vw,2.1rem);line-height:1.1;letter-spacing:-.035em;margin:1rem 0 .38rem;text-wrap:balance}
-  .lead{max-width:34ch;margin:0 auto;color:var(--soft);font-size:.97rem}
-  .stack{display:grid;gap:.9rem}
-  .card{background:var(--card);border:1px solid var(--edge);border-radius:1.35rem;padding:1.05rem;box-shadow:var(--shadow)}
-  @supports(backdrop-filter:blur(1px)){.card{backdrop-filter:saturate(150%) blur(14px)}}
-  .eyebrow{font-size:.76rem;letter-spacing:.07em;text-transform:uppercase;color:var(--accent);font-weight:800;margin:0 0 .2rem}
-  .card h2{font-size:1.22rem;letter-spacing:-.02em;margin:.15rem 0 .35rem}
-  .card p{color:var(--soft);margin:.35rem 0;font-size:.94rem}
-  .primary{border-color:color-mix(in srgb,var(--go2),transparent 45%)}
-  .legacy{border-style:dashed}
-  .features{display:grid;grid-template-columns:1fr 1fr;gap:.45rem;margin:.8rem 0 0}
-  .feature{background:color-mix(in srgb,var(--card-strong),transparent 8%);border:1px solid var(--edge);border-radius:.8rem;padding:.58rem .62rem;font-size:.84rem;color:var(--soft)}
-  .feature b{display:block;color:var(--ink);font-size:.9rem}
-  .actions{display:grid;gap:.55rem;margin-top:.9rem}
-  .btn{appearance:none;display:flex;align-items:center;justify-content:center;width:100%;min-height:3.2rem;padding:.8rem 1rem;border-radius:.92rem;
-    border:1px solid transparent;font:700 1rem var(--sans);text-align:center;text-decoration:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
-  .btn:active{transform:scale(.985)} .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-  .btn-go{background:linear-gradient(145deg,var(--go1),var(--go2));color:var(--on-go);box-shadow:0 8px 22px rgba(11,182,198,.28)}
-  .btn-soft{background:var(--card-strong);color:var(--ink);border-color:var(--edge)}
-  .btn-link{background:transparent;color:var(--accent);border-color:color-mix(in srgb,var(--accent),transparent 58%)}
-  .status{display:flex;align-items:flex-start;gap:.7rem}
-  .status-icon{width:2rem;height:2rem;flex:none;border-radius:50%;display:grid;place-items:center;background:var(--card-strong)}
-  .status b{display:block}.status span{display:block;color:var(--soft);font-size:.88rem;margin-top:.08rem}
-  .spinner{width:1rem;height:1rem;border:.16rem solid color-mix(in srgb,var(--accent),transparent 72%);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  @media (prefers-reduced-motion:reduce){.spinner{animation:none}}
-  .choice{padding:.95rem 1rem}.choice h2{font-size:1.05rem}.choice p{font-size:.9rem}
-  .price-list{display:grid;gap:.55rem;margin-top:.8rem}
-  .price{display:grid;grid-template-columns:1fr auto;gap:.25rem .7rem;align-items:center;padding:.78rem;border:1px solid var(--edge);border-radius:.9rem;background:var(--card-strong)}
-  .price b{font-size:.96rem}.price strong{font-size:1.05rem;color:var(--ink)}
-  .price span{grid-column:1/-1;color:var(--soft);font-size:.82rem}
-  .periods{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.65rem;color:var(--soft);font-size:.82rem}
-  .periods span{padding:.25rem .48rem;border-radius:999px;background:var(--card-strong);border:1px solid var(--edge)}
-  .share-hero{padding:.85rem;border-radius:1rem;background:linear-gradient(135deg,color-mix(in srgb,var(--go1),transparent 82%),color-mix(in srgb,var(--accent),transparent 84%));border:1px solid color-mix(in srgb,var(--go2),transparent 58%);margin:.75rem 0}
-  .share-hero strong{display:block;font-size:1.08rem}.share-hero span{display:block;color:var(--soft);font-size:.88rem;margin-top:.2rem}
-  .reward-grid{display:grid;grid-template-columns:1fr 1fr;gap:.45rem;margin:.7rem 0}
-  .reward{padding:.65rem;border-radius:.8rem;background:var(--card-strong);border:1px solid var(--edge);font-size:.82rem;color:var(--soft)}
-  .reward b{display:block;color:var(--ink);font-size:.9rem;margin-bottom:.15rem}
-  .fine{font-size:.78rem!important;color:var(--muted)!important}
-  .product-nav{display:grid;grid-template-columns:1fr 1fr;gap:.35rem;padding:.35rem;background:var(--card);border:1px solid var(--edge);
-    border-radius:1rem;box-shadow:var(--shadow);backdrop-filter:saturate(150%) blur(14px)}
-  .product-nav a{display:flex;align-items:center;justify-content:center;min-height:2.9rem;padding:.65rem .7rem;border-radius:.75rem;
-    color:var(--soft);font-weight:750;font-size:.9rem;text-decoration:none;text-align:center}
-  .product-nav a[aria-current="page"]{background:var(--card-strong);color:var(--ink);box-shadow:0 3px 12px rgba(16,26,60,.1)}
-  .product-nav a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-  footer{text-align:center;color:var(--muted);font-size:.78rem;margin:1.15rem 0 0}
+}
+
+@layer layout{
+  body{
+    min-height:100dvh;color:var(--ink);background:var(--bg);
+    font-family:var(--sans);font-size:1.02rem;line-height:1.5;letter-spacing:-.011em;
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+    padding:max(.75rem,env(safe-area-inset-top)) 1rem calc(2.75rem + env(safe-area-inset-bottom));
+  }
+  /* Fixed layer, not background-attachment: iOS WebViews jitter badly on the latter. */
+  .aurora{position:fixed;inset:-20% -10%;z-index:-1;pointer-events:none;
+    background:
+      radial-gradient(38rem 32rem at 12% 4%, color-mix(in oklab,var(--a1),transparent 42%), transparent 68%),
+      radial-gradient(34rem 30rem at 92% 14%, color-mix(in oklab,var(--a2),transparent 48%), transparent 66%),
+      radial-gradient(40rem 34rem at 50% 104%, color-mix(in oklab,var(--a3),transparent 52%), transparent 68%);
+    filter:blur(.5px);animation:drift 34s ease-in-out infinite alternate}
+  @keyframes drift{
+    from{transform:translate3d(0,0,0) scale(1)}
+    to{transform:translate3d(0,-2.5%,0) scale(1.07)}
+  }
+  .wrap{max-width:32rem;margin-inline:auto}
+  .stack{display:grid;gap:.85rem}
+  header{text-align:center;padding:1.1rem .25rem 1.35rem}
+  footer{text-align:center;color:var(--muted);font-size:.76rem;margin-block:1.5rem 0;text-wrap:balance}
+}
+
+@layer material{
+  /* One material, used everywhere: translucent body, specular rim, top sheen. */
+  .glass{position:relative;isolation:isolate;background:var(--pane);border-radius:var(--r-lg);box-shadow:var(--lift)}
+  .glass::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
+    background:linear-gradient(150deg,var(--rim),var(--rim-dim) 34%,transparent 62%,var(--rim) 100%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    mask-composite:exclude}
+  .glass::after{content:"";position:absolute;inset:0 0 auto;height:52%;border-radius:inherit;pointer-events:none;
+    background:linear-gradient(180deg,var(--sheen),transparent 78%);opacity:.75;z-index:-1}
+  @supports (backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px)){
+    .glass{-webkit-backdrop-filter:blur(28px) saturate(190%);backdrop-filter:blur(28px) saturate(190%)}
+  }
+  @supports (corner-shape:squircle){ .glass{corner-shape:squircle} }
+
+  /* Accessibility: some people get motion sick or lose legibility on glass. */
+  @media (prefers-reduced-transparency:reduce){
+    .glass{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--bg)}
+    .glass::after{display:none}
+    .aurora{opacity:.35}
+  }
+  @media (prefers-reduced-motion:reduce){ .aurora{animation:none} }
+  @media (prefers-contrast:more){ .glass{background:var(--bg)} }
+}
+
+@layer components{
+  .brand{display:inline-flex;align-items:center;gap:.6rem;font-weight:700;font-size:.92rem;letter-spacing:.01em}
+  .mark{width:2.15rem;height:2.15rem;border-radius:.72rem;display:grid;place-items:center;color:#fff;font-size:1.05rem;
+    background:linear-gradient(145deg,var(--go1),var(--accent));
+    box-shadow:0 6px 18px -6px color-mix(in oklab,var(--accent),transparent 40%),inset 0 1px 0 rgba(255,255,255,.45)}
+  h1{font-size:clamp(1.9rem,8vw,2.5rem);line-height:1.05;letter-spacing:-.038em;font-weight:700;
+    margin-block:1.15rem .5rem;text-wrap:balance}
+  .lead{max-width:32ch;margin-inline:auto;color:var(--soft);font-size:.98rem;text-wrap:pretty}
+
+  .card{padding:1.15rem}
+  .eyebrow{font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-block:0 .3rem}
+  .card h2{font-size:1.24rem;letter-spacing:-.026em;font-weight:650;margin-block:.1rem .4rem;text-wrap:balance}
+  .card p{color:var(--soft);margin-block:.4rem;font-size:.93rem;text-wrap:pretty}
+  .card p b{color:var(--ink);font-weight:650}
+  .fine{font-size:.78rem;color:var(--muted)}
+  .legacy::before{background:linear-gradient(150deg,var(--rim-dim),transparent 60%,var(--rim-dim))}
+
+  .tiles{display:grid;grid-template-columns:1fr 1fr;gap:.45rem;margin-block-start:.9rem}
+  .tile{padding:.65rem .7rem;border-radius:var(--r-sm);font-size:.82rem;color:var(--soft);
+    background:var(--pane-hi);box-shadow:inset 0 0 0 1px var(--rim-dim),inset 0 1px 0 var(--rim)}
+  .tile b{display:block;color:var(--ink);font-size:.89rem;font-weight:650;margin-block-end:.05rem}
+
+  .actions{display:grid;gap:.5rem;margin-block-start:1rem}
+  .btn{position:relative;isolation:isolate;appearance:none;display:flex;align-items:center;justify-content:center;gap:.4rem;
+    inline-size:100%;min-block-size:3.25rem;padding:.85rem 1.1rem;border:0;border-radius:var(--r-md);
+    font-weight:650;font-size:1rem;letter-spacing:-.012em;text-align:center;text-decoration:none;cursor:pointer;
+    -webkit-tap-highlight-color:transparent;transition:transform .18s cubic-bezier(.2,.9,.3,1),filter .18s}
+  @supports (corner-shape:squircle){ .btn{corner-shape:squircle} }
+  .btn::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
+    background:linear-gradient(180deg,rgba(255,255,255,.55),transparent 55%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    mask-composite:exclude}
+  .btn:active{transform:scale(.978)}
+  .btn:focus-visible{outline:2.5px solid var(--accent);outline-offset:3px}
+  @media (prefers-reduced-motion:reduce){ .btn{transition:none} }
+  .btn-go{color:var(--on-go);background:linear-gradient(150deg,var(--go1),var(--go2));
+    box-shadow:0 8px 24px -8px color-mix(in oklab,var(--go2),transparent 35%),inset 0 1px 0 rgba(255,255,255,.4)}
+  .btn-soft{color:var(--ink);background:var(--pane-hi);box-shadow:inset 0 0 0 1px var(--rim-dim),inset 0 1px 0 var(--rim)}
+  .btn-quiet{color:var(--accent);background:transparent;box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--accent),transparent 62%)}
+
+  .status{display:flex;align-items:flex-start;gap:.8rem;padding:1rem 1.1rem}
+  .status-icon{inline-size:2.2rem;block-size:2.2rem;flex:none;border-radius:50%;display:grid;place-items:center;font-size:1rem;
+    background:var(--pane-hi);box-shadow:inset 0 0 0 1px var(--rim-dim),inset 0 1px 0 var(--rim)}
+  .status b{display:block;font-weight:650;letter-spacing:-.015em}
+  .status span{display:block;color:var(--soft);font-size:.88rem;margin-block-start:.12rem;text-wrap:pretty}
+  .spinner{inline-size:1.05rem;block-size:1.05rem;border:.15rem solid color-mix(in oklab,var(--accent),transparent 74%);
+    border-top-color:var(--accent);border-radius:50%;animation:spin .75s linear infinite}
+  @keyframes spin{to{transform:rotate(1turn)}}
+  @media (prefers-reduced-motion:reduce){ .spinner{animation:none;border-top-color:transparent} }
+
+  .nav{display:grid;grid-template-columns:1fr 1fr;gap:.3rem;padding:.32rem;border-radius:var(--r-md)}
+  .nav a{display:flex;align-items:center;justify-content:center;min-block-size:2.85rem;padding:.6rem;border-radius:.88rem;
+    color:var(--soft);font-weight:650;font-size:.9rem;text-decoration:none;text-align:center}
+  .nav a[aria-current="page"]{color:var(--ink);background:var(--pane-hi);
+    box-shadow:inset 0 0 0 1px var(--rim-dim),inset 0 1px 0 var(--rim),0 4px 12px -6px rgba(9,14,40,.3)}
+  .nav a:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px}
+
+  .plans{display:grid;gap:.5rem;margin-block-start:.9rem}
+  .plan{display:grid;grid-template-columns:1fr auto;gap:.15rem .8rem;align-items:baseline;padding:.85rem .9rem;
+    border-radius:var(--r-sm);background:var(--pane-hi);box-shadow:inset 0 0 0 1px var(--rim-dim),inset 0 1px 0 var(--rim)}
+  .plan b{font-size:.95rem;font-weight:650}
+  .plan strong{font-size:1.06rem;font-weight:700;letter-spacing:-.02em;
+    background:linear-gradient(150deg,var(--go1),var(--go2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .plan span{grid-column:1/-1;color:var(--muted);font-size:.81rem;margin-block-start:.15rem}
+  .chips{display:flex;flex-wrap:wrap;gap:.32rem;margin-block-start:.7rem}
+  .chips span{padding:.3rem .6rem;border-radius:999px;color:var(--soft);font-size:.79rem;
+    background:var(--pane-hi);box-shadow:inset 0 0 0 1px var(--rim-dim)}
+
+  .gift{padding:1rem;border-radius:var(--r-md);margin-block:.85rem;
+    background:linear-gradient(140deg,color-mix(in oklab,var(--go1),transparent 84%),color-mix(in oklab,var(--accent),transparent 86%));
+    box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--go2),transparent 62%),inset 0 1px 0 var(--rim)}
+  .gift strong{display:block;font-size:1.5rem;font-weight:700;letter-spacing:-.03em}
+  .gift span{display:block;color:var(--soft);font-size:.89rem;margin-block-start:.15rem;text-wrap:pretty}
+  .linkbox{display:block;inline-size:100%;margin-block-start:.7rem;padding:.7rem .8rem;border-radius:var(--r-sm);
+    font:inherit;font-size:.84rem;color:var(--ink);word-break:break-all;text-align:start;
+    background:var(--pane-hi);box-shadow:inset 0 0 0 1px var(--rim-dim)}
+}
 </style>
 </head>
 <body>
+<div class="aurora" aria-hidden="true"></div>
+
 <main class="wrap">
   <header>
     <span class="brand"><span class="mark" aria-hidden="true">🛡</span> Fodder VPN</span>
-    <h1>Всё для VPN — в одном месте</h1>
-    <p class="lead">Подключите готовый VPN или настройте собственный сервер через прежний мастер.</p>
+    <h1>Интернет без границ — за одну минуту</h1>
+    <p class="lead">Готовый VPN для России или собственный сервер. Выбирайте, что ближе.</p>
   </header>
 
   <div class="stack">
-    <nav class="product-nav" aria-label="Разделы Fodder VPN">
+    <nav class="glass nav" aria-label="Разделы Fodder VPN">
       <a href="/portal/?v=20260722-3" aria-current="page">🛡 VPN-подписка</a>
       <a href="/wizard/?v=20260722-3">🛠 Свой сервер</a>
     </nav>
 
-    <section class="card status" id="loading" aria-live="polite">
+    <section class="glass status" id="loading" aria-live="polite">
       <span class="status-icon"><span class="spinner" aria-hidden="true"></span></span>
-      <div><b>Подключаем аккаунт…</b><span>Telegram используется только для проверки вашей подписки.</span></div>
+      <div><b>Подключаем аккаунт…</b><span>Telegram нужен только для проверки вашей подписки.</span></div>
     </section>
 
-    <section class="card status" id="locked" hidden aria-live="polite">
+    <section class="glass status" id="locked" hidden aria-live="polite">
       <span class="status-icon" aria-hidden="true">🔐</span>
-      <div style="width:100%">
+      <div style="inline-size:100%">
         <b id="locked-title">Откройте портал из бота</b>
         <span id="locked-copy">Так мы безопасно определим вашу подписку и выдадим именно ваш профиль.</span>
-        <a class="btn btn-go" href="https://t.me/foddervpnbot?start=portal" target="_blank" rel="noopener noreferrer">Открыть Fodder VPN в Telegram</a>
+        <div class="actions">
+          <a class="btn btn-go" href="https://t.me/foddervpnbot?start=portal" target="_blank" rel="noopener noreferrer">Открыть в Telegram</a>
+        </div>
       </div>
     </section>
 
     <div class="stack" id="portal" hidden>
-      <section class="card status" aria-live="polite">
+      <section class="glass status" aria-live="polite">
         <span class="status-icon" aria-hidden="true">✅</span>
         <div><b>Аккаунт подключён</b><span id="account-status">Проверяем подписку…</span></div>
       </section>
 
-      <section class="card primary">
+      <section class="glass card">
         <p class="eyebrow">Основной продукт</p>
         <h2>🌍 Готовый Fodder VPN</h2>
-        <p>Ничего настраивать на сервере не нужно. Выберите страну, установите AmneziaWG и подключитесь.</p>
-        <div class="features">
-          <div class="feature"><b>4 страны</b>NL · FI · TR · US</div>
-          <div class="feature"><b>Для РФ</b>AmneziaWG</div>
-          <div class="feature"><b>1, 3 или 5 устройств</b>Каждому свой ключ</div>
-          <div class="feature"><b>Семейная ссылка</b>Это устройство №2</div>
+        <p>Настраивать сервер не нужно. Выберите страну, поставьте AmneziaWG и подключайтесь.</p>
+        <div class="tiles">
+          <div class="tile"><b>Три страны</b>NL · FI · US</div>
+          <div class="tile"><b>Для РФ</b>AmneziaWG</div>
+          <div class="tile"><b>1, 3 или 5 устройств</b>Каждому свой ключ</div>
+          <div class="tile"><b>Семейная ссылка</b>Это устройство №2</div>
         </div>
         <div class="actions">
           <a class="btn btn-go" id="personal-link" href="#">🛡 Подключить мой VPN</a>
         </div>
       </section>
 
-      <section class="card" id="family-card">
+      <section class="glass card" id="family-card">
         <p class="eyebrow">Одно действие — два способа</p>
         <h2>👵 Поделиться VPN с близким</h2>
         <p><b>«Открыть» и «Скопировать» — это одна и та же семейная ссылка.</b> Она выдаёт близкому отдельный профиль без Telegram и занимает устройство №2 вашего тарифа.</p>
         <p id="family-status">Доступно на тарифах от 3 устройств.</p>
         <div class="actions" id="family-actions">
           <a class="btn btn-soft" id="family-link" href="#">Открыть страницу для близкого →</a>
-          <button class="btn btn-link" id="copy-family" type="button">🔗 Скопировать эту же ссылку</button>
+          <button class="btn btn-quiet" id="copy-family" type="button">🔗 Скопировать эту же ссылку</button>
         </div>
       </section>
 
-      <section class="card">
+      <section class="glass card">
         <p class="eyebrow">Тарифы</p>
-        <h2>Вы платите за устройства и срок</h2>
-        <p>Во всех тарифах: четыре страны, безлимитный трафик и отдельный защищённый ключ на каждое устройство.</p>
-        <div class="price-list">
-          <div class="price"><b>Личный · 1 устройство</b><strong>от 199 ₽</strong><span>30 дней 199 ₽ · 90 дней 499 ₽ · 180 дней 899 ₽ · год 1 490 ₽</span></div>
-          <div class="price"><b>Вместе · 3 устройства</b><strong>от 299 ₽</strong><span>30 дней 299 ₽ · 90 дней 799 ₽ · 180 дней 1 390 ₽ · год 2 390 ₽</span></div>
-          <div class="price"><b>Семья · 5 устройств</b><strong>от 399 ₽</strong><span>30 дней 399 ₽ · 90 дней 1 090 ₽ · 180 дней 1 890 ₽ · год 3 290 ₽</span></div>
+        <h2>Платите за устройства и срок</h2>
+        <p>Во всех тарифах: все страны, безлимитный трафик и отдельный ключ на каждое устройство.</p>
+        <div class="plans">
+          <div class="plan"><b>Личный · 1 устройство</b><strong>от 199 ₽</strong><span>30 дней 199 ₽ · 90 дней 499 ₽ · 180 дней 899 ₽ · год 1 490 ₽</span></div>
+          <div class="plan"><b>Вместе · 3 устройства</b><strong>от 299 ₽</strong><span>30 дней 299 ₽ · 90 дней 799 ₽ · 180 дней 1 390 ₽ · год 2 390 ₽</span></div>
+          <div class="plan"><b>Семья · 5 устройств</b><strong>от 399 ₽</strong><span>30 дней 399 ₽ · 90 дней 1 090 ₽ · 180 дней 1 890 ₽ · год 3 290 ₽</span></div>
         </div>
-        <div class="periods" aria-label="Доступные сроки"><span>1 месяц</span><span>3 месяца</span><span>6 месяцев</span><span>1 год</span></div>
-        <a class="btn btn-go" href="https://t.me/foddervpnbot" target="_blank" rel="noopener noreferrer">Выбрать тариф в боте →</a>
+        <div class="chips" aria-label="Доступные сроки"><span>1 месяц</span><span>3 месяца</span><span>6 месяцев</span><span>1 год</span></div>
+        <div class="actions">
+          <a class="btn btn-go" href="https://t.me/foddervpnbot" target="_blank" rel="noopener noreferrer">Выбрать тариф в боте →</a>
+        </div>
       </section>
 
-      <section class="card">
+      <section class="glass card">
         <p class="eyebrow">Делиться выгодно</p>
-        <h2>🎁 Пригласите друга — VPN станет дешевле</h2>
-        <div class="share-hero">
-          <strong>Одна рекомендация приносит бонус сейчас и дальше</strong>
-          <span>Друг получает приятный старт, а вы — баланс на следующие продления.</span>
+        <h2>🎁 Позовите друга — ему сразу 100 ₽</h2>
+        <div class="gift">
+          <strong>+100 ₽ другу</strong>
+          <span>Начисляются на баланс сразу при первом входе по вашей ссылке — до всякой оплаты. Хватает на бо́льшую часть первого месяца.</span>
         </div>
-        <div class="reward-grid">
-          <div class="reward"><b>Другу +100 ₽</b>на VPN-баланс после первого пополнения от 100 ₽</div>
-          <div class="reward"><b>Вам +100 ₽</b>после его первого пополнения</div>
-          <div class="reward" style="grid-column:1/-1"><b>И ещё 25%</b>на ваш VPN-баланс с каждого его следующего пополнения</div>
+        <p>Отправьте эту ссылку родным и друзьям — она одна на всех и работает всегда:</p>
+        <code class="linkbox" id="invite-url">https://t.me/foddervpnbot?start=friends</code>
+        <div class="actions">
+          <button class="btn btn-go" id="copy-invite" type="button">🔗 Скопировать ссылку для друзей</button>
+          <a class="btn btn-quiet" href="https://t.me/foddervpnbot?start=friends" target="_blank" rel="noopener noreferrer">Проверить, как её увидит друг →</a>
         </div>
-        <p><b>Чем больше друзей реально пользуются VPN, тем реже вам приходится платить за своё продление.</b></p>
-        <p class="fine">Бонусы начисляются на внутренний баланс Fodder VPN и расходуются на подписку; вывод в деньги не предусмотрен. Реферальная ссылка находится в боте: «Пригласить друзей».</p>
-        <a class="btn btn-go" href="https://t.me/foddervpnbot" target="_blank" rel="noopener noreferrer">🤝 Получить мою ссылку в боте</a>
+        <p class="fine">Бонус даётся один раз на человека. Ваша личная реферальная ссылка — с выплатой вам 100 ₽ и 25 % с его пополнений — находится в боте, в разделе «Пригласить друзей».</p>
       </section>
 
-      <section class="card legacy">
+      <section class="glass card legacy">
         <p class="eyebrow">Fodders VPN 1 · сохранён полностью</p>
         <h2>🛠 Настроить свой сервер</h2>
-        <p>Есть собственный VPS? Прежний Wizard установит AmneziaWG, создаст профили и поможет управлять сохранёнными серверами.</p>
-        <a class="btn btn-soft" id="wizard-link" href="/wizard/?v=20260722-3">Открыть мастер своего сервера →</a>
+        <p>Есть собственный VPS? Прежний мастер установит AmneziaWG, создаст профили и поможет управлять серверами.</p>
+        <div class="actions">
+          <a class="btn btn-soft" id="wizard-link" href="/wizard/?v=20260722-3">Открыть мастер своего сервера →</a>
+        </div>
       </section>
 
-      <section class="card choice">
+      <section class="glass card">
         <h2>Что выбрать?</h2>
-        <p><b>Готовый Fodder VPN</b> — если нужен интернет прямо сейчас. <b>Свой сервер</b> — если вы арендуете VPS и хотите управлять им самостоятельно.</p>
+        <p><b>Готовый Fodder VPN</b> — если интернет нужен прямо сейчас. <b>Свой сервер</b> — если вы арендуете VPS и хотите управлять им сами.</p>
       </section>
     </div>
   </div>
-  <footer>Fodder VPN · каждому устройству свой ключ · четыре страны · свой сервер по желанию</footer>
+
+  <footer>Fodder VPN · каждому устройству свой ключ · без рекламы и лимитов</footer>
 </main>
 
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -257,19 +395,31 @@
     loading.hidden=true;locked.hidden=true;portal.hidden=false;
   }
 
-  document.getElementById("copy-family").addEventListener("click",async function(){
-    if(!familyUrl)return;
-    var button=this;
-    try{
-      if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error("clipboard unavailable");
-      await navigator.clipboard.writeText(familyUrl);
-      button.textContent="✅ Ссылка скопирована";
-      if(tg&&tg.HapticFeedback)tg.HapticFeedback.notificationOccurred("success");
-      setTimeout(function(){button.textContent="🔗 Скопировать семейную ссылку";},1800);
-    }catch(e){
-      button.textContent="Откройте страницу и скопируйте адрес";
-    }
-  });
+  // Shared copy helper: restores its own label, so a failed copy still explains itself.
+  function wireCopy(buttonId,getValue,doneLabel,idleLabel){
+    var button=document.getElementById(buttonId);
+    if(!button)return;
+    button.addEventListener("click",async function(){
+      var value=getValue();
+      if(!value)return;
+      try{
+        if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error("clipboard unavailable");
+        await navigator.clipboard.writeText(value);
+        button.textContent=doneLabel;
+        if(tg&&tg.HapticFeedback)tg.HapticFeedback.notificationOccurred("success");
+        setTimeout(function(){button.textContent=idleLabel;},1800);
+      }catch(e){
+        button.textContent="Не вышло — скопируйте ссылку вручную";
+        setTimeout(function(){button.textContent=idleLabel;},2600);
+      }
+    });
+  }
+
+  wireCopy("copy-family",function(){return familyUrl;},"✅ Ссылка скопирована","🔗 Скопировать эту же ссылку");
+  wireCopy("copy-invite",function(){
+    var box=document.getElementById("invite-url");
+    return box?box.textContent.trim():"";
+  },"✅ Скопировано — отправляйте друзьям","🔗 Скопировать ссылку для друзей");
 
   authenticate().catch(function(error){
     showLocked("Не удалось открыть портал",error&&error.message?error.message:"Попробуйте ещё раз из бота.");
