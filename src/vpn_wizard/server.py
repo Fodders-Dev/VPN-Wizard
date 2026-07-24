@@ -2698,33 +2698,13 @@ def _awg_all_services() -> list[AwgFallbackService]:
     ]
 
 
-def _awg_demote_peer_elsewhere(
-    registry: AwgRegistry, keep_server: object, peer_id: int
-) -> None:
-    """Keep one device slot on exactly one server: suspend it on the others.
-
-    The device-limit check only caps the slot *number*; without this, a 1-device
-    buyer who taps all four countries gets four parallel live tunnels. Re-homing
-    the same peer_id makes a second country a MOVE, not a multiplication.
-
-    Best-effort: ``suspend`` is a cheap DB read when no peer exists on a server, so
-    a first issue pays nothing and only a real switch triggers SSH (bounded by the
-    short fallback timeout). A failure must not fail the issue that already
-    succeeded — the 2-minute reconcile is the backstop.
-    """
-    keep_id = getattr(keep_server, "id", None)
-    for server in registry.servers:
-        if not server.usable or server.id == keep_id:
-            continue
-        try:
-            _awg_service_for(server, registry).suspend(peer_id)
-        except Exception as exc:
-            logger.warning(
-                "awg.demote_failed server=%s peer=%s err=%s",
-                server.id,
-                peer_id,
-                _error_message(exc),
-            )
+# NOTE (deliberate product decision, not an oversight): a device slot may hold a
+# peer on EVERY exit at once, so "download several countries and switch freely" —
+# which the bot advertises — works without a round trip through the bot. The cost
+# is that each (slot, server) pair is an independent keypair usable in parallel, so
+# a subscriber could hand different countries to different people. Device count is
+# capped by slot number alone (see required_device_slot below). Revisit if sharing
+# shows up in the numbers.
 
 
 # The AmneziaWG Android client takes the tunnel name from the file's base name and
@@ -2834,6 +2814,14 @@ def _awg_issue_entitled_config(
         raise HTTPException(status_code=404, detail="Unknown AWG server.")
     if server is None or not server.usable:
         raise HTTPException(status_code=503, detail="AWG fallback is not configured.")
+    if not server.enabled:
+        # Disabled exits stay registered so their existing peers keep being
+        # suspended/resumed, but handing out a NEW config there would give the
+        # user a tunnel we already know cannot connect.
+        raise HTTPException(
+            status_code=503,
+            detail="This location is temporarily unavailable. Please pick another one.",
+        )
     try:
         user = RemnawaveClient(RemnawaveConfig.from_env()).active_user(
             entitlement_telegram_id
@@ -2854,9 +2842,6 @@ def _awg_issue_entitled_config(
         )
     except Exception as exc:  # provisioning/SSH failure
         raise HTTPException(status_code=502, detail=f"AWG provisioning failed: {_error_message(exc)}") from exc
-    # This slot now lives on `server`; drop it from the other exits so device_limit
-    # cannot be multiplied by the number of countries.
-    _awg_demote_peer_elsewhere(registry, server, peer_id)
     return _awg_label_config(result["config"], server), server
 
 

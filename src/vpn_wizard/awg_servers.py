@@ -158,6 +158,11 @@ class AwgServer:
     key_path: Optional[str]
     key_content: Optional[str]
     listen_port: Optional[int]
+    # Set false to stop OFFERING an exit while keeping it fully operational, so
+    # peers already issued there can still be suspended/resumed on expiry. Use it
+    # when a box is unreachable (e.g. the provider blocks its UDP port) — dropping
+    # the entry outright would strand those peers with permanent access.
+    enabled: bool = True
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AwgServer":
@@ -166,6 +171,7 @@ class AwgServer:
             raise AwgRegistryError(f"AWG server {data.get('id')!r} has no host.")
         server_id = _require_id(data.get("id"), kind="server")
         return cls(
+            enabled=bool(data.get("enabled", True)),
             id=server_id,
             # Never fall back to the host: labels are served unauthenticated by
             # /api/awg/servers, so a missing label must not publish the IP.
@@ -261,16 +267,26 @@ class AwgRegistry:
         return any(server.usable for server in self.servers)
 
     @property
+    def offerable(self) -> tuple[AwgServer, ...]:
+        """Exits we are willing to hand out new configs for."""
+        return tuple(s for s in self.servers if s.usable and s.enabled)
+
+    @property
     def default_server(self) -> Optional[AwgServer]:
         """The server used when a caller does not name one.
 
         Old links (and the pre-multi-server bot) carry no ``server`` parameter,
-        so this must stay stable: it decides where those users land.
+        so this must stay stable: it decides where those users land. A disabled
+        default would strand them on a known-dead exit, so fall through to the
+        first offerable one.
         """
         if self.default_server_id:
             picked = self.get_server(self.default_server_id)
-            if picked is not None:
+            if picked is not None and picked.enabled:
                 return picked
+        offerable = self.offerable
+        if offerable:
+            return offerable[0]
         return self.servers[0] if self.servers else None
 
     def get_server(self, server_id: Optional[str]) -> Optional[AwgServer]:
@@ -292,10 +308,14 @@ class AwgRegistry:
         return None
 
     def public(self) -> dict[str, Any]:
-        """Payload for the bot/website server picker."""
+        """Payload for the bot/website server picker.
+
+        Only offerable exits: a disabled one stays in the registry so its existing
+        peers keep being suspended/resumed, but must never be presented as a choice.
+        """
         default = self.default_server
         return {
-            "servers": [server.public() for server in self.servers if server.usable],
+            "servers": [server.public() for server in self.offerable],
             "presets": [{"id": preset.id, "label": preset.label} for preset in self.presets],
             "default_server": default.id if default else None,
             "default_preset": self.presets[0].id if self.presets else None,

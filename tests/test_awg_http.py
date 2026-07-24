@@ -461,13 +461,13 @@ def test_awg_read_endpoints_run_off_the_event_loop() -> None:
     assert inspect.iscoroutinefunction(server_module.remnawave_webhook)
 
 
-# --- blocker 2: one device slot lives on exactly one server --------------------
+# --- multi-country: a slot may hold every exit at once -------------------------
 
-def test_issuing_on_a_new_server_demotes_the_same_slot_elsewhere(
+def test_issuing_a_country_does_not_disturb_the_others(
     monkeypatch: pytest.MonkeyPatch, client: TestClient
 ) -> None:
-    # A 1-device buyer tapping several countries must not accumulate parallel live
-    # tunnels: issuing a slot on server B suspends that same slot on the others.
+    # The bot advertises "download several countries, each becomes its own tunnel".
+    # Issuing one must therefore never suspend the same slot elsewhere.
     secret = "link-secret"
     owner = 449066726
     monkeypatch.setenv("VPNW_AWG_LINK_SECRET", secret)
@@ -476,7 +476,6 @@ def test_issuing_on_a_new_server_demotes_the_same_slot_elsewhere(
         json.dumps([
             {"id": "nl", "label": "Нидерланды", "host": "127.0.0.1", "password": "p", "listen_port": 443},
             {"id": "fi", "label": "Финляндия", "host": "2.2.2.2", "password": "p", "listen_port": 3478},
-            {"id": "tr", "label": "Турция", "host": "3.3.3.3", "password": "p", "listen_port": 3478},
         ]),
     )
 
@@ -503,12 +502,54 @@ def test_issuing_on_a_new_server_demotes_the_same_slot_elsewhere(
     monkeypatch.setattr(server_module.AwgFallbackService, "suspend", suspend)
     token = issue_token(secret, owner)
 
-    response = client.get(f"/api/awg/{owner}/config", params={"token": token, "server": "fi"})
-    assert response.status_code == 200
+    assert client.get(f"/api/awg/{owner}/config", params={"token": token, "server": "nl"}).status_code == 200
+    assert client.get(f"/api/awg/{owner}/config", params={"token": token, "server": "fi"}).status_code == 200
 
-    # Issued on fi; slot 1's peer id == the owner id.
-    assert issued == [("fi", owner)]
-    # Demoted on the OTHER usable servers only. nl is the default -> legacy storage
-    # (server_id None); tr keeps its own id. fi (the one just issued) is never suspended.
-    assert set(suspended) == {(None, owner), ("tr", owner)}
-    assert ("fi", owner) not in suspended
+    assert issued == [(None, owner), ("fi", owner)]  # nl is default -> legacy storage
+    assert suspended == []  # nothing revoked behind the user's back
+
+
+# --- disabled exits: hidden from choice, still managed -------------------------
+
+def test_disabled_server_is_hidden_and_refuses_new_configs(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    # An exit whose provider blocks its UDP port must not be offered, and must not
+    # hand out a config we know cannot connect — but it stays in the registry so
+    # peers already issued there keep being suspended/resumed on expiry.
+    secret = "link-secret"
+    monkeypatch.setenv("VPNW_AWG_LINK_SECRET", secret)
+    monkeypatch.setenv(
+        "VPNW_AWG_SERVERS",
+        json.dumps([
+            {"id": "nl", "label": "Нидерланды", "host": "127.0.0.1", "password": "p"},
+            {"id": "tr", "label": "Турция", "host": "3.3.3.3", "password": "p", "enabled": False},
+        ]),
+    )
+
+    listed = client.get("/api/awg/servers")
+    assert [s["id"] for s in listed.json()["servers"]] == ["nl"]
+
+    token = issue_token(secret, 7)
+    blocked = client.get("/api/awg/7/config", params={"token": token, "server": "tr"})
+    assert blocked.status_code == 503
+
+    # Still resolvable internally, so suspend/resume can reach its existing peers.
+    registry = server_module.AwgRegistry.from_env()
+    assert registry.get_server("tr") is not None
+    assert registry.get_server("tr").enabled is False
+
+
+def test_disabled_default_server_falls_through_to_a_live_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VPNW_AWG_DEFAULT_SERVER", "tr")
+    monkeypatch.setenv(
+        "VPNW_AWG_SERVERS",
+        json.dumps([
+            {"id": "tr", "host": "3.3.3.3", "password": "p", "enabled": False},
+            {"id": "nl", "host": "127.0.0.1", "password": "p"},
+        ]),
+    )
+    # Disabling the default must not strand every no-server-param link on it.
+    assert server_module.AwgRegistry.from_env().default_server.id == "nl"
