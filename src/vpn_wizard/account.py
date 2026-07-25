@@ -163,6 +163,24 @@ class AccountStore:
                     PRIMARY KEY (owner_telegram_id, slot)
                 );
 
+                -- Invite codes: the only way to start a trial from the website.
+                -- Telegram is unreachable in Russia without a VPN, so requiring it
+                -- to GET a VPN is circular; an invite lets an existing subscriber
+                -- hand access to someone over SMS or in person instead. Keeping it
+                -- invite-only also avoids advertising a VPN publicly.
+                CREATE TABLE IF NOT EXISTS web_invites (
+                    code TEXT PRIMARY KEY,
+                    issuer_telegram_id INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    expires_at INTEGER,
+                    used_at INTEGER,
+                    used_by INTEGER,
+                    note TEXT
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_web_invites_issuer
+                    ON web_invites(issuer_telegram_id);
+
                 -- Last-seen/traffic per peer, refreshed by the reconcile pass.
                 -- Cached because reading it means SSH-ing every exit, which must
                 -- never happen on a user-facing request.
@@ -800,6 +818,89 @@ class AccountStore:
                 (str(server_id), int(telegram_id)),
             )
             return cur.rowcount > 0
+
+    # --- website invites ---------------------------------------------------
+    def invite_create(
+        self,
+        code: str,
+        issuer_telegram_id: int,
+        *,
+        expires_at: Optional[int] = None,
+        note: Optional[str] = None,
+    ) -> dict[str, Any]:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO web_invites (code, issuer_telegram_id, created_at, expires_at, note)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (str(code), int(issuer_telegram_id), _now(), expires_at, (note or "").strip() or None),
+            )
+        return {"code": str(code), "issuer_telegram_id": int(issuer_telegram_id)}
+
+    def invite_get(self, code: str) -> Optional[dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM web_invites WHERE code = ?", (str(code),)
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "code": str(row["code"]),
+            "issuer_telegram_id": int(row["issuer_telegram_id"]),
+            "created_at": int(row["created_at"]),
+            "expires_at": row["expires_at"],
+            "used_at": row["used_at"],
+            "used_by": row["used_by"],
+            "note": row["note"],
+        }
+
+    def invite_list(self, issuer_telegram_id: int) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM web_invites WHERE issuer_telegram_id = ?
+                ORDER BY created_at DESC
+                """,
+                (int(issuer_telegram_id),),
+            ).fetchall()
+        return [
+            {
+                "code": str(row["code"]),
+                "created_at": int(row["created_at"]),
+                "expires_at": row["expires_at"],
+                "used_at": row["used_at"],
+                "used_by": row["used_by"],
+                "note": row["note"],
+            }
+            for row in rows
+        ]
+
+    def invite_redeem(self, code: str, used_by: int, *, now: Optional[int] = None) -> bool:
+        """Claim an invite. Atomic, so two people cannot use the same code."""
+        stamp = int(now if now is not None else _now())
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE web_invites SET used_at = ?, used_by = ?
+                WHERE code = ? AND used_at IS NULL
+                  AND (expires_at IS NULL OR expires_at > ?)
+                """,
+                (stamp, int(used_by), str(code), stamp),
+            )
+            return cursor.rowcount > 0
+
+    def invite_delete(self, code: str, issuer_telegram_id: int) -> bool:
+        """Withdraw an unused invite."""
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                DELETE FROM web_invites
+                WHERE code = ? AND issuer_telegram_id = ? AND used_at IS NULL
+                """,
+                (str(code), int(issuer_telegram_id)),
+            )
+            return cursor.rowcount > 0
 
     # --- device slots: names and last-seen ---------------------------------
     def awg_get_device_labels(self, owner_telegram_id: int) -> dict[int, str]:

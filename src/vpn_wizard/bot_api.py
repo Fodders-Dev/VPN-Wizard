@@ -61,8 +61,67 @@ class BotApiClient:
         except (urllib.error.URLError, TimeoutError, ValueError, OSError):
             return None
 
+    def _post(self, path: str, payload: dict[str, Any]) -> Optional[dict[str, Any]]:
+        if not self.config.configured:
+            return None
+        request = urllib.request.Request(
+            f"{self.config.base_url}{path}",
+            data=json.dumps(payload).encode("utf-8"),
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {self.config.token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.config.timeout) as response:
+                if response.status not in (200, 201):
+                    return None
+                return json.loads(response.read().decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+            return None
+
     def user_by_telegram_id(self, telegram_id: int) -> Optional[dict[str, Any]]:
         return self._get(f"/users/by-telegram-id/{int(telegram_id)}")
+
+    def create_user(
+        self,
+        telegram_id: int,
+        *,
+        first_name: str = "Гость сайта",
+        referred_by_id: Optional[int] = None,
+    ) -> Optional[dict[str, Any]]:
+        """Register a website signup in the billing bot.
+
+        The id is synthetic (see ``web_signup``) so the rest of the system — trials,
+        AWG peers, device slots, reconcile — keeps working unchanged.
+        """
+        payload: dict[str, Any] = {
+            "telegram_id": int(telegram_id),
+            "first_name": first_name,
+            "language": "ru",
+        }
+        if referred_by_id is not None:
+            payload["referred_by_id"] = int(referred_by_id)
+        return self._post("/users", payload)
+
+    def grant_trial(
+        self,
+        user_id: int,
+        *,
+        days: int,
+        device_limit: int = 1,
+        traffic_limit_gb: Optional[int] = None,
+    ) -> Optional[dict[str, Any]]:
+        payload: dict[str, Any] = {
+            "is_trial": True,
+            "duration_days": int(days),
+            "device_limit": int(device_limit),
+        }
+        if traffic_limit_gb is not None:
+            payload["traffic_limit_gb"] = int(traffic_limit_gb)
+        return self._post(f"/users/{int(user_id)}/subscription", payload)
 
     def referral_code(self, telegram_id: int) -> Optional[str]:
         user = self.user_by_telegram_id(telegram_id)

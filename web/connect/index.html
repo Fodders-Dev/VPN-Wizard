@@ -301,6 +301,20 @@
         </div>
       </section>
 
+      <section class="glass card" id="invites-card" hidden>
+        <p class="eyebrow">Без Telegram</p>
+        <h2>🎟 Пригласить того, у кого нет VPN</h2>
+        <p>В России Telegram без VPN не открывается — а значит человек не может получить
+          VPN через бота. <b>Код приглашения решает это:</b> он вводится на обычном сайте,
+          даёт свой пробный доступ и свой кабинет. Telegram не нужен вообще.</p>
+        <p id="invites-summary" class="fine">Загружаем…</p>
+        <div id="invites-list"></div>
+        <div class="actions">
+          <button class="btn btn-go" id="make-invite" type="button">🎟 Создать приглашение</button>
+        </div>
+        <p class="fine">Код одноразовый. Отправьте его как угодно — SMS, WhatsApp, на бумажке.</p>
+      </section>
+
       <section class="glass card" id="devices-card" hidden>
         <p class="eyebrow">Контроль доступа</p>
         <h2>📱 Мои устройства</h2>
@@ -452,6 +466,7 @@
     if(links.subscription_active){
       personal.href=links.personal_vpn_url;
       loadDevices();
+      loadInvites();
       document.getElementById("account-status").textContent="Подписка активна: "+deviceLimit+" "+deviceWord+". Каждому будет выдан отдельный ключ.";
     }else{
       personal.href="https://t.me/foddervpnbot";
@@ -605,6 +620,78 @@
       // Not entitled or unreachable: hide rather than show a broken panel.
       document.getElementById("devices-card").hidden=true;
     }
+  }
+
+  // --- invites: the only way in for someone who cannot reach Telegram --------
+  async function inviteCall(path,options){
+    if(!creds)throw new Error("no creds");
+    var url="/api/awg/"+encodeURIComponent(creds.tid)+"/invites"+path
+      +(path.indexOf("?")<0?"?":"&")+"token="+encodeURIComponent(creds.token);
+    var response=await fetch(url,Object.assign({headers:{"Accept":"application/json"}},options||{}));
+    var body=null;try{body=await response.json();}catch(e){}
+    if(!response.ok)throw new Error((body&&body.detail)?String(body.detail):String(response.status));
+    return body;
+  }
+  function renderInvites(data){
+    var list=document.getElementById("invites-list");
+    var summary=document.getElementById("invites-summary");
+    var invites=(data&&data.invites)||[];
+    summary.textContent=invites.length
+      ? "Не активировано: "+invites.length+" из "+data.max_outstanding
+        +". Пробный доступ по коду — "+data.trial_days+" дней."
+      : "Пока нет неиспользованных кодов. Можно создать до "+data.max_outstanding+".";
+    list.textContent="";
+    invites.forEach(function(invite){
+      var row=document.createElement("div");
+      row.className="device";
+      var code=document.createElement("b");
+      code.textContent=invite.code;
+      code.style.letterSpacing=".08em";
+      row.appendChild(code);
+
+      var copy=document.createElement("button");
+      copy.type="button";copy.className="act";copy.textContent="📋";copy.title="Скопировать ссылку";
+      copy.addEventListener("click",async function(){
+        var text=invite.url||invite.code;
+        try{ await navigator.clipboard.writeText(text); copy.textContent="✅"; }
+        catch(e){ copy.textContent="✋"; }
+        setTimeout(function(){copy.textContent="📋";},1600);
+      });
+      row.appendChild(copy);
+
+      var drop=document.createElement("button");
+      drop.type="button";drop.className="act danger";drop.textContent="Удалить";
+      drop.addEventListener("click",async function(){
+        if(!window.confirm("Удалить приглашение "+invite.code+"?"))return;
+        try{ await inviteCall("/"+encodeURIComponent(invite.code),{method:"DELETE"}); await loadInvites(); }
+        catch(e){ summary.textContent="Не удалось удалить. Попробуйте позже."; }
+      });
+      row.appendChild(drop);
+
+      var meta=document.createElement("span");
+      meta.className="meta";
+      meta.textContent=invite.url||("Код: "+invite.code);
+      row.appendChild(meta);
+      list.appendChild(row);
+    });
+  }
+  async function loadInvites(){
+    if(!creds)return;
+    try{
+      renderInvites(await inviteCall(""));
+      document.getElementById("invites-card").hidden=false;
+    }catch(e){
+      document.getElementById("invites-card").hidden=true;
+    }
+  }
+  var makeInvite=document.getElementById("make-invite");
+  if(makeInvite){
+    makeInvite.addEventListener("click",async function(){
+      makeInvite.disabled=true;makeInvite.textContent="Создаём…";
+      try{ await inviteCall("",{method:"POST"}); await loadInvites(); }
+      catch(e){ document.getElementById("invites-summary").textContent=e.message; }
+      makeInvite.disabled=false;makeInvite.textContent="🎟 Создать приглашение";
+    });
   }
 
   wireCopy("copy-family",function(){return familyUrl;},"✅ Ссылка скопирована","🔗 Скопировать эту же ссылку");

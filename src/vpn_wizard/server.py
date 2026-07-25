@@ -58,6 +58,15 @@ from vpn_wizard.awg_devices import (
 )
 from vpn_wizard.awg_servers import AwgRegistry, AwgRegistryError
 from vpn_wizard.bot_api import BotApiClient, referral_link
+from vpn_wizard.web_signup import (
+    InviteConfig,
+    InviteError,
+    check_invite,
+    create_invite,
+    normalize_code,
+    outstanding_invites,
+    web_account_id,
+)
 from vpn_wizard.proxy import ProxyProvisioner, rewrite_vless_alternatives, rewrite_vless_endpoint
 from vpn_wizard.relay import RelayProvisioner
 from vpn_wizard.remnawave import (
@@ -546,6 +555,34 @@ class AwgAccessResponse(BaseModel):
     device_limit: int
     family: bool = False
     expires_at: Optional[str] = None
+
+
+class InviteCreateResponse(BaseModel):
+    ok: bool
+    code: str
+    expires_at: Optional[int] = None
+    url: Optional[str] = None
+
+
+class InviteListResponse(BaseModel):
+    ok: bool
+    max_outstanding: int
+    trial_days: int
+    invites: list[dict[str, Any]]
+
+
+class InviteCheckResponse(BaseModel):
+    ok: bool
+    valid: bool
+    trial_days: int = 0
+    detail: Optional[str] = None
+
+
+class InviteRedeemResponse(BaseModel):
+    ok: bool
+    telegram_id: int
+    token: str
+    trial_days: int
 
 
 class AwgDeviceListResponse(BaseModel):
@@ -3202,6 +3239,103 @@ def awg_device_label(
         ok=True,
         slot=slot,
         label=store.awg_get_device_labels(telegram_id).get(slot),
+    )
+
+
+@app.get("/api/awg/{telegram_id}/invites", response_model=InviteListResponse)
+def awg_invites(telegram_id: int, token: str) -> InviteListResponse:
+    _limit, _registry = _awg_owner_access(telegram_id, token)
+    store = build_account_store()
+    config = InviteConfig.from_env()
+    live = outstanding_invites(store, telegram_id)
+    base = os.getenv("VPNW_PUBLIC_BASE_URL", "").strip().rstrip("/")
+    return InviteListResponse(
+        ok=True,
+        max_outstanding=config.max_outstanding,
+        trial_days=config.trial_days,
+        invites=[
+            {
+                "code": invite["code"],
+                "expires_at": invite["expires_at"],
+                "url": f"{base}/connect/join.html?code={invite['code']}" if base else None,
+            }
+            for invite in live
+        ],
+    )
+
+
+@app.post("/api/awg/{telegram_id}/invites", response_model=InviteCreateResponse)
+def awg_invite_create(telegram_id: int, token: str) -> InviteCreateResponse:
+    """Mint an invite an existing subscriber can pass on outside Telegram."""
+    _limit, _registry = _awg_owner_access(telegram_id, token)
+    try:
+        invite = create_invite(build_account_store(), telegram_id, InviteConfig.from_env())
+    except InviteError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    base = os.getenv("VPNW_PUBLIC_BASE_URL", "").strip().rstrip("/")
+    return InviteCreateResponse(
+        ok=True,
+        code=invite["code"],
+        expires_at=invite["expires_at"],
+        url=f"{base}/connect/join.html?code={invite['code']}" if base else None,
+    )
+
+
+@app.delete("/api/awg/{telegram_id}/invites/{code}", response_model=InviteCreateResponse)
+def awg_invite_delete(telegram_id: int, code: str, token: str) -> InviteCreateResponse:
+    _limit, _registry = _awg_owner_access(telegram_id, token)
+    normalized = normalize_code(code) or code
+    if not build_account_store().invite_delete(normalized, telegram_id):
+        raise HTTPException(status_code=404, detail="Приглашение не найдено или уже активировано.")
+    return InviteCreateResponse(ok=True, code=normalized)
+
+
+@app.get("/api/web/invite/{code}", response_model=InviteCheckResponse)
+def web_invite_check(code: str) -> InviteCheckResponse:
+    """Tell a visitor whether their code will work, before they commit."""
+    try:
+        check_invite(build_account_store(), code)
+    except InviteError as exc:
+        return InviteCheckResponse(ok=False, valid=False, detail=str(exc))
+    return InviteCheckResponse(
+        ok=True, valid=True, trial_days=InviteConfig.from_env().trial_days
+    )
+
+
+@app.post("/api/web/invite/{code}/redeem", response_model=InviteRedeemResponse)
+def web_invite_redeem(code: str) -> InviteRedeemResponse:
+    """Turn an invite into a working trial, with no Telegram anywhere in the flow."""
+    store = build_account_store()
+    config = InviteConfig.from_env()
+    awg_cfg = AwgFallbackConfig.from_env()
+    if not awg_cfg.link_secret:
+        raise HTTPException(status_code=503, detail="Сервис временно недоступен.")
+    try:
+        invite = check_invite(store, code)
+    except InviteError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    bot = BotApiClient()
+    if not bot.config.configured:
+        raise HTTPException(status_code=503, detail="Регистрация временно недоступна.")
+
+    account_id = web_account_id()
+    created = bot.create_user(account_id)
+    if not created or not created.get("id"):
+        raise HTTPException(status_code=502, detail="Не удалось создать аккаунт. Попробуйте позже.")
+    if not bot.grant_trial(int(created["id"]), days=config.trial_days):
+        raise HTTPException(status_code=502, detail="Не удалось выдать пробный доступ. Напишите тому, кто дал код.")
+
+    # Claim the code only once the account really exists, and atomically, so a
+    # shared SMS cannot hand two people the same invite.
+    if not store.invite_redeem(invite["code"], account_id):
+        raise HTTPException(status_code=409, detail="Это приглашение только что активировал кто-то другой.")
+
+    return InviteRedeemResponse(
+        ok=True,
+        telegram_id=account_id,
+        token=issue_token(awg_cfg.link_secret, account_id),
+        trial_days=config.trial_days,
     )
 
 

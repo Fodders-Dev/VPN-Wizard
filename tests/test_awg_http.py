@@ -714,3 +714,125 @@ def test_revoke_clears_the_slot_on_all_locations(
     assert response.status_code == 200
     assert response.json()["revoked_from"] == 2
     assert calls == [("nl", device_peer_id(owner, 3)), ("fi", device_peer_id(owner, 3))]
+
+
+# --- invites: getting a VPN without Telegram ------------------------------------
+
+def test_invite_endpoints_require_the_owner_token(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    secret = "link-secret"
+    owner = 449066726
+    _configure_single_server(monkeypatch, secret)
+    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(1))
+
+    assert client.get(f"/api/awg/{owner}/invites", params={"token": "bad"}).status_code == 403
+    family = family_issue_token(secret, owner)
+    assert client.post(f"/api/awg/{owner}/invites", params={"token": family}).status_code == 403
+
+
+def test_owner_can_mint_and_withdraw_invites(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    secret = "link-secret"
+    owner = 449066726
+    _configure_single_server(monkeypatch, secret)
+    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(1))
+    token = issue_token(secret, owner)
+
+    created = client.post(f"/api/awg/{owner}/invites", params={"token": token})
+    assert created.status_code == 200
+    code = created.json()["code"]
+
+    listed = client.get(f"/api/awg/{owner}/invites", params={"token": token}).json()
+    assert [i["code"] for i in listed["invites"]] == [code]
+
+    dropped = client.delete(f"/api/awg/{owner}/invites/{code}", params={"token": token})
+    assert dropped.status_code == 200
+    assert client.get(f"/api/awg/{owner}/invites", params={"token": token}).json()["invites"] == []
+
+
+def test_a_visitor_can_check_a_code_before_committing(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    secret = "link-secret"
+    owner = 449066726
+    _configure_single_server(monkeypatch, secret)
+    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(1))
+    code = client.post(
+        f"/api/awg/{owner}/invites", params={"token": issue_token(secret, owner)}
+    ).json()["code"]
+
+    # No token of any kind: this is the whole point — the visitor has no Telegram.
+    good = client.get(f"/api/web/invite/{code}").json()
+    assert good["valid"] is True
+
+    bad = client.get("/api/web/invite/ZZZZ-9999").json()
+    assert bad["valid"] is False and bad["detail"]
+
+
+def test_redeeming_creates_an_account_and_hands_back_a_working_link(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    secret = "link-secret"
+    owner = 449066726
+    _configure_single_server(monkeypatch, secret)
+    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(1))
+    code = client.post(
+        f"/api/awg/{owner}/invites", params={"token": issue_token(secret, owner)}
+    ).json()["code"]
+
+    created: list[int] = []
+    trials: list[tuple[int, int]] = []
+
+    class FakeBot:
+        config = type("C", (), {"configured": True})()
+
+        def create_user(self, telegram_id, **kwargs):
+            created.append(telegram_id)
+            return {"id": 4242, "telegram_id": telegram_id}
+
+        def grant_trial(self, user_id, *, days, **kwargs):
+            trials.append((user_id, days))
+            return {"id": user_id}
+
+    monkeypatch.setattr(server_module, "BotApiClient", lambda *a, **k: FakeBot())
+    response = client.post(f"/api/web/invite/{code}/redeem")
+    assert response.status_code == 200
+    body = response.json()
+
+    # The synthetic id must be outside Telegram's range, and the token must be the
+    # real signed one, so the connect page works with no further setup.
+    assert body["telegram_id"] >= 9_000_000_000_000_000
+    assert body["token"] == issue_token(secret, body["telegram_id"])
+    assert created == [body["telegram_id"]]
+    assert trials == [(4242, body["trial_days"])]
+
+    # Single use: the same SMS cannot onboard two people.
+    assert client.post(f"/api/web/invite/{code}/redeem").status_code == 400
+
+
+def test_redeem_does_not_burn_the_code_when_signup_fails(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    secret = "link-secret"
+    owner = 449066726
+    _configure_single_server(monkeypatch, secret)
+    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(1))
+    code = client.post(
+        f"/api/awg/{owner}/invites", params={"token": issue_token(secret, owner)}
+    ).json()["code"]
+
+    class BrokenBot:
+        config = type("C", (), {"configured": True})()
+
+        def create_user(self, telegram_id, **kwargs):
+            return None
+
+        def grant_trial(self, user_id, **kwargs):
+            raise AssertionError("must not be reached")
+
+    monkeypatch.setattr(server_module, "BotApiClient", lambda *a, **k: BrokenBot())
+    assert client.post(f"/api/web/invite/{code}/redeem").status_code == 502
+    # The invite survives, so the person can retry instead of losing their only code.
+    assert client.get(f"/api/web/invite/{code}").json()["valid"] is True
