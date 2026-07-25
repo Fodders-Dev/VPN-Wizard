@@ -850,7 +850,71 @@ async def show_help(message: types.Message) -> None:
     await message.answer(text, reply_markup=_keyboard(message))
 
 
+def _start_payload(text: str) -> str:
+    """The bit after ``/start`` in a deep link, if any."""
+    parts = (text or '').strip().split(maxsplit=1)
+    return parts[1].strip() if len(parts) > 1 else ''
+
+
+def _start_followup_text(payload: str, russian: bool) -> str:
+    if not russian:
+        return (
+            '🛡 <b>Fodder VPN</b>\n\nUse the buttons below the input field, '
+            'or /help for every command.'
+        )
+    opening = (
+        '✅ <b>Ссылка открыта.</b>\n\n'
+        if payload
+        else '🛡 <b>Fodder VPN</b>\n\n'
+    )
+    return (
+        opening
+        + 'Дальше всё делается этими кнопками:\n\n'
+        + f'{BTN_CONNECT} — выбрать страну, получить конфиг и QR\n'
+        + f'{BTN_DEVICES} — кто подключён, переименовать, отключить\n'
+        + f'{BTN_INVITE} — код для того, у кого не открывается Telegram\n'
+        + f'{BTN_HELP} — все команды и ссылки'
+    )
+
+
+async def start_followup_middleware(handler, event, data):
+    """Never let a deep link land in a silent chat.
+
+    Bedolaga owns ``/start`` and registers it before this module, so it cannot be
+    intercepted without breaking registration, referrals and campaigns. It also
+    answers nothing when an already-registered person opens a link with a
+    payload — they get dropped into an empty chat with no idea what to do next.
+    So the original handler runs untouched and this adds one short message after
+    it, which is also what finally puts the action buttons on their screen.
+    """
+    result = await handler(event, data)
+    if not isinstance(event, types.Message):
+        return result
+    chat = getattr(event, 'chat', None)
+    if chat is None or chat.type != 'private':
+        return result
+    text = (event.text or '').strip()
+    if text.split(' ')[0].split('@')[0] != '/start':
+        return result
+    try:
+        # A non-empty FSM state means registration, language choice or rules
+        # acceptance is still running — Bedolaga is mid-conversation there and a
+        # second voice would only confuse.
+        state = data.get('state')
+        if state is not None and await state.get_state():
+            return result
+        await event.answer(
+            _start_followup_text(_start_payload(text), _is_russian(event)),
+            reply_markup=main_keyboard(),
+            parse_mode='HTML',
+        )
+    except Exception:  # a follow-up must never break the real /start
+        logger.exception('Failed to send /start follow-up')
+    return result
+
+
 def register_handlers(dp: Dispatcher) -> None:
+    dp.message.outer_middleware(start_followup_middleware)
     # Exact-text only: these run before Bedolaga's own text handlers, so a loose
     # filter here would swallow promocodes and support messages.
     dp.message.register(open_managed_awg_message, F.text == BTN_CONNECT)

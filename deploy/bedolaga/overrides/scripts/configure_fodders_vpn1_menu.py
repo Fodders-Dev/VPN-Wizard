@@ -7,7 +7,13 @@ import copy
 import os
 
 from aiogram import Bot
-from aiogram.types import BotCommand, MenuButtonWebApp, WebAppInfo
+from aiogram.types import (
+    BotCommand,
+    BotCommandScopeAllPrivateChats,
+    BotCommandScopeDefault,
+    MenuButtonWebApp,
+    WebAppInfo,
+)
 
 from app.database.database import AsyncSessionLocal
 from app.services.menu_layout.service import MenuLayoutService
@@ -215,7 +221,12 @@ async def main() -> None:
             for command in order
             if command in descriptions
         ]
-        await bot.set_my_commands(commands)
+        # Telegram picks the narrowest matching scope, and a stale
+        # all_private_chats list (start/miniapp/cancel) was shadowing the default
+        # one — so every command added here stayed invisible in private chats.
+        # Write both, or the narrower one keeps winning.
+        await bot.set_my_commands(commands, scope=BotCommandScopeDefault())
+        await bot.set_my_commands(commands, scope=BotCommandScopeAllPrivateChats())
         await bot.set_chat_menu_button(
             menu_button=MenuButtonWebApp(
                 text='Open Fodder VPN',
