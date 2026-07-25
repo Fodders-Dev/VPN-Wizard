@@ -266,3 +266,48 @@ def test_metrics_endpoint_is_owner_only(monkeypatch: pytest.MonkeyPatch, tmp_pat
     # Nor a forged token for the owner.
     forged = client.get("/api/metrics", params={"telegram_id": OWNER, "token": "deadbeef"})
     assert forged.status_code == 403
+
+
+# --- history: enough to see a trend, not enough to describe a person ---------------
+
+def test_daily_snapshot_keeps_only_counts(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    _issue(store, OWNER, None)
+    store.awg_record_usage("nl", OWNER, last_handshake_at=NOW - 30, rx_bytes=5, tx_bytes=7)
+    report = collect(store, _Registry(), BOT_STATS, legacy_server_id="nl", now=NOW)
+
+    from vpn_wizard.metrics import daily_snapshot
+
+    snap = daily_snapshot(report)
+    assert set(snap) == {
+        "users", "subs_active", "subs_paid", "issued_key",
+        "ever_connected", "active_7d", "traffic_bytes", "invites_redeemed",
+    }
+    # Nothing in a snapshot may identify anybody.
+    assert all(isinstance(value, int) for value in snap.values())
+
+
+def test_history_is_one_row_per_day_and_last_write_wins(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    store.metrics_save_day("2026-07-24", {"users": 2, "active_7d": 1})
+    store.metrics_save_day("2026-07-25", {"users": 3, "active_7d": 1})
+    store.metrics_save_day("2026-07-25", {"users": 3, "active_7d": 2})   # later that day
+
+    history = store.metrics_history(30)
+    assert [row["day"] for row in history] == ["2026-07-24", "2026-07-25"]
+    assert history[-1]["active_7d"] == 2
+
+
+def test_trend_reports_the_change_over_the_window() -> None:
+    from vpn_wizard.metrics import trend
+
+    history = [{"users": 2}, {"users": 3}, {"users": 6}]
+    assert trend(history, "users") == {"series": [2, 3, 6], "first": 2, "last": 6, "change": 4}
+    assert trend([], "users")["change"] == 0
+
+
+def test_day_key_is_stable_utc() -> None:
+    from vpn_wizard.metrics import day_key
+
+    assert day_key(1_800_000_000) == day_key(1_800_000_000)
+    assert len(day_key(1_800_000_000)) == 10

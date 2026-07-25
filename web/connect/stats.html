@@ -170,6 +170,13 @@
     <div class="grid" id="kpis"></div>
   </section>
 
+  <section class="glass" id="trend-card" hidden>
+    <h2>Динамика</h2>
+    <div id="trends"></div>
+    <p class="hint">Один агрегат в сутки. Показывает, растём мы или стоим — по людям,
+      подключениям и деньгам.</p>
+  </section>
+
   <section class="glass">
     <h2>Путь пользователя</h2>
     <div id="funnel"></div>
@@ -284,6 +291,34 @@
         table.appendChild(tr);
       });
       countries.appendChild(table);
+    }
+
+    var history=d.history||[];
+    var trendCard=document.getElementById("trend-card");
+    var trends=$("trends");trends.textContent="";
+    if(history.length>1){
+      [["users","Пользователей"],["ever_connected","Подключались хоть раз"],
+       ["active_7d","Активны за 7 дней"],["subs_paid","Платных подписок"],
+       ["invites_redeemed","Активировано инвайтов"]].forEach(function(pair){
+        var series=history.map(function(row){return Number(row[pair[0]])||0;});
+        var change=series[series.length-1]-series[0];
+        var line=el("div","step");
+        line.appendChild(el("span","",pair[1]));
+        var sign=change>0?"+":"";
+        var strong=el("b",change>0?"good":(change<0?"bad":""),
+          num(series[series.length-1])+"  ·  "+sign+num(change)+" за "+series.length+" дн");
+        line.appendChild(strong);
+        var bar=el("div","bar"), fill=el("i");
+        var peak=Math.max.apply(null,series.concat([1]));
+        fill.style.width=Math.round(100*series[series.length-1]/peak)+"%";
+        bar.appendChild(fill);line.appendChild(bar);
+        trends.appendChild(line);
+      });
+      trendCard.hidden=false;
+    }else{
+      trendCard.hidden=false;
+      trends.appendChild(el("p","empty",
+        "История копится с сегодняшнего дня — первые сравнения появятся завтра."));
     }
 
     var inv=d.invites||{};

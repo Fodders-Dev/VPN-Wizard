@@ -13,6 +13,7 @@ from vpn_wizard.awg_fallback import (
     family_owner_id,
 )
 from vpn_wizard.awg_devices import collect_usage
+from vpn_wizard.metrics import collect as collect_metrics, daily_snapshot, day_key
 from vpn_wizard.awg_servers import AwgRegistry
 from vpn_wizard.remnawave import RemnawaveClient, RemnawaveConfig, device_limit_of
 
@@ -210,6 +211,21 @@ def main() -> int:
         result["usage_rows"] = refresh_usage(account, legacy_service, server_services, registry)
     except Exception as exc:  # telemetry is a nicety; entitlements are not
         result["errors"].append({"error": "usage_refresh_failed", "detail": str(exc)})
+    # One aggregate row per day, written while we are already awake. Overwriting
+    # today's row means the figure is always the latest of the day.
+    try:
+        from vpn_wizard.bot_api import BotApiClient
+
+        bot = BotApiClient()
+        report = collect_metrics(
+            account,
+            registry,
+            bot._get("/stats/full") if bot.config.configured else None,
+            legacy_server_id=getattr(default, "id", None),
+        )
+        account.metrics_save_day(day_key(), daily_snapshot(report))
+    except Exception as exc:  # history is a nicety; entitlements are not
+        result["errors"].append({"error": "metrics_snapshot_failed", "detail": str(exc)})
     print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
     return 1 if result["errors"] else 0
 

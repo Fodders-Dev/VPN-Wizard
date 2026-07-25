@@ -3448,11 +3448,13 @@ def owner_metrics(telegram_id: int, token: str) -> JSONResponse:
     except HTTPException:
         registry, legacy = None, None
 
+    store = build_account_store()
     report = collect_metrics(
-        build_account_store(),
+        store,
         registry,
         bot_stats,
         legacy_server_id=legacy,
+        history=store.metrics_history(30),
     )
     return JSONResponse(report, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
 

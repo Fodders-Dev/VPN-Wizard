@@ -19,6 +19,7 @@ service.
 """
 from __future__ import annotations
 
+import datetime as dt
 import os
 import time
 from typing import Any, Iterable, Optional
@@ -245,6 +246,43 @@ def alerts(funnel: dict[str, Any], countries: list[dict[str, Any]], business: di
     return out
 
 
+def daily_snapshot(report: dict[str, Any]) -> dict[str, Any]:
+    """The handful of counts worth keeping day over day.
+
+    Deliberately narrow: enough to answer "are we growing", nothing that could
+    describe a person.
+    """
+    business, funnel = report["business"], report["funnel"]
+    return {
+        "users": business["users_total"],
+        "subs_active": business["subs_active"],
+        "subs_paid": business["subs_paid"],
+        "issued_key": funnel["issued_key"],
+        "ever_connected": funnel["ever_connected"],
+        "active_7d": funnel["active_7d"],
+        "traffic_bytes": report["traffic_bytes"],
+        "invites_redeemed": report["invites"]["redeemed"],
+    }
+
+
+def day_key(now: Optional[int] = None) -> str:
+    stamp = int(now if now is not None else time.time())
+    return dt.datetime.fromtimestamp(stamp, dt.timezone.utc).strftime("%Y-%m-%d")
+
+
+def trend(history: list[dict[str, Any]], field: str) -> dict[str, Any]:
+    """Change over the recorded window, for one counter."""
+    series = [int(row.get(field) or 0) for row in history]
+    if not series:
+        return {"series": [], "change": 0, "first": 0, "last": 0}
+    return {
+        "series": series,
+        "first": series[0],
+        "last": series[-1],
+        "change": series[-1] - series[0],
+    }
+
+
 def collect(
     account: Any,
     registry: Any,
@@ -252,6 +290,7 @@ def collect(
     *,
     legacy_server_id: Optional[str] = None,
     paying_owners: Optional[set[int]] = None,
+    history: Optional[list[dict[str, Any]]] = None,
     now: Optional[int] = None,
 ) -> dict[str, Any]:
     stamp = int(now if now is not None else time.time())
@@ -277,6 +316,7 @@ def collect(
         "invites": invites,
         "traffic_bytes": sum(item["bytes"] for item in countries),
         "alerts": alerts(funnel, countries, business),
+        "history": list(history or []),
     }
 
 

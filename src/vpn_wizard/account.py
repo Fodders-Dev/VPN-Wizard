@@ -190,6 +190,14 @@ class AccountStore:
                     updated_at INTEGER NOT NULL
                 );
 
+                -- One aggregate row per day, so the owner can see a trend instead
+                -- of a snapshot. Counts only — nothing here identifies anyone.
+                CREATE TABLE IF NOT EXISTS metrics_daily (
+                    day TEXT PRIMARY KEY,
+                    payload TEXT NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );
+
                 -- Last-seen/traffic per peer, refreshed by the reconcile pass.
                 -- Cached because reading it means SSH-ing every exit, which must
                 -- never happen on a user-facing request.
@@ -926,6 +934,35 @@ class AccountStore:
                 (str(code), int(issuer_telegram_id)),
             )
             return cursor.rowcount > 0
+
+    # --- daily aggregate history --------------------------------------------
+    def metrics_save_day(self, day: str, payload: dict[str, Any]) -> None:
+        """Overwrite today's row, so the last write of the day wins."""
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO metrics_daily (day, payload, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(day) DO UPDATE SET
+                    payload = excluded.payload,
+                    updated_at = excluded.updated_at
+                """,
+                (str(day), json.dumps(payload, ensure_ascii=False), _now()),
+            )
+
+    def metrics_history(self, days: int = 30) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT day, payload FROM metrics_daily ORDER BY day DESC LIMIT ?",
+                (max(1, int(days)),),
+            ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in reversed(rows):
+            try:
+                out.append({"day": str(row["day"]), **json.loads(row["payload"])})
+            except (TypeError, ValueError):
+                continue
+        return out
 
     # --- family link epoch --------------------------------------------------
     def awg_family_epoch(self, owner_telegram_id: int) -> int:
