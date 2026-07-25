@@ -58,6 +58,7 @@ from vpn_wizard.awg_devices import (
 )
 from vpn_wizard.awg_servers import AwgRegistry, AwgRegistryError, apply_preset
 from vpn_wizard.bot_api import BotApiClient, referral_link
+from vpn_wizard.metrics import collect as collect_metrics, owner_ids
 from vpn_wizard.web_signup import (
     InviteConfig,
     is_web_account,
@@ -3418,6 +3419,42 @@ def web_invite_redeem(code: str) -> InviteRedeemResponse:
         token=issue_token(awg_cfg.link_secret, account_id),
         trial_days=config.trial_days,
     )
+
+
+@app.get("/api/metrics")
+def owner_metrics(telegram_id: int, token: str) -> JSONResponse:
+    """Business metrics, for the owner only.
+
+    Signed with the same per-user token as everything else, but additionally
+    restricted to VPNW_OWNER_IDS: a valid subscriber token must not open the
+    books. Aggregate figures only — no per-user behaviour is recorded anywhere.
+    """
+    awg_cfg = AwgFallbackConfig.from_env()
+    if not awg_cfg.link_secret:
+        raise HTTPException(status_code=503, detail="Not configured.")
+    if not verify_issue_token(awg_cfg.link_secret, telegram_id, token):
+        raise HTTPException(status_code=403, detail="Invalid or missing token.")
+    owners = owner_ids()
+    if not owners or telegram_id not in owners:
+        raise HTTPException(status_code=403, detail="Not an owner.")
+
+    bot = BotApiClient()
+    # The bot holds signups and money; if it is down we still report our own side
+    # rather than showing nothing.
+    bot_stats = bot._get("/stats/full") if bot.config.configured else None
+    try:
+        registry = _awg_registry()
+        legacy = getattr(registry.default_server, "id", None)
+    except HTTPException:
+        registry, legacy = None, None
+
+    report = collect_metrics(
+        build_account_store(),
+        registry,
+        bot_stats,
+        legacy_server_id=legacy,
+    )
+    return JSONResponse(report, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
 
 
 @app.get("/api/awg/servers")

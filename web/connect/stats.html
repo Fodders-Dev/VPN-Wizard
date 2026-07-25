@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="data:,">
+<title>Показатели · Fodder VPN</title>
+<style>
+@layer reset, tokens, material, layout, components;
+
+@layer reset{
+  *,*::before,*::after{box-sizing:border-box}
+  [hidden]{display:none!important}
+  body,h1,h2,h3,p{margin:0}
+}
+
+@layer tokens{
+  :root{
+    color-scheme:light dark;
+    --ink-l:#0d1226;      --ink-d:#f3f5ff;
+    --soft-l:#414c72;     --soft-d:#b9c2e4;
+    --muted-l:#6e789e;    --muted-d:#8e98c0;
+    --bg-l:#e4eaf9;       --bg-d:#05070f;
+    --a1-l:#4b82ff;       --a1-d:#2a3ec9;
+    --a2-l:#a35cff;       --a2-d:#6d2bd9;
+    --a3-l:#12d3b4;       --a3-d:#0a8f80;
+    --pane-l:rgba(255,255,255,.44);   --pane-d:rgba(255,255,255,.055);
+    --rim-l:rgba(255,255,255,.95);    --rim-d:rgba(255,255,255,.42);
+    --rim-dim-l:rgba(120,140,200,.22);--rim-dim-d:rgba(255,255,255,.05);
+    --sheen-l:rgba(255,255,255,.55);  --sheen-d:rgba(255,255,255,.10);
+    --fill-l:rgba(13,18,38,.055);     --fill-d:rgba(255,255,255,.085);
+    --hair-l:rgba(13,18,38,.11);      --hair-d:rgba(255,255,255,.13);
+    --accent-l:#3f56ff;   --accent-d:#8ea3ff;
+    --go1-l:#00c98d;      --go1-d:#00e0a0;
+    --go2-l:#0aa7d8;      --go2-d:#22bdea;
+    --warn-l:#8a5a12;     --warn-d:#f3c983;
+    --bad-l:#b3261e;      --bad-d:#ff9a8f;
+
+    --ink:var(--ink-l); --soft:var(--soft-l); --muted:var(--muted-l);
+    --bg:var(--bg-l); --a1:var(--a1-l); --a2:var(--a2-l); --a3:var(--a3-l);
+    --pane:var(--pane-l); --rim:var(--rim-l); --rim-dim:var(--rim-dim-l);
+    --sheen:var(--sheen-l); --fill:var(--fill-l); --hair:var(--hair-l);
+    --accent:var(--accent-l); --go1:var(--go1-l); --go2:var(--go2-l);
+    --warn:var(--warn-l); --bad:var(--bad-l);
+
+    @media (prefers-color-scheme:dark){
+      --ink:var(--ink-d); --soft:var(--soft-d); --muted:var(--muted-d);
+      --bg:var(--bg-d); --a1:var(--a1-d); --a2:var(--a2-d); --a3:var(--a3-d);
+      --pane:var(--pane-d); --rim:var(--rim-d); --rim-dim:var(--rim-dim-d);
+      --sheen:var(--sheen-d); --fill:var(--fill-d); --hair:var(--hair-d);
+      --accent:var(--accent-d); --go1:var(--go1-d); --go2:var(--go2-d);
+      --warn:var(--warn-d); --bad:var(--bad-d);
+    }
+    @supports (color:light-dark(white,black)){
+      --ink:light-dark(var(--ink-l),var(--ink-d));
+      --soft:light-dark(var(--soft-l),var(--soft-d));
+      --muted:light-dark(var(--muted-l),var(--muted-d));
+      --bg:light-dark(var(--bg-l),var(--bg-d));
+      --a1:light-dark(var(--a1-l),var(--a1-d));
+      --a2:light-dark(var(--a2-l),var(--a2-d));
+      --a3:light-dark(var(--a3-l),var(--a3-d));
+      --pane:light-dark(var(--pane-l),var(--pane-d));
+      --rim:light-dark(var(--rim-l),var(--rim-d));
+      --rim-dim:light-dark(var(--rim-dim-l),var(--rim-dim-d));
+      --sheen:light-dark(var(--sheen-l),var(--sheen-d));
+      --fill:light-dark(var(--fill-l),var(--fill-d));
+      --hair:light-dark(var(--hair-l),var(--hair-d));
+      --accent:light-dark(var(--accent-l),var(--accent-d));
+      --go1:light-dark(var(--go1-l),var(--go1-d));
+      --go2:light-dark(var(--go2-l),var(--go2-d));
+      --warn:light-dark(var(--warn-l),var(--warn-d));
+      --bad:light-dark(var(--bad-l),var(--bad-d));
+    }
+    --r-lg:1.6rem; --r-md:1.05rem; --r-sm:.8rem;
+    --lift:0 .5px 1px rgba(9,14,40,.10), 0 6px 16px -6px rgba(9,14,40,.22), 0 22px 48px -22px rgba(9,14,40,.42);
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI Variable Text","Segoe UI",system-ui,Roboto,sans-serif;
+    --num:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+  }
+}
+
+@layer layout{
+  body{min-height:100dvh;color:var(--ink);background:var(--bg);font-family:var(--sans);
+    font-size:1rem;line-height:1.5;letter-spacing:-.011em;-webkit-font-smoothing:antialiased;
+    padding:max(1rem,env(safe-area-inset-top)) 1rem calc(2.5rem + env(safe-area-inset-bottom))}
+  .aurora{position:fixed;inset:-20% -10%;z-index:-1;pointer-events:none;
+    background:
+      radial-gradient(36rem 30rem at 10% 2%, color-mix(in oklab,var(--a1),transparent 34%), transparent 66%),
+      radial-gradient(32rem 28rem at 94% 12%, color-mix(in oklab,var(--a2),transparent 40%), transparent 64%),
+      radial-gradient(40rem 34rem at 50% 104%, color-mix(in oklab,var(--a3),transparent 46%), transparent 66%)}
+  .wrap{max-width:56rem;margin-inline:auto}
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;
+    flex-wrap:wrap;margin-block-end:1.1rem}
+  .grid{display:grid;gap:.8rem;grid-template-columns:repeat(auto-fit,minmax(13rem,1fr))}
+  section{margin-block-start:1.1rem}
+}
+
+@layer material{
+  .glass{position:relative;isolation:isolate;background:var(--pane);border-radius:var(--r-lg);
+    box-shadow:var(--lift);padding:1.1rem}
+  .glass::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
+    background:linear-gradient(150deg,var(--rim),var(--rim-dim) 34%,transparent 62%,var(--rim) 100%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    mask-composite:exclude}
+  @supports (backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px)){
+    .glass{-webkit-backdrop-filter:blur(26px) saturate(180%);backdrop-filter:blur(26px) saturate(180%)}
+  }
+  @media (prefers-reduced-transparency:reduce){
+    .glass{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--bg)}
+    .aurora{opacity:.3}
+  }
+  @media (prefers-contrast:more){ .glass{background:var(--bg)} }
+}
+
+@layer components{
+  h1{font-size:1.5rem;font-weight:700;letter-spacing:-.03em}
+  .stamp{color:var(--muted);font-size:.82rem}
+  h2{font-size:.76rem;letter-spacing:.09em;text-transform:uppercase;color:var(--accent);
+    font-weight:700;margin-block-end:.6rem}
+  .kpi b{display:block;font-family:var(--num);font-size:1.9rem;font-weight:700;letter-spacing:-.03em;
+    line-height:1.1;font-variant-numeric:tabular-nums}
+  .kpi span{display:block;color:var(--soft);font-size:.85rem;margin-block-start:.25rem}
+  .kpi small{display:block;color:var(--muted);font-size:.76rem;margin-block-start:.3rem}
+  .good{color:var(--go1)} .bad{color:var(--bad)} .warn{color:var(--warn)}
+
+  .step{display:grid;grid-template-columns:1fr auto;gap:.2rem .8rem;align-items:baseline;
+    padding:.7rem .85rem;border-radius:var(--r-sm);margin-block-start:.4rem;background:var(--fill);
+    box-shadow:inset 0 0 0 1px var(--hair)}
+  .step b{font-family:var(--num);font-size:1.15rem;font-variant-numeric:tabular-nums}
+  .step span{color:var(--soft);font-size:.9rem}
+  .step .bar{grid-column:1/-1;height:.32rem;border-radius:999px;margin-block-start:.4rem;
+    background:color-mix(in oklab,var(--accent),transparent 86%);overflow:hidden}
+  .step .bar i{display:block;height:100%;border-radius:999px;
+    background:linear-gradient(90deg,var(--go1),var(--go2))}
+
+  table{inline-size:100%;border-collapse:collapse;font-size:.9rem}
+  th{text-align:start;color:var(--muted);font-weight:600;font-size:.78rem;
+    padding:.35rem .5rem;border-block-end:1px solid var(--hair)}
+  td{padding:.5rem;border-block-end:1px solid var(--hair);font-variant-numeric:tabular-nums}
+  td:first-child{font-weight:600}
+  tr:last-child td{border-block-end:0}
+
+  .alert{border-radius:var(--r-md);padding:.8rem .9rem;margin-block-start:.5rem;font-size:.92rem;
+    background:color-mix(in oklab,var(--warn),transparent 88%);
+    box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--warn),transparent 62%)}
+  .alert.critical{background:color-mix(in oklab,var(--bad),transparent 88%);
+    box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--bad),transparent 60%)}
+  .alert.info{background:color-mix(in oklab,var(--accent),transparent 90%);
+    box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--accent),transparent 72%)}
+  .hint{color:var(--muted);font-size:.8rem;margin-block-start:.6rem;text-wrap:pretty}
+  .empty{color:var(--muted);font-size:.9rem}
+}
+</style>
+</head>
+<body>
+<div class="aurora" aria-hidden="true"></div>
+
+<main class="wrap">
+  <header>
+    <h1>📊 Показатели</h1>
+    <span class="stamp" id="stamp">загружаем…</span>
+  </header>
+
+  <div id="alerts"></div>
+
+  <section>
+    <div class="grid" id="kpis"></div>
+  </section>
+
+  <section class="glass">
+    <h2>Путь пользователя</h2>
+    <div id="funnel"></div>
+    <p class="hint">Считается по настоящим рукопожатиям, а не по регистрациям: выданный ключ,
+      который ни разу не передал пакет, — это не пользователь.</p>
+  </section>
+
+  <section class="glass">
+    <h2>По странам</h2>
+    <div id="countries"></div>
+  </section>
+
+  <section class="glass">
+    <h2>Рост</h2>
+    <div class="grid" id="growth"></div>
+  </section>
+
+  <p class="hint">Только сводные числа. Ни кликов, ни маршрутов конкретных людей мы не пишем —
+    это VPN, и лог поведения был бы и нарушением обещания, и лишним риском.</p>
+</main>
+
+<script>
+(function(){
+  "use strict";
+  var $=function(id){return document.getElementById(id);};
+  var params=new URLSearchParams(location.search);
+  var tid=(params.get("tid")||"").trim(), token=(params.get("token")||"").trim();
+
+  function num(value){return (Number(value)||0).toLocaleString("ru-RU");}
+  function bytes(value){
+    value=Number(value)||0;
+    if(value<1048576)return Math.round(value/1024)+" КБ";
+    if(value<1073741824)return (value/1048576).toFixed(1)+" МБ";
+    return (value/1073741824).toFixed(2)+" ГБ";
+  }
+  function el(tag,cls,text){
+    var node=document.createElement(tag);
+    if(cls)node.className=cls;
+    if(text!==undefined)node.textContent=text;
+    return node;
+  }
+  function kpi(value,label,note,tone){
+    var card=el("div","glass kpi");
+    var strong=el("b",tone||"",value);
+    card.appendChild(strong);
+    card.appendChild(el("span","",label));
+    if(note)card.appendChild(el("small","",note));
+    return card;
+  }
+
+  function render(d){
+    $("stamp").textContent="обновлено "+new Date(d.generated_at*1000).toLocaleString("ru-RU")
+      +(d.bot_reachable?"":" · биллинг недоступен");
+
+    var alerts=$("alerts");alerts.textContent="";
+    (d.alerts||[]).forEach(function(item){
+      alerts.appendChild(el("div","alert "+(item.level||""),item.text));
+    });
+
+    var b=d.business||{}, f=d.funnel||{}, a=d.audience||{};
+    var kpis=$("kpis");kpis.textContent="";
+    kpis.appendChild(kpi(num(b.users_total),"Пользователей всего","+"+num(b.new_week)+" за неделю"));
+    kpis.appendChild(kpi(num(f.active_7d),"Пользуются за 7 дней",
+      f.ever_connected?("из "+num(f.ever_connected)+" когда-либо подключавшихся"):"ещё никто не подключался",
+      f.active_7d?"good":"bad"));
+    kpis.appendChild(kpi(num(b.subs_paid),"Платных подписок",
+      num(b.subs_trial)+" на пробном", b.subs_paid?"good":"warn"));
+    kpis.appendChild(kpi(b.balance_rubles.toFixed(0)+" ₽","На балансах",
+      "оплачено сегодня: "+b.paid_today_rubles.toFixed(0)+" ₽"));
+    kpis.appendChild(kpi(bytes(d.traffic_bytes),"Трафик всего","по всем странам"));
+    kpis.appendChild(kpi(num(a.from_invite),"Пришли по инвайту",
+      num(a.from_telegram)+" через Telegram"));
+
+    var steps=[
+      ["Получили ключ",f.issued_key,null],
+      ["Хоть раз подключились",f.ever_connected,f.connect_rate],
+      ["Пользуются сейчас (7 дней)",f.active_7d,f.retention_rate],
+      ["Платят",f.paying,null]
+    ];
+    var top=Math.max(1,f.issued_key||0);
+    var box=$("funnel");box.textContent="";
+    steps.forEach(function(row){
+      var line=el("div","step");
+      line.appendChild(el("span","",row[0]));
+      line.appendChild(el("b","",num(row[1])+(row[2]!==null&&row[2]!==undefined?"  ·  "+row[2]+"%":"")));
+      var bar=el("div","bar"), fill=el("i");
+      fill.style.width=Math.round(100*(Number(row[1])||0)/top)+"%";
+      bar.appendChild(fill);line.appendChild(bar);
+      box.appendChild(line);
+    });
+    if(f.keys_never_used){
+      box.appendChild(el("p","hint","Ключей выдано, но ни разу не использовано: "+num(f.keys_never_used)
+        +". Обычно это застрявший импорт или оператор, режущий профиль."));
+    }
+
+    var countries=$("countries");countries.textContent="";
+    if(!(d.countries||[]).length){
+      countries.appendChild(el("p","empty","Ключей пока не выдавали."));
+    }else{
+      var table=el("table"), head=el("tr");
+      ["Страна","Ключей","Подключались","Активны 7д","Трафик"].forEach(function(title){
+        head.appendChild(el("th","",title));
+      });
+      table.appendChild(head);
+      d.countries.forEach(function(row){
+        var tr=el("tr");
+        tr.appendChild(el("td","",row.label+(row.enabled?"":" (скрыта)")));
+        tr.appendChild(el("td","",num(row.keys)));
+        tr.appendChild(el("td",row.connected_keys?"":"bad",num(row.connected_keys)));
+        tr.appendChild(el("td","",num(row.active_keys)));
+        tr.appendChild(el("td","",bytes(row.bytes)));
+        table.appendChild(tr);
+      });
+      countries.appendChild(table);
+    }
+
+    var inv=d.invites||{};
+    var growth=$("growth");growth.textContent="";
+    growth.appendChild(kpi(num(inv.issued),"Инвайтов выпущено",num(inv.outstanding)+" ещё не активированы"));
+    growth.appendChild(kpi(num(inv.redeemed),"Активировано",inv.redeem_rate+"% от выпущенных",
+      inv.redeemed?"good":""));
+    growth.appendChild(kpi(num(b.purchased_month),"Покупок за месяц",
+      "конверсия триал→оплата: "+b.trial_to_paid+"%"));
+    growth.appendChild(kpi(num(b.renewals),"Продлений",""));
+  }
+
+  function fail(text){
+    $("stamp").textContent="";
+    var alerts=$("alerts");alerts.textContent="";
+    alerts.appendChild(el("div","alert critical",text));
+  }
+
+  if(!tid||!token){
+    fail("Откройте эту страницу по personal-ссылке владельца: /connect/stats.html?tid=…&token=…");
+    return;
+  }
+
+  function load(){
+    fetch("/api/metrics?telegram_id="+encodeURIComponent(tid)+"&token="+encodeURIComponent(token),
+          {headers:{"Accept":"application/json"}})
+      .then(function(r){
+        if(r.status===403)throw new Error("Доступ только для владельца.");
+        if(!r.ok)throw new Error("Сервис недоступен, код "+r.status+".");
+        return r.json();
+      })
+      .then(render)
+      .catch(function(error){fail(error.message||"Не удалось получить показатели.");});
+  }
+  load();
+  setInterval(load,60000);
+})();
+</script>
+</body>
+</html>

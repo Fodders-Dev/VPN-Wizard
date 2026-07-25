@@ -279,3 +279,13 @@ def test_bot_can_mint_an_invite() -> None:
     assert "Command('invite'" in handler
     assert "INVITE_CALLBACK" in handler
     assert "/invites" in handler
+
+
+def test_metrics_dashboard_is_owner_scoped_and_private() -> None:
+    html = (ROOT / "web" / "connect" / "stats.html").read_text(encoding="utf-8")
+    assert "/api/metrics" in html
+    # It reads a signed owner link; it must never be indexable or cached.
+    assert 'name="robots" content="noindex, nofollow"' in html
+    assert 'name="referrer" content="no-referrer"' in html
+    # We sell privacy: the dashboard must state that no per-user tracking exists.
+    assert "Ни кликов, ни маршрутов конкретных людей" in html
