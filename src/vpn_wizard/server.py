@@ -57,6 +57,7 @@ from vpn_wizard.awg_devices import (
     revoke_device,
 )
 from vpn_wizard.awg_servers import AwgRegistry, AwgRegistryError
+from vpn_wizard.bot_api import BotApiClient, referral_link
 from vpn_wizard.proxy import ProxyProvisioner, rewrite_vless_alternatives, rewrite_vless_endpoint
 from vpn_wizard.relay import RelayProvisioner
 from vpn_wizard.remnawave import (
@@ -536,6 +537,7 @@ class PortalLinksResponse(BaseModel):
     server_wizard_url: str
     subscription_active: bool = False
     device_limit: int = 1
+    referral_url: Optional[str] = None
 
 
 class AwgAccessResponse(BaseModel):
@@ -1226,6 +1228,13 @@ def portal_links(request: Request) -> Response:
     if active_user:
         payload.subscription_active = True
         payload.device_limit = device_limit_of(active_user)
+    # The invite link must be personal, or nobody is credited for bringing
+    # anyone in. The code lives in the bot's database; if it is unreachable the
+    # portal simply shows no invite rather than a shared link that rewards no one.
+    payload.referral_url = referral_link(
+        os.getenv("VPNW_BOT_USERNAME") or "",
+        BotApiClient().referral_code(telegram_id),
+    )
     return JSONResponse(
         payload.model_dump(),
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},

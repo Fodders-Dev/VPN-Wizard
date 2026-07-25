@@ -313,7 +313,7 @@
       <section class="glass card" id="family-card">
         <p class="eyebrow">Одно действие — два способа</p>
         <h2>👵 Поделиться VPN с близким</h2>
-        <p><b>«Открыть» и «Скопировать» — это одна и та же семейная ссылка.</b> Она выдаёт близкому отдельный профиль без Telegram и занимает устройство №2 вашего тарифа.</p>
+        <p id="family-howto" hidden><b>«Открыть» и «Скопировать» — это одна и та же семейная ссылка.</b> Она выдаёт близкому отдельный профиль без Telegram и занимает устройство №2 вашего тарифа.</p>
         <p id="family-status">Доступно на тарифах от 3 устройств.</p>
         <div class="actions" id="family-actions">
           <a class="btn btn-soft" id="family-link" href="#">Открыть страницу для близкого →</a>
@@ -338,18 +338,19 @@
 
       <section class="glass card">
         <p class="eyebrow">Делиться выгодно</p>
-        <h2>🎁 Позовите друга — ему сразу 100 ₽</h2>
+        <h2>🎁 Ваша личная ссылка</h2>
         <div class="gift">
-          <strong>+100 ₽ другу</strong>
-          <span>Начисляются на баланс сразу при первом входе по вашей ссылке — до всякой оплаты. Хватает на бо́льшую часть первого месяца.</span>
+          <strong>+100 ₽ вам</strong>
+          <span>И ещё 25 % с каждого его пополнения — на ваш баланс, то есть ваша подписка
+            продлевается за счёт приглашённых. Другу тоже 100 ₽.</span>
         </div>
-        <p>Отправьте эту ссылку родным и друзьям — она одна на всех и работает всегда:</p>
-        <code class="linkbox" id="invite-url">https://t.me/foddervpnbot?start=friends</code>
+        <p>Ссылка привязана к вашему аккаунту — по ней система понимает, что друга привели вы:</p>
+        <code class="linkbox" id="invite-url">—</code>
         <div class="actions">
-          <button class="btn btn-go" id="copy-invite" type="button">🔗 Скопировать ссылку для друзей</button>
-          <a class="btn btn-quiet" href="https://t.me/foddervpnbot?start=friends" target="_blank" rel="noopener noreferrer">Проверить, как её увидит друг →</a>
+          <button class="btn btn-go" id="copy-invite" type="button">🔗 Скопировать мою ссылку</button>
         </div>
-        <p class="fine">Бонус даётся один раз на человека. Ваша личная реферальная ссылка — с выплатой вам 100 ₽ и 25 % с его пополнений — находится в боте, в разделе «Пригласить друзей».</p>
+        <p class="fine">Бонусы начисляются после первого пополнения приглашённого — так система
+          отличает реального пользователя от случайного захода. Начислять можно один раз на человека.</p>
       </section>
 
       <section class="glass card legacy">
@@ -440,6 +441,14 @@
     var deviceLimit=Math.max(1,parseInt(links.device_limit||"1",10));
     var deviceWord=deviceLimit===1?"устройство":deviceLimit<5?"устройства":"устройств";
     creds=readCreds(links.personal_vpn_url);
+    var inviteBox=document.getElementById("invite-url");
+    var inviteCard=inviteBox?inviteBox.closest("section"):null;
+    if(links.referral_url){
+      inviteBox.textContent=links.referral_url;
+    }else if(inviteCard){
+      // Without a personal code the only link we could show would credit nobody.
+      inviteCard.hidden=true;
+    }
     if(links.subscription_active){
       personal.href=links.personal_vpn_url;
       loadDevices();
@@ -453,11 +462,14 @@
     document.getElementById("family-link").href=links.family_vpn_url;
     document.getElementById("wizard-link").href=links.server_wizard_url;
     familyUrl=links.family_vpn_url;
+    var familyHowto=document.getElementById("family-howto");
     if(links.subscription_active&&deviceLimit>=2){
       familyActions.hidden=false;
+      if(familyHowto)familyHowto.hidden=false;
       familyStatus.textContent="Семейный профиль занимает устройство №2 из "+deviceLimit+" и не создаёт лишний бесплатный ключ.";
     }else{
       familyActions.hidden=true;
+      if(familyHowto)familyHowto.hidden=true;
       familyStatus.textContent=links.subscription_active?"Сейчас оплачен 1 профиль. Для семейной ссылки выберите тариф на 3 или 5 устройств.":"Семейная ссылка появится после активации тарифа на 3 или 5 устройств.";
     }
     loading.hidden=true;locked.hidden=true;portal.hidden=false;
@@ -522,9 +534,12 @@
     var list=document.getElementById("devices-list");
     var summary=document.getElementById("devices-summary");
     var devices=(data&&data.devices)||[];
-    var used=devices.filter(function(d){return d.in_use;}).length;
-    summary.textContent="Занято "+used+" из "+(data.device_limit||1)
-      +". У каждого устройства свой ключ.";
+    var limit=data.device_limit||1;
+    // A suspended key is not an occupied slot — counting it produced "2 из 1".
+    var active=devices.filter(function(d){return (d.servers||[]).length>0;}).length;
+    var extra=devices.filter(function(d){return d.slot>limit&&(d.servers||[]).length>0;}).length;
+    summary.textContent="Активно: "+active+" из "+limit
+      +(extra?(". "+extra+" ключ(а) сверх тарифа — их стоит отключить."):". У каждого устройства свой ключ.");
     list.textContent="";
     devices.forEach(function(device){
       var row=document.createElement("div");
@@ -595,8 +610,9 @@
   wireCopy("copy-family",function(){return familyUrl;},"✅ Ссылка скопирована","🔗 Скопировать эту же ссылку");
   wireCopy("copy-invite",function(){
     var box=document.getElementById("invite-url");
-    return box?box.textContent.trim():"";
-  },"✅ Скопировано — отправляйте друзьям","🔗 Скопировать ссылку для друзей");
+    var value=box?box.textContent.trim():"";
+    return value&&value!=="—"?value:"";
+  },"✅ Скопировано — отправляйте друзьям","🔗 Скопировать мою ссылку");
 
   authenticate().catch(function(error){
     showLocked("Не удалось открыть портал",error&&error.message?error.message:"Попробуйте ещё раз из бота.");

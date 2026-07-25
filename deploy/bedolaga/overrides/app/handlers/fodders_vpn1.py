@@ -513,11 +513,15 @@ async def _send_devices(message: types.Message, user: types.User | None) -> None
     flags = {sid: label.split(' ')[0] for sid, label in _public_servers()}
     devices = data.get('devices') or []
     limit = int(data.get('device_limit') or 1)
-    used = sum(1 for d in devices if d.get('in_use'))
+    # A suspended key is retained, not occupying a slot; counting it showed "2 из 1".
+    active = sum(1 for d in devices if d.get('servers'))
+    extra = sum(1 for d in devices if int(d.get('slot') or 0) > limit and d.get('servers'))
 
     body = '\n\n'.join(_device_line(d, flags) for d in devices) or 'Устройств пока нет.'
     text = (
-        f'📱 <b>Мои устройства</b>  ({used} из {limit})\n\n'
+        f'📱 <b>Мои устройства</b>  (активно {active} из {limit}'
+        + (f' · {extra} сверх тарифа' if extra else '')
+        + ')\n\n'
         f'{body}\n\n'
         'Каждое устройство — свой ключ. «Отключить» убивает ключ: '
         'у того, кому вы его отдали, VPN перестанет работать, а слот освободится.'

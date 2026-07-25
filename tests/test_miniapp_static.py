@@ -65,10 +65,10 @@ def test_connect_page_is_a_private_unified_portal() -> None:
 
 def test_invite_button_carries_a_deep_link_payload() -> None:
     # A bare t.me/<bot> link opens the chat and sends nothing, so the bot has
-    # nothing to answer and the button looks broken. The invite must carry the
-    # campaign payload that actually credits the newcomer.
+    # nothing to answer and the button looks broken. The invite must be a deep
+    # link carrying the subscriber's own referral code, served by the API.
     html = (ROOT / "web" / "connect" / "index.html").read_text(encoding="utf-8")
-    assert "t.me/foddervpnbot?start=friends" in html
+    assert "links.referral_url" in html
     assert 'id="copy-invite"' in html
     assert 'id="invite-url"' in html
 
@@ -230,3 +230,24 @@ def test_config_caption_warns_about_the_android_recents_trap() -> None:
     ).read_text(encoding="utf-8")
     assert "Загрузки" in handler
     assert "Недавние" in handler
+
+
+def test_invite_link_is_personal_not_shared() -> None:
+    # A single shared link credits nobody: the inviter gets no referral reward
+    # and cannot grow their balance from people they bring in.
+    html = (ROOT / "web" / "connect" / "index.html").read_text(encoding="utf-8")
+    assert "start=friends" not in html
+    assert "links.referral_url" in html
+    server = (ROOT / "src" / "vpn_wizard" / "server.py").read_text(encoding="utf-8")
+    assert "referral_url" in server
+    assert "BotApiClient" in server
+
+
+def test_device_summary_does_not_count_suspended_as_occupied() -> None:
+    # Suspended keys are retained, not in use; counting them produced "2 из 1".
+    html = (ROOT / "web" / "connect" / "index.html").read_text(encoding="utf-8")
+    assert "(d.servers||[]).length>0" in html
+    handler = (
+        ROOT / "deploy" / "bedolaga" / "overrides" / "app" / "handlers" / "fodders_vpn1.py"
+    ).read_text(encoding="utf-8")
+    assert "d.get('servers')" in handler
