@@ -224,6 +224,19 @@
   .chips span{padding:.3rem .6rem;border-radius:999px;color:var(--soft);font-size:.79rem;
     background:var(--fill);box-shadow:inset 0 0 0 1px var(--hair)}
 
+  .device{display:grid;grid-template-columns:1fr auto auto;gap:.4rem .5rem;align-items:center;
+    padding:.8rem .85rem;border-radius:var(--r-sm);margin-block-start:.5rem;background:var(--fill);
+    box-shadow:inset 0 0 0 1px var(--hair),inset 0 1px 0 var(--rim)}
+  .device b{grid-column:1;font-size:.95rem;font-weight:650}
+  .device .meta{grid-column:1/-1;color:var(--muted);font-size:.81rem}
+  .device .act{appearance:none;border:0;cursor:pointer;border-radius:.7rem;padding:.45rem .7rem;
+    font-size:.82rem;font-weight:600;color:var(--ink);background:var(--fill-hi);
+    box-shadow:inset 0 0 0 1px var(--hair)}
+  .device .act.danger{color:#c0392b;background:color-mix(in oklab,#e74c3c,transparent 90%)}
+  @media (prefers-color-scheme:dark){ .device .act.danger{color:#ff9a8f} }
+  .device .act:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px}
+  .device.free{opacity:.72}
+
   .gift{padding:1rem;border-radius:var(--r-md);margin-block:.85rem;
     background:linear-gradient(140deg,color-mix(in oklab,var(--go1),transparent 84%),color-mix(in oklab,var(--accent),transparent 86%));
     box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--go2),transparent 62%),inset 0 1px 0 var(--rim)}
@@ -286,6 +299,15 @@
         <div class="actions">
           <a class="btn btn-go" id="personal-link" href="#">🛡 Подключить мой VPN</a>
         </div>
+      </section>
+
+      <section class="glass card" id="devices-card" hidden>
+        <p class="eyebrow">Контроль доступа</p>
+        <h2>📱 Мои устройства</h2>
+        <p id="devices-summary">Загружаем…</p>
+        <div id="devices-list"></div>
+        <p class="fine">«Отключить» удаляет ключ на всех странах: у того, кому вы его отдали,
+          VPN сразу перестанет работать, а слот освободится под новое устройство.</p>
       </section>
 
       <section class="glass card" id="family-card">
@@ -417,8 +439,10 @@
     var familyStatus=document.getElementById("family-status");
     var deviceLimit=Math.max(1,parseInt(links.device_limit||"1",10));
     var deviceWord=deviceLimit===1?"устройство":deviceLimit<5?"устройства":"устройств";
+    creds=readCreds(links.personal_vpn_url);
     if(links.subscription_active){
       personal.href=links.personal_vpn_url;
+      loadDevices();
       document.getElementById("account-status").textContent="Подписка активна: "+deviceLimit+" "+deviceWord+". Каждому будет выдан отдельный ключ.";
     }else{
       personal.href="https://t.me/foddervpnbot";
@@ -457,6 +481,115 @@
         setTimeout(function(){button.textContent=idleLabel;},2600);
       }
     });
+  }
+
+  // --- device control -------------------------------------------------------
+  // The personal link already carries the signed (tid, token) pair, so the
+  // device endpoints need no second credential and no backend change.
+  var creds=null;
+  function readCreds(personalUrl){
+    try{
+      var q=new URL(personalUrl,location.href).searchParams;
+      var tid=q.get("tid"),token=q.get("token");
+      return tid&&token?{tid:tid,token:token}:null;
+    }catch(e){return null;}
+  }
+  function fmtBytes(n){
+    n=Number(n)||0;
+    if(n<1024)return n+" Б";
+    if(n<1048576)return Math.round(n/1024)+" КБ";
+    if(n<1073741824)return (n/1048576).toFixed(1)+" МБ";
+    return (n/1073741824).toFixed(1)+" ГБ";
+  }
+  function fmtSeen(ts){
+    if(!ts)return "ни разу не подключалось";
+    var d=Math.max(0,Math.floor(Date.now()/1000)-Number(ts));
+    if(d<120)return "подключено только что";
+    if(d<3600)return "было "+Math.floor(d/60)+" мин назад";
+    if(d<86400)return "было "+Math.floor(d/3600)+" ч назад";
+    var days=Math.floor(d/86400);
+    return days===1?"было вчера":days<30?("было "+days+" дн назад"):"давно не подключалось";
+  }
+  async function deviceCall(path,options){
+    if(!creds)throw new Error("no creds");
+    var url="/api/awg/"+encodeURIComponent(creds.tid)+"/devices"+path
+      +(path.indexOf("?")<0?"?":"&")+"token="+encodeURIComponent(creds.token);
+    var response=await fetch(url,Object.assign({headers:{"Accept":"application/json"}},options||{}));
+    if(!response.ok)throw new Error(String(response.status));
+    return response.json();
+  }
+  function renderDevices(data){
+    var list=document.getElementById("devices-list");
+    var summary=document.getElementById("devices-summary");
+    var devices=(data&&data.devices)||[];
+    var used=devices.filter(function(d){return d.in_use;}).length;
+    summary.textContent="Занято "+used+" из "+(data.device_limit||1)
+      +". У каждого устройства свой ключ.";
+    list.textContent="";
+    devices.forEach(function(device){
+      var row=document.createElement("div");
+      row.className="device"+(device.in_use?"":" free");
+      var name=document.createElement("b");
+      name.textContent=device.label;
+      row.appendChild(name);
+
+      var rename=document.createElement("button");
+      rename.type="button";rename.className="act";rename.textContent="✏️";
+      rename.title="Переименовать";
+      rename.addEventListener("click",async function(){
+        var next=window.prompt("Название устройства (пусто — вернуть по умолчанию):",device.label||"");
+        if(next===null)return;
+        try{ await deviceCall("/"+device.slot+"/label",{
+          method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},
+          body:JSON.stringify({label:next})}); await loadDevices();
+        }catch(e){ summary.textContent="Не удалось переименовать. Попробуйте ещё раз."; }
+      });
+      row.appendChild(rename);
+
+      if(device.in_use){
+        var kill=document.createElement("button");
+        kill.type="button";kill.className="act danger";kill.textContent="Отключить";
+        kill.addEventListener("click",async function(){
+          if(!window.confirm("Отключить «"+device.label+"»?\n\nКлюч будет удалён на всех странах — "
+            +"у того, кому вы его отдали, VPN перестанет работать."))return;
+          kill.disabled=true;kill.textContent="Отключаю…";
+          try{ await deviceCall("/"+device.slot+"/revoke",{method:"POST"}); await loadDevices();
+          }catch(e){
+            // Never imply success: a half-revoked key is still live somewhere.
+            summary.textContent=e.message==="502"
+              ? "Ключ удалён не везде — часть доступа могла остаться. Повторите через минуту."
+              : "Не удалось отключить. Попробуйте позже.";
+            kill.disabled=false;kill.textContent="Отключить";
+          }
+        });
+        row.appendChild(kill);
+      }
+
+      var meta=document.createElement("span");
+      meta.className="meta";
+      if(device.in_use){
+        var where=(device.servers||[]).join(", ")||"—";
+        meta.textContent="страны: "+where+" · "+fmtSeen(device.last_seen_at)
+          +(device.total_bytes?(" · "+fmtBytes(device.total_bytes)):"");
+        if((device.suspended_servers||[]).length){
+          meta.textContent+=" · приостановлено: "+device.suspended_servers.join(", ");
+        }
+      }else{
+        meta.textContent="свободно — можно подключить новое устройство";
+      }
+      row.appendChild(meta);
+      list.appendChild(row);
+    });
+  }
+  async function loadDevices(){
+    if(!creds)return;
+    try{
+      renderDevices(await deviceCall(""));
+      document.getElementById("devices-card").hidden=false;
+    }catch(e){
+      // Not entitled or unreachable: hide rather than show a broken panel.
+      document.getElementById("devices-card").hidden=true;
+    }
   }
 
   wireCopy("copy-family",function(){return familyUrl;},"✅ Ссылка скопирована","🔗 Скопировать эту же ссылку");

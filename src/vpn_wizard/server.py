@@ -15,7 +15,7 @@ import subprocess
 import time
 from urllib.parse import urlencode, urlparse
 import tempfile
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 import threading
 import re
 import uuid
@@ -38,6 +38,7 @@ from vpn_wizard.account import (
 )
 from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
 from vpn_wizard.awg_fallback import (
+    MAX_DEVICE_SLOT,
     AwgFallbackConfig,
     AwgFallbackService,
     device_owner_slot,
@@ -48,6 +49,12 @@ from vpn_wizard.awg_fallback import (
     issue_token,
     verify_family_issue_token,
     verify_issue_token,
+)
+from vpn_wizard.awg_devices import (
+    FAMILY_SLOT,
+    list_devices,
+    peer_id_for_slot,
+    revoke_device,
 )
 from vpn_wizard.awg_servers import AwgRegistry, AwgRegistryError
 from vpn_wizard.proxy import ProxyProvisioner, rewrite_vless_alternatives, rewrite_vless_endpoint
@@ -537,6 +544,23 @@ class AwgAccessResponse(BaseModel):
     device_limit: int
     family: bool = False
     expires_at: Optional[str] = None
+
+
+class AwgDeviceListResponse(BaseModel):
+    ok: bool
+    device_limit: int
+    devices: list[dict[str, Any]]
+
+
+class AwgDeviceLabelRequest(BaseModel):
+    label: Optional[str] = None
+
+
+class AwgDeviceActionResponse(BaseModel):
+    ok: bool
+    slot: int
+    revoked_from: int = 0
+    label: Optional[str] = None
 
 
 class SavedServerRequest(BaseModel):
@@ -3082,6 +3106,93 @@ def awg_family_qr(
         content=_build_qr_png(config_text),
         media_type="image/png",
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
+
+
+def _awg_owner_access(telegram_id: int, token: str) -> tuple[int, AwgRegistry]:
+    """Authorise a device-management call. Personal token only — a family guest
+    holds one slot and must not be able to see or revoke the owner's others."""
+    awg_cfg = AwgFallbackConfig.from_env()
+    if not awg_cfg.link_secret:
+        raise HTTPException(status_code=503, detail="AWG fallback is not configured.")
+    if not verify_issue_token(awg_cfg.link_secret, telegram_id, token):
+        raise HTTPException(status_code=403, detail="Invalid or missing token.")
+    try:
+        user = RemnawaveClient(RemnawaveConfig.from_env()).active_user(telegram_id)
+    except RemnawaveError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    if not user:
+        raise HTTPException(status_code=403, detail="No active subscription.")
+    return device_limit_of(user), _awg_registry()
+
+
+def _awg_legacy_server_id() -> Optional[str]:
+    default = _awg_registry().default_server
+    return getattr(default, "id", None)
+
+
+@app.get("/api/awg/{telegram_id}/devices", response_model=AwgDeviceListResponse)
+def awg_devices(telegram_id: int, token: str) -> AwgDeviceListResponse:
+    """Which device slots exist, where their keys live, and when last used."""
+    limit, _registry = _awg_owner_access(telegram_id, token)
+    devices = list_devices(
+        build_account_store(),
+        telegram_id,
+        limit,
+        legacy_server_id=_awg_legacy_server_id(),
+    )
+    return AwgDeviceListResponse(
+        ok=True,
+        device_limit=limit,
+        devices=[device.public() for device in devices],
+    )
+
+
+@app.post("/api/awg/{telegram_id}/devices/{slot}/revoke", response_model=AwgDeviceActionResponse)
+def awg_device_revoke(telegram_id: int, slot: int, token: str) -> AwgDeviceActionResponse:
+    """Destroy a slot's keys everywhere, so a shared config stops working."""
+    _limit, registry = _awg_owner_access(telegram_id, token)
+    try:
+        peer_id_for_slot(telegram_id, slot)  # validates the slot number
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    failures: list[str] = []
+    removed = revoke_device(
+        telegram_id,
+        slot,
+        _awg_all_services(),
+        on_error=lambda service, exc: failures.append(service.server_id or "default"),
+    )
+    if failures:
+        logger.warning(
+            "awg.device.revoke_partial tid=%s slot=%s failed_on=%s",
+            telegram_id,
+            slot,
+            ",".join(failures),
+        )
+        # Partial revocation is a security problem, not a cosmetic one: say so
+        # instead of reporting success while a key is still live somewhere.
+        raise HTTPException(
+            status_code=502,
+            detail="Could not revoke on every location. Please try again.",
+        )
+    return AwgDeviceActionResponse(ok=True, slot=slot, revoked_from=removed)
+
+
+@app.post("/api/awg/{telegram_id}/devices/{slot}/label", response_model=AwgDeviceActionResponse)
+def awg_device_label(
+    telegram_id: int, slot: int, token: str, payload: AwgDeviceLabelRequest
+) -> AwgDeviceActionResponse:
+    _limit, _registry = _awg_owner_access(telegram_id, token)
+    if slot < 1 or slot > MAX_DEVICE_SLOT:
+        raise HTTPException(status_code=400, detail="Unknown device slot.")
+    store = build_account_store()
+    store.awg_set_device_label(telegram_id, slot, payload.label)
+    return AwgDeviceActionResponse(
+        ok=True,
+        slot=slot,
+        label=store.awg_get_device_labels(telegram_id).get(slot),
     )
 
 

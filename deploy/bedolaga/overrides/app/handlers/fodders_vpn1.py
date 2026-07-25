@@ -2,16 +2,62 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 from html import escape as html_escape
 import json
+import logging
 import os
 import re
+import time
 from urllib.parse import urlencode
 
+import aiohttp
 from aiogram import Dispatcher, F, types
 from aiogram.filters import Command
+
+logger = logging.getLogger(__name__)
+
+# Telegram's WebView ignores <a download>, and a browser detour loses people on
+# iOS, so the file is delivered as a chat document instead. Prefix is short:
+# callback_data is capped at 64 bytes.
+CONFIG_CALLBACK_PREFIX = 'fawg_get:'
+FETCH_TIMEOUT_SECONDS = 20
+
+DEVICES_CALLBACK = 'fodders_devices'
+DEVICE_RENAME_PREFIX = 'fdev_rn:'
+DEVICE_REVOKE_PREFIX = 'fdev_rk:'
+DEVICE_REVOKE_CONFIRM_PREFIX = 'fdev_rky:'
+RENAME_PROMPT_MARKER = '✏️ Введите новое название'
+
+
+def _format_bytes(total: int) -> str:
+    value = float(max(0, int(total)))
+    for unit in ('Б', 'КБ', 'МБ', 'ГБ'):
+        if value < 1024 or unit == 'ГБ':
+            return f'{value:.0f} {unit}' if unit in ('Б', 'КБ') else f'{value:.1f} {unit}'
+        value /= 1024
+    return f'{value:.1f} ГБ'
+
+
+def _format_last_seen(timestamp: int | None) -> str:
+    """Plain Russian for "when was this key last actually used"."""
+    if not timestamp:
+        return 'ни разу не подключалось'
+    delta = max(0, int(time.time()) - int(timestamp))
+    if delta < 120:
+        return 'подключено только что'
+    if delta < 3600:
+        return f'было {delta // 60} мин назад'
+    if delta < 86400:
+        return f'было {delta // 3600} ч назад'
+    days = delta // 86400
+    if days == 1:
+        return 'было вчера'
+    if days < 30:
+        return f'было {days} дн назад'
+    return 'давно не подключалось'
 
 
 DEFAULT_PORTAL_URL = 'https://212-69-84-167.nip.io/portal/?v=20260722-3'
@@ -159,13 +205,14 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
             '🛡 <b>AmneziaWG — основной режим для РФ</b>\n\n'
             'Этот профиль работает через обфусцированный AmneziaWG и предназначен '
             'для сетей, где Happ/Reality не подключается.\n\n'
-            '🌍 <b>Выберите страну кнопкой ниже.</b> Можно скачать несколько стран: '
-            'они появятся отдельными туннелями FVPN-nl, FVPN-fi, FVPN-tr и FVPN-us.\n\n'
+            '🌍 <b>Нажмите страну — конфиг придёт сюда же, файлом.</b> '
+            'Можно взять несколько стран: каждая станет отдельным туннелем '
+            'и все они работают одновременно.\n\n'
             'Доступ работает только при активной подписке. Если срок закончится, '
             'сервер приостановит ключ; после продления уже установленный профиль '
             'заработает снова.\n\n'
             '1. Установите официальное приложение для Android, iPhone, Windows или Mac.\n'
-            '2. Нажмите страну и откройте скачанный .conf в AmneziaWG.\n'
+            '2. Нажмите страну и откройте присланный файл в AmneziaWG.\n'
             '3. Включите туннель нужной страны.'
         )
         picker_text = '📱 Инструкция и QR'
@@ -174,13 +221,14 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
         windows_text = '🪟 Windows'
         mac_text = '🍎 Mac'
         family_text = '👵 Дать доступ близкому'
+        devices_text = '📱 Мои устройства'
     else:
         text = (
             '🛡 <b>AmneziaWG — primary mode for restricted networks</b>\n\n'
             'This profile uses obfuscated AmneziaWG for networks where Happ/Reality '
             'does not connect.\n\n'
-            '🌍 <b>Choose a country below.</b> You may install several countries; '
-            'each appears as its own FVPN tunnel.\n\n'
+            '🌍 <b>Tap a country and the config arrives here as a file.</b> '
+            'You may take several countries; each becomes its own tunnel.\n\n'
             'Access follows your subscription. When it expires the server suspends '
             'the key; renewing restores the already imported profile.\n\n'
             'Install the official AmneziaWG app, tap a country, open the downloaded '
@@ -192,12 +240,17 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
         windows_text = '🪟 Windows'
         mac_text = '🍎 Mac'
         family_text = '👵 Share with family'
+        devices_text = '📱 My devices'
     server_rows = []
     for server_id, label in servers:
-        links = _awg_urls(user.id, server_id)
-        if links is not None:
+        if _awg_urls(user.id, server_id) is not None:
+            # Callback, not a URL: the file comes back into this chat instead of
+            # sending the user out to a download the WebView will swallow.
             server_rows.append([
-                types.InlineKeyboardButton(text=f'📥 {label}', url=links[0])
+                types.InlineKeyboardButton(
+                    text=f'📥 {label}',
+                    callback_data=f'{CONFIG_CALLBACK_PREFIX}{server_id}',
+                )
             ])
     keyboard = types.InlineKeyboardMarkup(
         inline_keyboard=server_rows + [
@@ -208,6 +261,12 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
                 types.InlineKeyboardButton(
                     text=family_text,
                     callback_data='fodders_awg_family',
+                ),
+            ],
+            [
+                types.InlineKeyboardButton(
+                    text=devices_text,
+                    callback_data=DEVICES_CALLBACK,
                 ),
             ],
             [
@@ -271,6 +330,318 @@ async def _send_family_link(message: types.Message, user: types.User | None) -> 
         ]
     )
     await message.answer(text, reply_markup=keyboard, parse_mode='HTML')
+
+
+def _tunnel_name(server_id: str) -> str:
+    """Base filename == the tunnel name shown in AmneziaWG.
+
+    The Android client validates it against [a-zA-Z0-9_=+.-]{1,15} and refuses
+    anything longer instead of truncating, so keep it short and plain.
+    """
+    clean = re.sub(r'[^A-Za-z0-9_=+.-]', '', (server_id or '').strip())[:10]
+    return f'FVPN-{clean}' if clean else 'FVPN'
+
+
+async def _fetch(session: aiohttp.ClientSession, url: str) -> tuple[int, bytes]:
+    async with session.get(url) as response:
+        return response.status, await response.read()
+
+
+def _download_failure_text(status: int) -> str:
+    """Say what actually went wrong, in Russian, with a way forward."""
+    if status == 403:
+        return (
+            '🔒 Подписка неактивна или закончилась.\n\n'
+            'Продлите её — уже установленный профиль заработает снова, '
+            'заново импортировать ничего не нужно.'
+        )
+    if status == 503:
+        return (
+            '🌍 Эта страна сейчас недоступна.\n\n'
+            'Выберите другую — остальные работают.'
+        )
+    if status == 404:
+        return '🌍 Такой страны больше нет в списке. Откройте /awg заново.'
+    return (
+        '⚠️ Не удалось получить конфиг. Попробуйте ещё раз через минуту, '
+        'а если повторится — напишите в поддержку.'
+    )
+
+
+async def _send_country_config(callback: types.CallbackQuery) -> None:
+    """Deliver the .conf as a chat document plus a QR image."""
+    user = callback.from_user
+    data = callback.data or ''
+    server_id = data[len(CONFIG_CALLBACK_PREFIX):].strip()
+    if user is None or not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,15}', server_id):
+        await callback.answer('Неизвестная страна', show_alert=True)
+        return
+
+    links = _awg_urls(user.id, server_id)
+    if links is None:
+        await callback.answer('AmneziaWG пока не настроен', show_alert=True)
+        return
+    config_url, qr_url = links
+
+    # Telegram expires a callback after ~10s; answer before doing any network work.
+    await callback.answer('Готовлю конфиг…')
+    message = callback.message
+    if message is None:
+        return
+
+    timeout = aiohttp.ClientTimeout(total=FETCH_TIMEOUT_SECONDS)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            (config_status, config_body), (qr_status, qr_body) = await asyncio.gather(
+                _fetch(session, config_url),
+                _fetch(session, qr_url),
+            )
+    except (aiohttp.ClientError, asyncio.TimeoutError) as error:
+        logger.warning('awg.config.fetch_failed user=%s server=%s err=%s', user.id, server_id, error)
+        await message.answer(_download_failure_text(0))
+        return
+
+    if config_status != 200 or not config_body:
+        logger.info('awg.config.rejected user=%s server=%s status=%s', user.id, server_id, config_status)
+        keyboard = None
+        if config_status == 403:
+            keyboard = types.InlineKeyboardMarkup(
+                inline_keyboard=[[
+                    types.InlineKeyboardButton(text='💎 Продлить подписку', callback_data='subscription_upgrade'),
+                ]]
+            )
+        await message.answer(_download_failure_text(config_status), reply_markup=keyboard)
+        return
+
+    label = next((text for sid, text in _public_servers() if sid == server_id), server_id)
+    name = _tunnel_name(server_id)
+    caption = (
+        f'🛡 <b>Ваш конфиг — {html_escape(label)}</b>\n\n'
+        f'1. Установите <b>AmneziaWG</b> (кнопки под сообщением с выбором страны).\n'
+        f'2. Нажмите на этот файл → «Открыть в AmneziaWG».\n'
+        f'3. Включите туннель <b>{name}</b>.\n\n'
+        'Не пересылайте файл: это ключ от вашего устройства.'
+    )
+    await message.answer_document(
+        types.BufferedInputFile(config_body, filename=f'{name}.conf'),
+        caption=caption,
+        parse_mode='HTML',
+    )
+    if qr_status == 200 and qr_body:
+        await message.answer_photo(
+            types.BufferedInputFile(qr_body, filename=f'{name}.png'),
+            caption=(
+                'Если файл не открывается — отсканируйте этот QR '
+                'в AmneziaWG (кнопка «+»). Название туннеля введите '
+                f'<b>{name}</b>.'
+            ),
+            parse_mode='HTML',
+        )
+
+
+async def send_country_config(callback: types.CallbackQuery) -> None:
+    try:
+        await _send_country_config(callback)
+    except Exception as error:  # never leave the button spinning
+        logger.exception('awg.config.unhandled err=%s', error)
+        if callback.message:
+            await callback.message.answer(_download_failure_text(0))
+
+
+def _devices_api(telegram_id: int, suffix: str = '') -> tuple[str, str] | None:
+    context = _awg_link_context(telegram_id)
+    if context is None:
+        return None
+    base, token = context
+    return f'{base}/api/awg/{int(telegram_id)}/devices{suffix}', token
+
+
+async def _load_devices(telegram_id: int) -> tuple[int, dict | None]:
+    api = _devices_api(telegram_id)
+    if api is None:
+        return 0, None
+    url, token = api
+    timeout = aiohttp.ClientTimeout(total=FETCH_TIMEOUT_SECONDS)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.get(url, params={'token': token}) as response:
+            if response.status != 200:
+                return response.status, None
+            return 200, await response.json()
+
+
+def _device_line(device: dict, flags: dict[str, str]) -> str:
+    label = html_escape(str(device.get('label') or ''))
+    servers = device.get('servers') or []
+    suspended = device.get('suspended_servers') or []
+    if not servers and not suspended:
+        return f'⚪️ <b>{label}</b>\n     свободно — можно подключить новое устройство'
+    where = ' '.join(flags.get(sid, sid) for sid in servers) or '—'
+    parts = [f'🟢 <b>{label}</b>', f'     страны: {where}']
+    if suspended:
+        parts.append('     ⏸ приостановлено: ' + ' '.join(flags.get(s, s) for s in suspended))
+    parts.append(f'     {_format_last_seen(device.get("last_seen_at"))}')
+    total = int(device.get('total_bytes') or 0)
+    if total:
+        parts.append(f'     трафик: {_format_bytes(total)}')
+    return '\n'.join(parts)
+
+
+async def _send_devices(message: types.Message, user: types.User | None) -> None:
+    if user is None:
+        return
+    try:
+        status, data = await _load_devices(user.id)
+    except (aiohttp.ClientError, asyncio.TimeoutError):
+        await message.answer('⚠️ Не удалось получить список устройств. Попробуйте позже.')
+        return
+
+    if data is None:
+        if status == 403:
+            await message.answer(
+                '🔒 Подписка неактивна — список устройств появится после продления.',
+                reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
+                    types.InlineKeyboardButton(text='💎 Продлить', callback_data='subscription_upgrade'),
+                ]]),
+            )
+            return
+        await message.answer('⚠️ Не удалось получить список устройств. Попробуйте позже.')
+        return
+
+    flags = {sid: label.split(' ')[0] for sid, label in _public_servers()}
+    devices = data.get('devices') or []
+    limit = int(data.get('device_limit') or 1)
+    used = sum(1 for d in devices if d.get('in_use'))
+
+    body = '\n\n'.join(_device_line(d, flags) for d in devices) or 'Устройств пока нет.'
+    text = (
+        f'📱 <b>Мои устройства</b>  ({used} из {limit})\n\n'
+        f'{body}\n\n'
+        'Каждое устройство — свой ключ. «Отключить» убивает ключ: '
+        'у того, кому вы его отдали, VPN перестанет работать, а слот освободится.'
+    )
+
+    rows = []
+    for device in devices:
+        slot = int(device.get('slot'))
+        label = str(device.get('label') or f'Слот {slot}')
+        row = [types.InlineKeyboardButton(
+            text=f'✏️ {label[:18]}', callback_data=f'{DEVICE_RENAME_PREFIX}{slot}',
+        )]
+        if device.get('in_use'):
+            row.append(types.InlineKeyboardButton(
+                text='🚫 Отключить', callback_data=f'{DEVICE_REVOKE_PREFIX}{slot}',
+            ))
+        rows.append(row)
+    rows.append([types.InlineKeyboardButton(text='🛡 Получить конфиг', callback_data='fodders_awg')])
+
+    await message.answer(
+        text,
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=rows),
+        parse_mode='HTML',
+    )
+
+
+async def open_devices_message(message: types.Message) -> None:
+    await _send_devices(message, message.from_user)
+
+
+async def open_devices_callback(callback: types.CallbackQuery) -> None:
+    await callback.answer()
+    if callback.message:
+        await _send_devices(callback.message, callback.from_user)
+
+
+async def ask_device_rename(callback: types.CallbackQuery) -> None:
+    """Ask for a name with ForceReply, so we need no FSM state of our own."""
+    slot = (callback.data or '')[len(DEVICE_RENAME_PREFIX):]
+    await callback.answer()
+    if not callback.message or not slot.isdigit():
+        return
+    await callback.message.answer(
+        f'{RENAME_PROMPT_MARKER} для устройства №{slot}.\n'
+        'Ответьте на это сообщение, например: «Телефон мамы».\n'
+        'Чтобы вернуть название по умолчанию, ответьте знаком «-».',
+        reply_markup=types.ForceReply(input_field_placeholder='Название устройства'),
+    )
+
+
+async def apply_device_rename(message: types.Message) -> None:
+    reply = message.reply_to_message
+    if not reply or RENAME_PROMPT_MARKER not in (reply.text or ''):
+        return
+    found = re.search(r'№(\d+)', reply.text or '')
+    if not found or message.from_user is None:
+        return
+    slot = int(found.group(1))
+    label = (message.text or '').strip()
+    if label == '-':
+        label = ''
+
+    api = _devices_api(message.from_user.id, f'/{slot}/label')
+    if api is None:
+        return
+    url, token = api
+    timeout = aiohttp.ClientTimeout(total=FETCH_TIMEOUT_SECONDS)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(url, params={'token': token}, json={'label': label}) as response:
+                ok = response.status == 200
+    except (aiohttp.ClientError, asyncio.TimeoutError):
+        ok = False
+    if not ok:
+        await message.answer('⚠️ Не удалось переименовать. Попробуйте ещё раз.')
+        return
+    await message.answer(f'✅ Готово: устройство №{slot} теперь «{html_escape(label) or "по умолчанию"}».')
+    await _send_devices(message, message.from_user)
+
+
+async def confirm_device_revoke(callback: types.CallbackQuery) -> None:
+    slot = (callback.data or '')[len(DEVICE_REVOKE_PREFIX):]
+    await callback.answer()
+    if not callback.message or not slot.isdigit():
+        return
+    await callback.message.answer(
+        f'🚫 <b>Отключить устройство №{slot}?</b>\n\n'
+        'Его ключ будет удалён на всех странах. Если вы отдавали этот профиль '
+        'кому-то — у него VPN сразу перестанет работать.\n'
+        'Слот освободится, и на него можно будет выдать новый ключ.',
+        parse_mode='HTML',
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(
+                text='🚫 Да, отключить', callback_data=f'{DEVICE_REVOKE_CONFIRM_PREFIX}{slot}',
+            )],
+            [types.InlineKeyboardButton(text='← Отмена', callback_data=DEVICES_CALLBACK)],
+        ]),
+    )
+
+
+async def apply_device_revoke(callback: types.CallbackQuery) -> None:
+    slot = (callback.data or '')[len(DEVICE_REVOKE_CONFIRM_PREFIX):]
+    await callback.answer('Отключаю…')
+    if not callback.message or not slot.isdigit() or callback.from_user is None:
+        return
+    api = _devices_api(callback.from_user.id, f'/{slot}/revoke')
+    if api is None:
+        return
+    url, token = api
+    timeout = aiohttp.ClientTimeout(total=FETCH_TIMEOUT_SECONDS)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(url, params={'token': token}) as response:
+                status = response.status
+    except (aiohttp.ClientError, asyncio.TimeoutError):
+        status = 0
+    if status == 200:
+        await callback.message.answer(f'✅ Устройство №{slot} отключено. Слот свободен.')
+    elif status == 502:
+        # Partial revocation is a security problem: never imply it worked.
+        await callback.message.answer(
+            '⚠️ Не удалось отключить ключ на всех странах — часть доступа могла остаться. '
+            'Попробуйте ещё раз через минуту.'
+        )
+    else:
+        await callback.message.answer('⚠️ Не удалось отключить устройство. Попробуйте позже.')
+    await _send_devices(callback.message, callback.from_user)
 
 
 async def open_managed_awg_message(message: types.Message) -> None:
@@ -354,6 +725,16 @@ async def show_help(message: types.Message) -> None:
 def register_handlers(dp: Dispatcher) -> None:
     dp.message.register(open_managed_awg_message, Command('awg', 'amnezia'))
     dp.callback_query.register(open_managed_awg_callback, F.data == 'fodders_awg')
+    dp.callback_query.register(
+        send_country_config, F.data.startswith(CONFIG_CALLBACK_PREFIX)
+    )
+    dp.message.register(open_devices_message, Command('devices', 'ustroystva'))
+    dp.callback_query.register(open_devices_callback, F.data == DEVICES_CALLBACK)
+    dp.callback_query.register(ask_device_rename, F.data.startswith(DEVICE_RENAME_PREFIX))
+    # The confirm prefix extends the revoke prefix, so it must match first.
+    dp.callback_query.register(apply_device_revoke, F.data.startswith(DEVICE_REVOKE_CONFIRM_PREFIX))
+    dp.callback_query.register(confirm_device_revoke, F.data.startswith(DEVICE_REVOKE_PREFIX))
+    dp.message.register(apply_device_rename, F.reply_to_message)
     dp.message.register(open_family_message, Command('family', 'share'))
     dp.callback_query.register(open_family_callback, F.data == 'fodders_awg_family')
     dp.message.register(open_portal, Command('miniapp', 'portal'))

@@ -572,3 +572,145 @@ def test_json_responses_keep_their_own_caching(client: TestClient) -> None:
     # The blanket rule must apply to HTML only.
     response = client.get("/api/awg/servers")
     assert "text/html" not in response.headers.get("content-type", "")
+
+
+# --- device control -------------------------------------------------------------
+
+def _active_remnawave(limit: int):
+    class ActiveRemnawave:
+        def __init__(self, config) -> None:
+            self.config = config
+
+        def active_user(self, telegram_id: int):
+            return {"uuid": "u", "hwidDeviceLimit": limit, "status": "ACTIVE",
+                    "expireAt": "2999-01-01T00:00:00Z"}
+    return ActiveRemnawave
+
+
+def test_device_list_reports_every_paid_slot(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    secret = "link-secret"
+    owner = 449066726
+    _configure_single_server(monkeypatch, secret)
+    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(3))
+
+    response = client.get(f"/api/awg/{owner}/devices", params={"token": issue_token(secret, owner)})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["device_limit"] == 3
+    assert [d["slot"] for d in body["devices"]] == [1, 2, 3]
+    assert body["devices"][1]["family"] is True
+    assert all(d["in_use"] is False for d in body["devices"])
+
+
+def test_device_endpoints_reject_a_family_token(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    # A family guest holds one slot; it must never see or revoke the owner's others.
+    secret = "link-secret"
+    owner = 449066726
+    _configure_single_server(monkeypatch, secret)
+    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(5))
+    family = family_issue_token(secret, owner)
+
+    assert client.get(f"/api/awg/{owner}/devices", params={"token": family}).status_code == 403
+    assert client.post(
+        f"/api/awg/{owner}/devices/3/revoke", params={"token": family}
+    ).status_code == 403
+    assert client.post(
+        f"/api/awg/{owner}/devices/3/label", params={"token": family}, json={"label": "x"}
+    ).status_code == 403
+
+
+def test_device_endpoints_require_an_active_subscription(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    secret = "link-secret"
+    owner = 449066726
+    _configure_single_server(monkeypatch, secret)
+
+    class Expired:
+        def __init__(self, config) -> None:
+            self.config = config
+
+        def active_user(self, telegram_id: int):
+            return None
+
+    monkeypatch.setattr(server_module, "RemnawaveClient", Expired)
+    token = issue_token(secret, owner)
+    assert client.get(f"/api/awg/{owner}/devices", params={"token": token}).status_code == 403
+
+
+def test_renaming_a_slot_persists_and_can_be_cleared(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    secret = "link-secret"
+    owner = 449066726
+    _configure_single_server(monkeypatch, secret)
+    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(2))
+    token = issue_token(secret, owner)
+
+    named = client.post(
+        f"/api/awg/{owner}/devices/1/label", params={"token": token}, json={"label": "Мамин телефон"}
+    )
+    assert named.status_code == 200
+    assert named.json()["label"] == "Мамин телефон"
+
+    listed = client.get(f"/api/awg/{owner}/devices", params={"token": token}).json()
+    assert listed["devices"][0]["label"] == "Мамин телефон"
+
+    cleared = client.post(
+        f"/api/awg/{owner}/devices/1/label", params={"token": token}, json={"label": ""}
+    )
+    assert cleared.json()["label"] is None
+
+
+def test_revoke_reports_failure_when_a_location_cannot_be_cleared(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    # Reporting success while a shared key still works somewhere would be worse
+    # than an error: the owner believes access is cut when it is not.
+    secret = "link-secret"
+    owner = 449066726
+    _configure_single_server(monkeypatch, secret)
+    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(3))
+
+    class DeadService:
+        server_id = "fi"
+
+        @staticmethod
+        def revoke(peer_id: int) -> bool:
+            raise RuntimeError("exit unreachable")
+
+    monkeypatch.setattr(server_module, "_awg_all_services", lambda: [DeadService()])
+    response = client.post(
+        f"/api/awg/{owner}/devices/3/revoke", params={"token": issue_token(secret, owner)}
+    )
+    assert response.status_code == 502
+
+
+def test_revoke_clears_the_slot_on_all_locations(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    secret = "link-secret"
+    owner = 449066726
+    _configure_single_server(monkeypatch, secret)
+    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(3))
+    calls: list[tuple[str, int]] = []
+
+    class Service:
+        def __init__(self, server_id):
+            self.server_id = server_id
+
+        def revoke(self, peer_id: int) -> bool:
+            calls.append((self.server_id, peer_id))
+            return True
+
+    monkeypatch.setattr(server_module, "_awg_all_services", lambda: [Service("nl"), Service("fi")])
+    response = client.post(
+        f"/api/awg/{owner}/devices/3/revoke", params={"token": issue_token(secret, owner)}
+    )
+    assert response.status_code == 200
+    assert response.json()["revoked_from"] == 2
+    assert calls == [("nl", device_peer_id(owner, 3)), ("fi", device_peer_id(owner, 3))]

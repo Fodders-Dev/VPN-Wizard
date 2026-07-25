@@ -12,6 +12,7 @@ from vpn_wizard.awg_fallback import (
     device_owner_slot,
     family_owner_id,
 )
+from vpn_wizard.awg_devices import collect_usage
 from vpn_wizard.awg_servers import AwgRegistry
 from vpn_wizard.remnawave import RemnawaveClient, RemnawaveConfig, device_limit_of
 
@@ -140,6 +141,47 @@ def reconcile_awg_peers(
     return result
 
 
+def _read_awg_show(service: Any) -> str:
+    """Ask one exit what its peers have been doing."""
+    with service._ssh() as ssh:  # same credentials the service already provisions with
+        return ssh.run("awg show 2>/dev/null || wg show", sudo=True, check=False, pty=False)
+
+
+def refresh_usage(
+    account: Any,
+    legacy_service: Any,
+    server_services: dict[str, Any],
+    registry: Any,
+    *,
+    read: Any = None,
+) -> int:
+    """Cache last-seen/traffic for every peer, one SSH per exit."""
+    read = read or _read_awg_show
+    default = registry.default_server
+    legacy_id = getattr(default, "id", None)
+    targets: list[tuple[str | None, Any, list[dict[str, Any]]]] = [
+        (legacy_id, legacy_service, account.awg_list_peers())
+    ]
+    for server_id, service in server_services.items():
+        peers = [
+            peer
+            for peer in account.awg_list_server_peers()
+            if str(peer.get("server_id")) == str(server_id)
+        ]
+        targets.append((server_id, service, peers))
+
+    rows = 0
+    for server_id, service, peers in targets:
+        if not peers or service is None:
+            continue
+        try:
+            output = read(service)
+        except Exception:
+            continue  # a dead exit must not stop the others being refreshed
+        rows += collect_usage(account, server_id, peers, output)
+    return rows
+
+
 def main() -> int:
     account = build_account_store()
     legacy_config = AwgFallbackConfig.from_env()
@@ -161,6 +203,13 @@ def main() -> int:
         legacy_service,
         server_services=server_services,
     )
+    # Refresh "last seen" while we already hold SSH access to every exit. Doing it
+    # here keeps it off user-facing requests, and a failure must never turn a
+    # successful reconcile into a failed run.
+    try:
+        result["usage_rows"] = refresh_usage(account, legacy_service, server_services, registry)
+    except Exception as exc:  # telemetry is a nicety; entitlements are not
+        result["errors"].append({"error": "usage_refresh_failed", "detail": str(exc)})
     print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
     return 1 if result["errors"] else 0
 

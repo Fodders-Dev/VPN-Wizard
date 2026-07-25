@@ -193,3 +193,29 @@ def test_portal_hands_external_links_to_telegram() -> None:
     html = (ROOT / "web" / "connect" / "index.html").read_text(encoding="utf-8")
     assert "tg.openTelegramLink" in html
     assert "tg.openLink" in html
+
+
+def test_portal_exposes_device_control() -> None:
+    html = (ROOT / "web" / "connect" / "index.html").read_text(encoding="utf-8")
+    assert 'id="devices-card"' in html
+    assert 'id="devices-list"' in html
+    assert "/devices" in html
+    assert "/revoke" in html
+    assert "/label" in html
+    # Revoking is destructive and irreversible for whoever holds that config.
+    assert "window.confirm" in html
+    # A partially revoked key is still live somewhere; never report success.
+    assert "могла остаться" in html
+
+
+def test_bot_exposes_device_control() -> None:
+    handler = (
+        ROOT / "deploy" / "bedolaga" / "overrides" / "app" / "handlers" / "fodders_vpn1.py"
+    ).read_text(encoding="utf-8")
+    assert "Command('devices'" in handler
+    assert "DEVICES_CALLBACK" in handler
+    assert "DEVICE_REVOKE_CONFIRM_PREFIX" in handler
+    # The confirm prefix extends the revoke prefix, so it must be registered first
+    # or "are you sure?" would swallow the confirmation itself.
+    assert handler.index("register(apply_device_revoke") < handler.index("register(confirm_device_revoke")
+    assert "ForceReply" in handler

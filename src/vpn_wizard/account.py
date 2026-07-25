@@ -151,6 +151,30 @@ class AccountStore:
 
                 CREATE INDEX IF NOT EXISTS idx_awg_server_peers_telegram
                     ON awg_fallback_server_peers(telegram_id);
+
+                -- A device slot is one physical device, so its name belongs to the
+                -- slot rather than to a country: renaming "Мамин телефон" once must
+                -- apply to every exit that slot holds a key on.
+                CREATE TABLE IF NOT EXISTS awg_device_labels (
+                    owner_telegram_id INTEGER NOT NULL,
+                    slot INTEGER NOT NULL,
+                    label TEXT NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    PRIMARY KEY (owner_telegram_id, slot)
+                );
+
+                -- Last-seen/traffic per peer, refreshed by the reconcile pass.
+                -- Cached because reading it means SSH-ing every exit, which must
+                -- never happen on a user-facing request.
+                CREATE TABLE IF NOT EXISTS awg_peer_usage (
+                    server_id TEXT NOT NULL,
+                    telegram_id INTEGER NOT NULL,
+                    last_handshake_at INTEGER,
+                    rx_bytes INTEGER NOT NULL DEFAULT 0,
+                    tx_bytes INTEGER NOT NULL DEFAULT 0,
+                    updated_at INTEGER NOT NULL,
+                    PRIMARY KEY (server_id, telegram_id)
+                );
                 """
             )
             self._ensure_saved_server_columns(conn)
@@ -776,6 +800,89 @@ class AccountStore:
                 (str(server_id), int(telegram_id)),
             )
             return cur.rowcount > 0
+
+    # --- device slots: names and last-seen ---------------------------------
+    def awg_get_device_labels(self, owner_telegram_id: int) -> dict[int, str]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT slot, label FROM awg_device_labels WHERE owner_telegram_id = ?",
+                (int(owner_telegram_id),),
+            ).fetchall()
+            return {int(row["slot"]): str(row["label"]) for row in rows}
+
+    def awg_set_device_label(
+        self, owner_telegram_id: int, slot: int, label: Optional[str]
+    ) -> None:
+        """Name a device slot. An empty label clears it back to the default."""
+        clean = (label or "").strip()
+        with self._connect() as conn:
+            if not clean:
+                conn.execute(
+                    "DELETE FROM awg_device_labels WHERE owner_telegram_id = ? AND slot = ?",
+                    (int(owner_telegram_id), int(slot)),
+                )
+                return
+            conn.execute(
+                """
+                INSERT INTO awg_device_labels (owner_telegram_id, slot, label, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(owner_telegram_id, slot) DO UPDATE SET
+                    label = excluded.label,
+                    updated_at = excluded.updated_at
+                """,
+                (int(owner_telegram_id), int(slot), clean[:40], _now()),
+            )
+
+    def awg_record_usage(
+        self,
+        server_id: str,
+        telegram_id: int,
+        *,
+        last_handshake_at: Optional[int],
+        rx_bytes: int,
+        tx_bytes: int,
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO awg_peer_usage
+                    (server_id, telegram_id, last_handshake_at, rx_bytes, tx_bytes, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(server_id, telegram_id) DO UPDATE SET
+                    last_handshake_at = excluded.last_handshake_at,
+                    rx_bytes = excluded.rx_bytes,
+                    tx_bytes = excluded.tx_bytes,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    str(server_id),
+                    int(telegram_id),
+                    int(last_handshake_at) if last_handshake_at else None,
+                    max(0, int(rx_bytes)),
+                    max(0, int(tx_bytes)),
+                    _now(),
+                ),
+            )
+
+    def awg_get_usage(self, telegram_ids: list[int]) -> dict[tuple[str, int], dict[str, Any]]:
+        """Cached last-seen/traffic keyed by ``(server_id, peer_id)``."""
+        if not telegram_ids:
+            return {}
+        placeholders = ",".join("?" for _ in telegram_ids)
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM awg_peer_usage WHERE telegram_id IN ({placeholders})",
+                [int(value) for value in telegram_ids],
+            ).fetchall()
+        return {
+            (str(row["server_id"]), int(row["telegram_id"])): {
+                "last_handshake_at": row["last_handshake_at"],
+                "rx_bytes": int(row["rx_bytes"] or 0),
+                "tx_bytes": int(row["tx_bytes"] or 0),
+                "updated_at": int(row["updated_at"] or 0),
+            }
+            for row in rows
+        }
 
     def _serialize_saved_server(self, row: sqlite3.Row | None) -> dict[str, Any]:
         if row is None:
