@@ -219,3 +219,14 @@ def test_bot_exposes_device_control() -> None:
     # or "are you sure?" would swallow the confirmation itself.
     assert handler.index("register(apply_device_revoke") < handler.index("register(confirm_device_revoke")
     assert "ForceReply" in handler
+
+
+def test_config_caption_warns_about_the_android_recents_trap() -> None:
+    # Android's "Recent files" view can surface the document without its .conf
+    # name (shown as a BIN file), and AmneziaWG then refuses to open it. Observed
+    # on a Huawei tablet; opening from Downloads works.
+    handler = (
+        ROOT / "deploy" / "bedolaga" / "overrides" / "app" / "handlers" / "fodders_vpn1.py"
+    ).read_text(encoding="utf-8")
+    assert "Загрузки" in handler
+    assert "Недавние" in handler
