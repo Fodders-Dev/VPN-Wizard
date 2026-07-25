@@ -234,6 +234,11 @@
     box-shadow:inset 0 0 0 1.5px var(--go2),inset 0 1px 0 var(--rim)}
   .device-grid input:focus-visible+span{outline:2.5px solid var(--accent);outline-offset:2px}
 
+  .fixbox{margin-block-end:.9rem;border-radius:var(--r-md);padding:.7rem .85rem;
+    background:var(--fill);box-shadow:inset 0 0 0 1px var(--hair)}
+  .fixbox summary{cursor:pointer;font-weight:600;font-size:.92rem;color:var(--ink);list-style-position:inside}
+  .fixbox summary:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px}
+  .fixbox .tip{margin-block:.5rem .6rem}
   .srv{display:inline-block;margin-block-end:.75rem;padding:.35rem .8rem;border-radius:999px;font-size:.88rem;font-weight:600;
     color:var(--ink);background:color-mix(in oklab,var(--accent),transparent 88%);
     box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--accent),transparent 70%)}
@@ -322,6 +327,13 @@
           <div class="server-grid" id="server-buttons"></div>
         </div>
         <div class="srv" id="srv" hidden>🌍 Сервер: <b id="srv-name"></b></div>
+        <details class="fixbox" id="preset-box" hidden>
+          <summary>Не подключается? Попробуйте профиль под вашего оператора</summary>
+          <p class="tip">Некоторые операторы режут стандартный профиль. Тогда туннель
+            подключается, но интернета нет — или не подключается вовсе. Выберите своего
+            оператора, скачайте конфиг заново и замените им старый.</p>
+          <div class="server-grid" id="preset-buttons"></div>
+        </details>
         <a class="btn btn-go" id="dl" href="#" download>📥 Скачать конфиг</a>
         <div class="qrwrap">
           <img id="qr" alt="QR конфигурации" referrerpolicy="no-referrer">
@@ -415,7 +427,8 @@
     }
     if(cfg && !qr){ qr=cfg.replace("/config?","/qr?"); }
     var device=parseInt(p.get("device")||"1",10);
-    return {cfg:cfg,qr:qr,access:access,server:(p.get("server")||"").trim(),family:!!family,device:device>0?device:1};
+    return {cfg:cfg,qr:qr,access:access,server:(p.get("server")||"").trim(),
+            preset:(p.get("preset")||"").trim(),family:!!family,device:device>0?device:1};
   }
   function profileUrl(url,server,device){
     if(!isHttp(url))return url;
@@ -423,6 +436,9 @@
       var parsed=new URL(url);
       if(server)parsed.searchParams.set("server",server);else parsed.searchParams.delete("server");
       if(!u.family&&device>1)parsed.searchParams.set("device",String(device));else parsed.searchParams.delete("device");
+      // "default" is the plain profile; sending it would only add noise to the URL.
+      if(u.preset&&u.preset!=="default")parsed.searchParams.set("preset",u.preset);
+      else parsed.searchParams.delete("preset");
       return parsed.toString();
     }
     catch(e){return url;}
@@ -610,6 +626,40 @@
         }
         $("server-picker").hidden=false;
         select(pick);
+
+        // Only sender-side knobs differ between presets, so switching one is just
+        // a different file from the same peer — no server round trip needed.
+        var presets=d.presets||[];
+        if(presets.length>1){
+          var pbox=$("preset-buttons");pbox.textContent="";
+          function markPresets(){
+            var buttons=pbox.querySelectorAll("button");
+            for(var n=0;n<buttons.length;n++){
+              var active=(u.preset||"default")===buttons[n].dataset.id;
+              buttons[n].setAttribute("aria-pressed",active?"true":"false");
+            }
+          }
+          for(var m=0;m<presets.length;m++){
+            (function(item){
+              var button=document.createElement("button");
+              button.type="button";button.className="server-btn";button.dataset.id=item.id;
+              button.textContent=item.label||item.id;
+              button.setAttribute("aria-pressed","false");
+              button.onclick=function(){
+                u.preset=item.id;render();markPresets();
+                try{
+                  var page=new URL(location.href);
+                  if(item.id&&item.id!=="default")page.searchParams.set("preset",item.id);
+                  else page.searchParams.delete("preset");
+                  history.replaceState(null,"",page.toString());
+                }catch(e){}
+              };
+              pbox.appendChild(button);
+            })(presets[m]);
+          }
+          markPresets();
+          $("preset-box").hidden=false;
+        }
       })
       .catch(function(){});
   }

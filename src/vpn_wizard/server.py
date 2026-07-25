@@ -56,7 +56,7 @@ from vpn_wizard.awg_devices import (
     peer_id_for_slot,
     revoke_device,
 )
-from vpn_wizard.awg_servers import AwgRegistry, AwgRegistryError
+from vpn_wizard.awg_servers import AwgRegistry, AwgRegistryError, apply_preset
 from vpn_wizard.bot_api import BotApiClient, referral_link
 from vpn_wizard.web_signup import (
     InviteConfig,
@@ -2846,6 +2846,7 @@ def _awg_issue_config(
     token: str,
     server_id: Optional[str] = None,
     device_slot: int = 1,
+    preset_id: Optional[str] = None,
 ) -> tuple[str, Optional[object]]:
     """Verify the link token + active subscription, then return (config, server)."""
     awg_cfg = AwgFallbackConfig.from_env()
@@ -2862,6 +2863,7 @@ def _awg_issue_config(
         telegram_id,
         server_id,
         required_device_slot=device_slot,
+        preset_id=preset_id,
     )
 
 
@@ -2894,6 +2896,7 @@ def _awg_issue_entitled_config(
     server_id: Optional[str] = None,
     *,
     required_device_slot: Optional[int] = None,
+    preset_id: Optional[str] = None,
 ) -> tuple[str, Optional[object]]:
     """Provision ``peer_id`` using another Telegram account's entitlement."""
     registry = _awg_registry()
@@ -2930,7 +2933,12 @@ def _awg_issue_entitled_config(
         )
     except Exception as exc:  # provisioning/SSH failure
         raise HTTPException(status_code=502, detail=f"AWG provisioning failed: {_error_message(exc)}") from exc
-    return _awg_label_config(result["config"], server), server
+    # The preset only rewrites sender-side knobs, so it never touches the server:
+    # a different operator profile is a different file, not a different peer.
+    preset = registry.get_preset(preset_id) if preset_id else None
+    if preset_id and preset is None:
+        raise HTTPException(status_code=404, detail="Unknown profile.")
+    return _awg_label_config(apply_preset(result["config"], preset), server), server
 
 
 def _awg_access(
@@ -3065,12 +3073,13 @@ def awg_config(
     token: str,
     server: Optional[str] = None,
     device: int = 1,
+    preset: Optional[str] = None,
 ) -> Response:
     # Plain `def`, not `async`: _awg_issue_config makes a blocking Remnawave HTTP
     # call and a blocking SSH provision. FastAPI runs sync path-ops in a worker
     # thread, so one slow/dead exit can no longer freeze every other request (and
     # the billing webhook) on the single uvicorn worker.
-    config_text, selected_server = _awg_issue_config(telegram_id, token, server, device)
+    config_text, selected_server = _awg_issue_config(telegram_id, token, server, device, preset)
     # The body carries a private key: never let a proxy/browser/link-preview cache it.
     # octet-stream (not text/plain) so browsers/Telegram keep the ".conf" name as-is
     # instead of appending ".txt" (which breaks "open with AmneziaWG" on Android).
@@ -3092,8 +3101,9 @@ def awg_qr(
     token: str,
     server: Optional[str] = None,
     device: int = 1,
+    preset: Optional[str] = None,
 ) -> Response:
-    config_text, _server = _awg_issue_config(telegram_id, token, server, device)
+    config_text, _server = _awg_issue_config(telegram_id, token, server, device, preset)
     return Response(
         content=_build_qr_png(config_text),
         media_type="image/png",

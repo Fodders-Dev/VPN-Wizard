@@ -251,3 +251,24 @@ def test_device_summary_does_not_count_suspended_as_occupied() -> None:
         ROOT / "deploy" / "bedolaga" / "overrides" / "app" / "handlers" / "fodders_vpn1.py"
     ).read_text(encoding="utf-8")
     assert "d.get('servers')" in handler
+
+
+def test_connect_page_offers_operator_presets() -> None:
+    # If the operator's DPI drops the default junk profile the tunnel simply never
+    # comes up, with no error anywhere. The preset picker is the user's only lever.
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    assert 'id="preset-box"' in html
+    assert 'id="preset-buttons"' in html
+    assert "d.presets" in html
+    assert 'searchParams.set("preset"' in html
+    # "default" is the plain profile and must not be sent as an override.
+    assert 'u.preset!=="default"' in html
+
+
+def test_bot_can_mint_an_invite() -> None:
+    handler = (
+        ROOT / "deploy" / "bedolaga" / "overrides" / "app" / "handlers" / "fodders_vpn1.py"
+    ).read_text(encoding="utf-8")
+    assert "Command('invite'" in handler
+    assert "INVITE_CALLBACK" in handler
+    assert "/invites" in handler

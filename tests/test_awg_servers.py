@@ -282,3 +282,84 @@ def test_unlabelled_servers_never_publish_their_host(monkeypatch: pytest.MonkeyP
     registry = AwgRegistry.from_env()
     assert registry.default_server.label == "main"
     assert "212.69.84.167" not in json.dumps(registry.public())
+
+
+# --- applying an operator preset to a client config -------------------------------
+
+from vpn_wizard.awg_servers import apply_preset  # noqa: E402
+
+BASE_CONFIG = """# Fodder VPN — 🇳🇱 Нидерланды
+# server: nl
+[Interface]
+PrivateKey = secret
+Address = 10.10.0.5/32
+DNS = 1.1.1.1
+MTU = 1280
+Jc = 2
+Jmin = 40
+Jmax = 70
+S1 = 65
+S2 = 130
+H1 = 1949841359
+
+[Peer]
+PublicKey = serverkey
+Endpoint = 1.2.3.4:443
+AllowedIPs = 0.0.0.0/0
+"""
+
+
+def _values(config: str) -> dict:
+    out = {}
+    for line in config.splitlines():
+        if "=" in line and not line.strip().startswith("#") and not line.startswith("["):
+            key, value = line.split("=", 1)
+            out[key.strip().lower()] = value.strip()
+    return out
+
+
+def test_preset_rewrites_only_the_sender_side_knobs() -> None:
+    registry = AwgRegistry.from_env()
+    applied = apply_preset(BASE_CONFIG, registry.get_preset("mts"))
+    values = _values(applied)
+
+    assert values["jc"] == "3"          # pinned by the preset
+    assert values["i1"] == "<r 48>"     # signature packet added
+    # Interface-wide parameters must survive untouched, or the tunnel silently
+    # stops handshaking: they are matched byte-for-byte against the server.
+    assert values["s1"] == "65"
+    assert values["s2"] == "130"
+    assert values["h1"] == "1949841359"
+    # Everything else is preserved.
+    assert values["privatekey"] == "secret"
+    assert values["mtu"] == "1280"
+    assert values["endpoint"] == "1.2.3.4:443"
+
+
+def test_preset_replaces_in_place_and_keeps_the_peer_section_intact() -> None:
+    registry = AwgRegistry.from_env()
+    applied = apply_preset(BASE_CONFIG, registry.get_preset("megafon"))
+    values = _values(applied)
+    assert (values["jc"], values["jmin"], values["jmax"]) == ("3", "80", "268")
+    # Megafon's CPS packet triggers blocks, so this preset must add no I1 at all.
+    assert "i1" not in values
+    # The added keys must land in [Interface], never after [Peer].
+    interface, peer = applied.split("[Peer]")
+    assert "Jmax" in interface and "Jmax" not in peer
+    assert applied.count("[Peer]") == 1
+
+
+def test_default_preset_and_none_leave_the_config_byte_identical() -> None:
+    registry = AwgRegistry.from_env()
+    assert apply_preset(BASE_CONFIG, registry.get_preset("default")) == BASE_CONFIG
+    assert apply_preset(BASE_CONFIG, None) == BASE_CONFIG
+
+
+def test_preset_adds_missing_parameters_without_duplicating_them() -> None:
+    bare = "[Interface]\nPrivateKey = k\nAddress = 10.10.0.5/32\n\n[Peer]\nPublicKey = s\n"
+    registry = AwgRegistry.from_env()
+    applied = apply_preset(bare, registry.get_preset("tele2"))
+    assert applied.count("Jc =") == 1
+    assert applied.count("I1 =") == 1
+    values = _values(applied)
+    assert values["jc"] == "3" and values["jmax"] == "70" and values["i1"] == "<r 48>"

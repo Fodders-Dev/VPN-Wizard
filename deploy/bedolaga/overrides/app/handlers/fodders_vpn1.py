@@ -26,6 +26,7 @@ CONFIG_CALLBACK_PREFIX = 'fawg_get:'
 FETCH_TIMEOUT_SECONDS = 20
 
 DEVICES_CALLBACK = 'fodders_devices'
+INVITE_CALLBACK = 'fodders_invite'
 DEVICE_RENAME_PREFIX = 'fdev_rn:'
 DEVICE_REVOKE_PREFIX = 'fdev_rk:'
 DEVICE_REVOKE_CONFIRM_PREFIX = 'fdev_rky:'
@@ -222,6 +223,7 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
         mac_text = '🍎 Mac'
         family_text = '👵 Дать доступ близкому'
         devices_text = '📱 Мои устройства'
+        invite_text = '🎟 Пригласить без Telegram'
     else:
         text = (
             '🛡 <b>AmneziaWG — primary mode for restricted networks</b>\n\n'
@@ -241,6 +243,7 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
         mac_text = '🍎 Mac'
         family_text = '👵 Share with family'
         devices_text = '📱 My devices'
+        invite_text = '🎟 Invite without Telegram'
     server_rows = []
     for server_id, label in servers:
         if _awg_urls(user.id, server_id) is not None:
@@ -267,6 +270,12 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
                 types.InlineKeyboardButton(
                     text=devices_text,
                     callback_data=DEVICES_CALLBACK,
+                ),
+            ],
+            [
+                types.InlineKeyboardButton(
+                    text=invite_text,
+                    callback_data=INVITE_CALLBACK,
                 ),
             ],
             [
@@ -651,6 +660,63 @@ async def apply_device_revoke(callback: types.CallbackQuery) -> None:
     await _send_devices(callback.message, callback.from_user)
 
 
+async def _send_invite(message: types.Message, user: types.User | None) -> None:
+    """Mint a code the owner can pass to someone who cannot reach Telegram."""
+    if user is None:
+        return
+    api = _devices_api(user.id)
+    if api is None:
+        await message.answer('Приглашения пока не настроены. Напишите в техподдержку.')
+        return
+    base_url, token = api
+    invites_url = base_url.replace('/devices', '/invites')
+
+    timeout = aiohttp.ClientTimeout(total=FETCH_TIMEOUT_SECONDS)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(invites_url, params={'token': token}) as response:
+                status = response.status
+                body = await response.json() if status in (200, 409) else {}
+    except (aiohttp.ClientError, asyncio.TimeoutError):
+        await message.answer('⚠️ Не удалось создать приглашение. Попробуйте позже.')
+        return
+
+    if status == 409:
+        await message.answer(
+            f'🎟 {body.get("detail") or "Слишком много неиспользованных приглашений."}\n\n'
+            'Посмотреть и удалить лишние можно в портале.'
+        )
+        return
+    if status != 200 or not body.get('code'):
+        if status == 403:
+            await message.answer('🔒 Приглашения доступны при активной подписке.')
+        else:
+            await message.answer('⚠️ Не удалось создать приглашение. Попробуйте позже.')
+        return
+
+    code = body['code']
+    link = body.get('url') or ''
+    await message.answer(
+        '🎟 <b>Приглашение готово</b>\n\n'
+        f'Код: <code>{html_escape(code)}</code>\n'
+        + (f'Ссылка: {html_escape(link)}\n' if link else '')
+        + '\nОтправьте это тому, у кого <b>нет VPN и не открывается Telegram</b> — '
+        'по коду он получит доступ прямо на сайте, без Telegram и без регистрации.\n\n'
+        'Код одноразовый и действует 14 дней.',
+        parse_mode='HTML',
+    )
+
+
+async def open_invite_message(message: types.Message) -> None:
+    await _send_invite(message, message.from_user)
+
+
+async def open_invite_callback(callback: types.CallbackQuery) -> None:
+    await callback.answer('Создаю приглашение…')
+    if callback.message:
+        await _send_invite(callback.message, callback.from_user)
+
+
 async def open_managed_awg_message(message: types.Message) -> None:
     await _send_awg(message, message.from_user)
 
@@ -736,6 +802,8 @@ def register_handlers(dp: Dispatcher) -> None:
         send_country_config, F.data.startswith(CONFIG_CALLBACK_PREFIX)
     )
     dp.message.register(open_devices_message, Command('devices', 'ustroystva'))
+    dp.message.register(open_invite_message, Command('invite', 'priglasit'))
+    dp.callback_query.register(open_invite_callback, F.data == INVITE_CALLBACK)
     dp.callback_query.register(open_devices_callback, F.data == DEVICES_CALLBACK)
     dp.callback_query.register(ask_device_rename, F.data.startswith(DEVICE_RENAME_PREFIX))
     # The confirm prefix extends the revoke prefix, so it must match first.

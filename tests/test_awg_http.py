@@ -139,7 +139,10 @@ def test_config_download_filename_is_importable(monkeypatch: pytest.MonkeyPatch,
     monkeypatch.setattr(
         server_module,
         "_awg_issue_config",
-        lambda telegram_id, token, server_id=None, device_slot=1: ("[Interface]\nPrivateKey = k\n", _server()),
+        lambda telegram_id, token, server_id=None, device_slot=1, preset_id=None: (
+            "[Interface]\nPrivateKey = k\n",
+            _server(),
+        ),
     )
     response = client.get("/api/awg/449066726/config", params={"token": "whatever"})
 
@@ -838,3 +841,35 @@ def test_redeem_does_not_burn_the_code_when_signup_fails(
     assert client.post(f"/api/web/invite/{code}/redeem").status_code == 502
     # The invite survives, so the person can retry instead of losing their only code.
     assert client.get(f"/api/web/invite/{code}").json()["valid"] is True
+
+
+def test_operator_preset_rewrites_the_config_it_serves(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    # A subscriber whose operator drops the default junk profile has no way to
+    # tell — the tunnel simply never handshakes. The preset is their only lever.
+    secret = "link-secret"
+    _configure_single_server(monkeypatch, secret)
+    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(1))
+
+    def issue(self, telegram_id: int, *, remnawave_uuid=None):
+        return {
+            "config": "[Interface]\nPrivateKey = k\nJc = 2\nS1 = 65\nH1 = 7\n\n[Peer]\nPublicKey = s\n",
+            "client_name": "x",
+            "reused": False,
+        }
+
+    monkeypatch.setattr(server_module.AwgFallbackService, "issue", issue)
+    token = issue_token(secret, 1)
+
+    plain = client.get("/api/awg/1/config", params={"token": token}).text
+    assert "Jc = 2" in plain and "I1" not in plain
+
+    mts = client.get("/api/awg/1/config", params={"token": token, "preset": "mts"}).text
+    assert "Jc = 3" in mts
+    assert "I1 = <r 48>" in mts
+    # Interface-wide values must never be rewritten, or the tunnel dies silently.
+    assert "S1 = 65" in mts and "H1 = 7" in mts
+
+    unknown = client.get("/api/awg/1/config", params={"token": token, "preset": "nope"})
+    assert unknown.status_code == 404

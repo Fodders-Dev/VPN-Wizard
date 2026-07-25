@@ -74,6 +74,8 @@ def _require_id(raw: Any, *, kind: str) -> str:
 #   the whole reason per-operator presets are possible on one shared interface.
 INTERFACE_WIDE_PARAMS = frozenset({"s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4"})
 PER_CLIENT_PARAMS = ("jc", "jmin", "jmax", "i1", "i2", "i3", "i4", "i5")
+# awg-quick is case-sensitive about these: "JC" is not "Jc".
+_PARAM_NAMES = {name: name.capitalize() for name in PER_CLIENT_PARAMS}
 
 
 @dataclass(frozen=True)
@@ -229,6 +231,54 @@ def _parse_json_list(raw: str, *, var: str) -> list[dict[str, Any]]:
     if not isinstance(parsed, list) or not all(isinstance(item, dict) for item in parsed):
         raise AwgRegistryError(f"{var} must be a JSON list of objects.")
     return parsed
+
+
+def apply_preset(config_text: str, preset: Optional[AwgPreset]) -> str:
+    """Rewrite a client config for one operator's DPI.
+
+    Only the sender-side knobs are touched — Jc/Jmin/Jmax and the I1-I5 signature
+    packets. S1-S4 and H1-H4 belong to the interface and must stay byte-identical
+    to the server, so they are never rewritten here: a mismatch is dropped before
+    any crypto runs and the user just sees a tunnel that never connects.
+    """
+    if preset is None:
+        return config_text
+    overrides = preset.overrides
+    if not overrides:
+        return config_text
+
+    lines = config_text.splitlines()
+    out: list[str] = []
+    seen: set[str] = set()
+    in_interface = False
+    insert_at = None
+
+    for line in lines:
+        stripped = line.strip()
+        lowered = stripped.lower()
+        if stripped.startswith("["):
+            if in_interface and insert_at is None:
+                insert_at = len(out)
+            in_interface = lowered == "[interface]"
+            out.append(line)
+            continue
+        key = stripped.split("=", 1)[0].strip().lower() if "=" in stripped else ""
+        if in_interface and key in overrides:
+            # Replace in place so the parameter keeps its position in the file.
+            out.append(f"{_PARAM_NAMES[key]} = {overrides[key]}")
+            seen.add(key)
+            continue
+        out.append(line)
+
+    missing = [key for key in PER_CLIENT_PARAMS if key in overrides and key not in seen]
+    if missing:
+        position = insert_at if insert_at is not None else len(out)
+        # Never emit an empty I-key: awg-quick strips the line and then fails at
+        # `awg setconf` (amneziawg-tools #40). `overrides` already drops blanks.
+        addition = [f"{_PARAM_NAMES[key]} = {overrides[key]}" for key in missing]
+        out[position:position] = addition
+
+    return "\n".join(out) + ("\n" if config_text.endswith("\n") else "")
 
 
 @dataclass(frozen=True)
