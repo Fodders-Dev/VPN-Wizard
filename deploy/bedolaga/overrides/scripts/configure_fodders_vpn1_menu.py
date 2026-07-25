@@ -199,11 +199,17 @@ async def main() -> None:
     try:
         current = await bot.get_my_commands()
         descriptions = {command.command: command.description for command in current}
-        descriptions['awg'] = 'Подключиться из РФ через AmneziaWG'
+        descriptions['awg'] = 'Подключиться: выбрать страну и получить конфиг'
+        descriptions['devices'] = 'Мои устройства: кто подключён, отключить'
+        descriptions['invite'] = 'Код для того, у кого не открывается Telegram'
         descriptions['family'] = 'Дать отдельный VPN-профиль близкому'
+        descriptions['menu'] = 'Показать кнопки действий'
         descriptions['miniapp'] = 'Открыть единый портал Fodder VPN'
         descriptions['vpn1'] = 'Настроить собственный VPS через Wizard'
-        order = ['start', 'awg', 'family', 'miniapp', 'vpn1', 'help']
+        order = [
+            'start', 'awg', 'devices', 'invite', 'family',
+            'menu', 'miniapp', 'vpn1', 'help',
+        ]
         commands = [
             BotCommand(command=command, description=descriptions[command])
             for command in order

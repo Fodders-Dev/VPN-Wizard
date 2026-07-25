@@ -289,3 +289,40 @@ def test_metrics_dashboard_is_owner_scoped_and_private() -> None:
     assert 'name="referrer" content="no-referrer"' in html
     # We sell privacy: the dashboard must state that no per-user tracking exists.
     assert "Ни кликов, ни маршрутов конкретных людей" in html
+
+
+def test_bot_actions_are_discoverable_without_typing_commands() -> None:
+    # A WebApp menu button replaces Telegram's "/" command list, so the commands
+    # were invisible: the chat showed only "Open" and nothing explained the rest.
+    handler = (
+        ROOT / "deploy" / "bedolaga" / "overrides" / "app" / "handlers" / "fodders_vpn1.py"
+    ).read_text(encoding="utf-8")
+    assert "ReplyKeyboardMarkup" in handler
+    assert "is_persistent=True" in handler
+    for button in ("BTN_CONNECT", "BTN_DEVICES", "BTN_INVITE", "BTN_HELP"):
+        assert button in handler
+    # Exact-text filters only: a loose one would swallow promocodes and support
+    # messages, which reach Bedolaga's handlers after ours.
+    assert "F.text == BTN_CONNECT" in handler
+
+
+def test_every_command_is_listed_in_the_telegram_menu() -> None:
+    import re
+
+    script = (
+        ROOT / "deploy" / "bedolaga" / "overrides" / "scripts" / "configure_fodders_vpn1_menu.py"
+    ).read_text(encoding="utf-8")
+    handler = (
+        ROOT / "deploy" / "bedolaga" / "overrides" / "app" / "handlers" / "fodders_vpn1.py"
+    ).read_text(encoding="utf-8")
+
+    registered: set[str] = set()
+    for match in re.findall(r"Command\(([^)]*)\)", handler):
+        registered.update(re.findall(r"'([a-z0-9_]+)'", match))
+    listed = set(re.findall(r"descriptions\['([a-z0-9_]+)'\]", script)) | {"start", "help"}
+
+    # Aliases need not be advertised, but every primary verb must be reachable
+    # both as a handler and from the menu, or people cannot find it at all.
+    for primary in ("awg", "devices", "invite", "family", "menu"):
+        assert primary in registered, f"/{primary} has no handler"
+        assert primary in listed, f"/{primary} is missing from the Telegram menu"

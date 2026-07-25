@@ -32,6 +32,27 @@ DEVICE_REVOKE_PREFIX = 'fdev_rk:'
 DEVICE_REVOKE_CONFIRM_PREFIX = 'fdev_rky:'
 RENAME_PROMPT_MARKER = '✏️ Введите новое название'
 
+# Telegram replaces the "/" command list with the Mini App button whenever a
+# WebApp menu button is set, so commands become invisible. A persistent reply
+# keyboard is the discoverable surface for people who will never type a slash.
+BTN_CONNECT = '🛡 Подключить VPN'
+BTN_DEVICES = '📱 Мои устройства'
+BTN_INVITE = '🎟 Пригласить'
+BTN_HELP = '❓ Помощь'
+
+
+def main_keyboard() -> types.ReplyKeyboardMarkup:
+    return types.ReplyKeyboardMarkup(
+        keyboard=[
+            [types.KeyboardButton(text=BTN_CONNECT)],
+            [types.KeyboardButton(text=BTN_DEVICES), types.KeyboardButton(text=BTN_INVITE)],
+            [types.KeyboardButton(text=BTN_HELP)],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder='Выберите действие',
+    )
+
 
 def _format_bytes(total: int) -> str:
     value = float(max(0, int(total)))
@@ -310,6 +331,7 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
         ]
     )
     await message.answer(text, reply_markup=keyboard, parse_mode='HTML')
+    await _ensure_keyboard(message)
 
 
 async def _send_family_link(message: types.Message, user: types.User | None) -> None:
@@ -726,6 +748,30 @@ async def open_invite_callback(callback: types.CallbackQuery) -> None:
         await _send_invite(callback.message, callback.from_user)
 
 
+async def _ensure_keyboard(message: types.Message) -> None:
+    """Put the action buttons on screen once, quietly."""
+    try:
+        note = await message.answer('⁣', reply_markup=main_keyboard())
+        await note.delete()
+    except Exception:  # deletion is best-effort; the keyboard is what matters
+        pass
+
+
+async def show_menu(message: types.Message) -> None:
+    if _is_russian(message):
+        text = (
+            '🛡 <b>Fodder VPN</b>\n\n'
+            'Кнопки под полем ввода всегда на месте — ими и пользуйтесь:\n\n'
+            f'{BTN_CONNECT} — выбрать страну и получить конфиг\n'
+            f'{BTN_DEVICES} — кто подключён, переименовать, отключить\n'
+            f'{BTN_INVITE} — код для того, у кого не открывается Telegram\n'
+            f'{BTN_HELP} — все команды и ссылки'
+        )
+    else:
+        text = '🛡 <b>Fodder VPN</b>\n\nUse the buttons below the input field.'
+    await message.answer(text, reply_markup=main_keyboard(), parse_mode='HTML')
+
+
 async def open_managed_awg_message(message: types.Message) -> None:
     await _send_awg(message, message.from_user)
 
@@ -805,6 +851,13 @@ async def show_help(message: types.Message) -> None:
 
 
 def register_handlers(dp: Dispatcher) -> None:
+    # Exact-text only: these run before Bedolaga's own text handlers, so a loose
+    # filter here would swallow promocodes and support messages.
+    dp.message.register(open_managed_awg_message, F.text == BTN_CONNECT)
+    dp.message.register(open_devices_message, F.text == BTN_DEVICES)
+    dp.message.register(open_invite_message, F.text == BTN_INVITE)
+    dp.message.register(show_help, F.text == BTN_HELP)
+    dp.message.register(show_menu, Command('menu', 'buttons'))
     dp.message.register(open_managed_awg_message, Command('awg', 'amnezia'))
     dp.callback_query.register(open_managed_awg_callback, F.data == 'fodders_awg')
     dp.callback_query.register(
