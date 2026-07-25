@@ -21,9 +21,16 @@ import secrets
 import time
 from typing import Any, Optional
 
-# Telegram ids are far below this, so the range cannot collide with a real account.
-WEB_ACCOUNT_ID_BASE = 9_000_000_000_000_000
-WEB_ACCOUNT_ID_MAX = 9_999_999_999_999_999
+# Synthetic account ids live in a narrow window bounded on three sides:
+#   * above real Telegram ids (~10^10 today) so they can never collide;
+#   * at or below MAX_DEVICE_OWNER_ID, the ceiling the device/family peer-id
+#     arithmetic in awg_fallback validates against;
+#   * far below 2^53, because Remnawave is a Node service and JSON numbers there
+#     are float64 — an id past that limit comes back rounded (…847 was stored as
+#     …848) and every later lookup by id silently finds nothing.
+JS_MAX_SAFE_INTEGER = 9_007_199_254_740_991
+WEB_ACCOUNT_ID_BASE = 900_000_000_000
+WEB_ACCOUNT_ID_MAX = 999_999_999_999
 
 # No look-alike characters: these codes get read aloud and retyped from SMS.
 _ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"

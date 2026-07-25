@@ -803,7 +803,9 @@ def test_redeeming_creates_an_account_and_hands_back_a_working_link(
 
     # The synthetic id must be outside Telegram's range, and the token must be the
     # real signed one, so the connect page works with no further setup.
-    assert body["telegram_id"] >= 9_000_000_000_000_000
+    from vpn_wizard.web_signup import is_web_account
+
+    assert is_web_account(body["telegram_id"])
     assert body["token"] == issue_token(secret, body["telegram_id"])
     assert created == [body["telegram_id"]]
     assert trials == [(4242, body["trial_days"])]

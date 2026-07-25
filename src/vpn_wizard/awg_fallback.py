@@ -36,7 +36,10 @@ _SERVER_ID_RE = re.compile(r"[^a-z0-9-]")
 FALLBACK_SSH_TIMEOUT = 6
 DEVICE_PEER_ID_OFFSET = 3_000_000_000_000_000
 FAMILY_GUEST_ID_OFFSET = 4_000_000_000_000_000
-_MAX_FAMILY_OWNER_ID = 999_999_999_999
+# Ceiling for an *owner* id, so device/family peer ids stay reversible. Website
+# signups get synthetic ids just under it (see web_signup).
+MAX_DEVICE_OWNER_ID = 999_999_999_999
+_MAX_FAMILY_OWNER_ID = MAX_DEVICE_OWNER_ID
 MAX_DEVICE_SLOT = 99
 
 

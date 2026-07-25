@@ -7,6 +7,7 @@ import pytest
 from vpn_wizard.account import AccountStore
 from vpn_wizard.web_signup import (
     WEB_ACCOUNT_ID_BASE,
+    WEB_ACCOUNT_ID_MAX,
     InviteConfig,
     InviteError,
     check_invite,
@@ -160,3 +161,38 @@ def test_a_used_invite_is_kept_as_a_record(tmp_path: Path) -> None:
     store.invite_redeem(code, web_account_id(6), now=NOW)
     assert store.invite_delete(code, OWNER) is False
     assert store.invite_get(code)["used_at"] == NOW
+
+
+# --- the ceilings the synthetic id has to respect ---------------------------------
+
+def test_web_ids_survive_a_round_trip_through_json_numbers() -> None:
+    # Remnawave is a Node service: JSON numbers there are float64, so an id above
+    # 2^53 comes back rounded. That silently stored ...848 for our ...847 and made
+    # every later lookup miss. Keep the whole range exactly representable.
+    import json
+
+    from vpn_wizard.web_signup import JS_MAX_SAFE_INTEGER
+
+    assert WEB_ACCOUNT_ID_MAX < JS_MAX_SAFE_INTEGER
+    for candidate in (WEB_ACCOUNT_ID_BASE, WEB_ACCOUNT_ID_MAX, web_account_id()):
+        assert int(float(candidate)) == candidate, candidate
+        assert json.loads(json.dumps(float(candidate))) == float(candidate)
+
+
+def test_web_ids_stay_inside_the_peer_id_arithmetic() -> None:
+    # device_peer_id/family_guest_id reject owners above this ceiling, which is
+    # what produced "Invalid device owner Telegram id" on the first real signup.
+    from vpn_wizard.awg_fallback import MAX_DEVICE_OWNER_ID, device_peer_id, family_guest_id
+
+    assert WEB_ACCOUNT_ID_MAX <= MAX_DEVICE_OWNER_ID
+    for candidate in (WEB_ACCOUNT_ID_BASE, WEB_ACCOUNT_ID_MAX, web_account_id()):
+        assert device_peer_id(candidate, 1) == candidate
+        assert device_peer_id(candidate, 5) > 0
+        assert family_guest_id(candidate) > 0
+
+
+def test_web_ids_stay_clear_of_real_telegram_ids() -> None:
+    # Telegram ids are around 10^10 today; the window starts well above that.
+    assert WEB_ACCOUNT_ID_BASE > 100_000_000_000
+    for real in (449066726, 7938373718, 99_999_999_999):
+        assert not is_web_account(real)
