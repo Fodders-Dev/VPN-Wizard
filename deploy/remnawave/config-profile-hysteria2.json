@@ -1,0 +1,69 @@
+{
+    "log": {
+        "loglevel": "warning"
+    },
+    "inbounds": [
+        {
+            "tag": "HYSTERIA2",
+            "port": 443,
+            "listen": "0.0.0.0",
+            "protocol": "hysteria",
+            "settings": {
+                "clients": [],
+                "version": 2
+            },
+            "streamSettings": {
+                "network": "hysteria",
+                "security": "tls",
+                "finalmask": {
+                    "quicParams": {
+                        "debug": false,
+                        "congestion": "bbr"
+                    }
+                },
+                "tlsSettings": {
+                    "alpn": ["h3"],
+                    "serverName": "REPLACE_WITH_YOUR_DOMAIN",
+                    "certificates": [
+                        {
+                            "keyFile": "/var/lib/remnawave/configs/xray/ssl/cert.key",
+                            "certificateFile": "/var/lib/remnawave/configs/xray/ssl/cert.pem"
+                        }
+                    ]
+                },
+                "hysteriaSettings": {
+                    "version": 2
+                }
+            }
+        }
+    ],
+    "outbounds": [
+        {
+            "protocol": "freedom",
+            "tag": "DIRECT",
+            "settings": {
+                "domainStrategy": "ForceIPv4"
+            }
+        },
+        {
+            "protocol": "blackhole",
+            "tag": "BLOCK"
+        }
+    ],
+    "routing": {
+        "rules": [
+            {
+                "ip": ["geoip:private"],
+                "outboundTag": "BLOCK"
+            },
+            {
+                "domain": ["geosite:private"],
+                "outboundTag": "BLOCK"
+            },
+            {
+                "protocol": ["bittorrent"],
+                "outboundTag": "BLOCK"
+            }
+        ]
+    }
+}

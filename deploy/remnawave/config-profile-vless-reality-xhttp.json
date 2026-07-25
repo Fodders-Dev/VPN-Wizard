@@ -1,0 +1,65 @@
+{
+    "log": {
+        "loglevel": "warning"
+    },
+    "inbounds": [
+        {
+            "tag": "VLESS_XHTTP_REALITY",
+            "listen": "0.0.0.0",
+            "port": 8443,
+            "protocol": "vless",
+            "settings": {
+                "clients": [],
+                "decryption": "none"
+            },
+            "sniffing": {
+                "enabled": true,
+                "destOverride": ["http", "tls", "quic"]
+            },
+            "streamSettings": {
+                "network": "xhttp",
+                "xhttpSettings": {
+                    "path": "/REPLACE_WITH_RANDOM_PATH",
+                    "mode": "auto"
+                },
+                "security": "reality",
+                "realitySettings": {
+                    "show": false,
+                    "target": "www.nvidia.com:443",
+                    "serverNames": ["www.nvidia.com"],
+                    "privateKey": "PASTE_XRAY_PRIVATE_KEY_HERE",
+                    "shortIds": ["", "a1b2c3d4e5f60718"]
+                }
+            }
+        }
+    ],
+    "outbounds": [
+        {
+            "protocol": "freedom",
+            "tag": "DIRECT",
+            "settings": {
+                "domainStrategy": "ForceIPv4"
+            }
+        },
+        {
+            "protocol": "blackhole",
+            "tag": "BLOCK"
+        }
+    ],
+    "routing": {
+        "rules": [
+            {
+                "ip": ["geoip:private"],
+                "outboundTag": "BLOCK"
+            },
+            {
+                "domain": ["geosite:private"],
+                "outboundTag": "BLOCK"
+            },
+            {
+                "protocol": ["bittorrent"],
+                "outboundTag": "BLOCK"
+            }
+        ]
+    }
+}
