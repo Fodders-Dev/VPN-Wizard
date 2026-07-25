@@ -196,3 +196,28 @@ def test_web_ids_stay_clear_of_real_telegram_ids() -> None:
     assert WEB_ACCOUNT_ID_BASE > 100_000_000_000
     for real in (449066726, 7938373718, 99_999_999_999):
         assert not is_web_account(real)
+
+
+# --- an invited trial must not be able to invite ----------------------------------
+
+def test_a_released_invite_can_be_used_again(tmp_path: Path) -> None:
+    # Signup failing after the claim must not burn somebody's only way in.
+    store = _store(tmp_path)
+    code = create_invite(store, OWNER, now=NOW)["code"]
+    claimer = web_account_id(7)
+
+    assert store.invite_redeem(code, claimer, now=NOW) is True
+    assert store.invite_release(code, claimer) is True
+    assert check_invite(store, code, now=NOW)["code"] == code
+    assert store.invite_redeem(code, web_account_id(8), now=NOW) is True
+
+
+def test_release_is_scoped_to_the_claimer(tmp_path: Path) -> None:
+    # A late failure from a losing racer must not free the winner's redemption.
+    store = _store(tmp_path)
+    code = create_invite(store, OWNER, now=NOW)["code"]
+    winner = web_account_id(9)
+    store.invite_redeem(code, winner, now=NOW)
+
+    assert store.invite_release(code, web_account_id(10)) is False
+    assert store.invite_get(code)["used_by"] == winner

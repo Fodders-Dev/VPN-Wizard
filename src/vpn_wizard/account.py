@@ -890,6 +890,22 @@ class AccountStore:
             )
             return cursor.rowcount > 0
 
+    def invite_release(self, code: str, used_by: int) -> bool:
+        """Hand a claimed invite back after signup failed.
+
+        Scoped to the claimer so a late failure can never release someone else's
+        successful redemption.
+        """
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE web_invites SET used_at = NULL, used_by = NULL
+                WHERE code = ? AND used_by = ?
+                """,
+                (str(code), int(used_by)),
+            )
+            return cursor.rowcount > 0
+
     def invite_delete(self, code: str, issuer_telegram_id: int) -> bool:
         """Withdraw an unused invite."""
         with self._connect() as conn:

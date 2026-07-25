@@ -388,16 +388,30 @@
   <footer>Fodder VPN · без рекламы и лимитов · работает пока активна подписка</footer>
 </div>
 
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script>
 (function(){
   "use strict";
   var $=function(id){return document.getElementById(id);};
-  var tg=window.Telegram&&window.Telegram.WebApp?window.Telegram.WebApp:null;
-  // initData is only present when Telegram actually launched us as a Mini App;
-  // the same page is also opened as a normal link (family links, "open in browser").
-  var inTelegram=!!(tg&&tg.initData);
-  if(tg){try{tg.ready();tg.expand();}catch(e){}}
+  var tg=null;
+  // This page exists for people who cannot reach Telegram, so it must never wait
+  // on telegram.org. The SDK is fetched only when Telegram itself launched us,
+  // and asynchronously even then; everything below runs immediately either way.
+  var inTelegram=false;
+  function setupTelegram(){
+    tg=window.Telegram&&window.Telegram.WebApp?window.Telegram.WebApp:null;
+    if(!tg||!tg.initData)return;
+    inTelegram=true;
+    try{tg.ready();tg.expand();}catch(e){}
+    installTelegramLinks();
+  }
+  if(window.TelegramWebviewProxy||(location.hash||"").indexOf("tgWebApp")>=0){
+    var sdk=document.createElement("script");
+    sdk.src="https://telegram.org/js/telegram-web-app.js";
+    sdk.async=true;
+    sdk.onload=setupTelegram;
+    sdk.onerror=function(){};   // outside Telegram this is expected, not an error
+    document.head.appendChild(sdk);
+  }
   var pans={and:$("p-and"),ios:$("p-ios"),win:$("p-win"),mac:$("p-mac")};
   var platformInputs=document.querySelectorAll('input[name="platform"]');
   function selectPlatform(name){
@@ -484,7 +498,7 @@
 
   // target="_blank" is equally dead inside the Mini App, so store and help links
   // have to be handed to Telegram too. Same-origin navigation stays in-app.
-  if(inTelegram){
+  function installTelegramLinks(){
     document.addEventListener("click",function(event){
       var anchor=event.target&&event.target.closest?event.target.closest("a[href]"):null;
       if(!anchor||anchor.id==="dl")return;
@@ -505,7 +519,10 @@
     note.className="tip";
     note.textContent="Файл откроется через Telegram или в браузере — потом откройте его в AmneziaWG.";
     var dl=$("dl");
-    if(dl&&dl.parentNode)dl.parentNode.insertBefore(note,dl.nextSibling);
+    if(dl&&dl.parentNode&&!dl.parentNode.querySelector(".tg-note")){
+      note.classList.add("tg-note");
+      dl.parentNode.insertBefore(note,dl.nextSibling);
+    }
   }
   $("cfg").addEventListener("input",function(e){
     var v=(e.target.value||"").trim();

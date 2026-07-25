@@ -60,6 +60,7 @@ from vpn_wizard.awg_servers import AwgRegistry, AwgRegistryError, apply_preset
 from vpn_wizard.bot_api import BotApiClient, referral_link
 from vpn_wizard.web_signup import (
     InviteConfig,
+    is_web_account,
     InviteError,
     check_invite,
     create_invite,
@@ -3255,6 +3256,12 @@ def awg_device_label(
 @app.get("/api/awg/{telegram_id}/invites", response_model=InviteListResponse)
 def awg_invites(telegram_id: int, token: str) -> InviteListResponse:
     _limit, _registry = _awg_owner_access(telegram_id, token)
+    if is_web_account(telegram_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Приглашения доступны по платной подписке из Telegram.",
+        )
+
     store = build_account_store()
     config = InviteConfig.from_env()
     live = outstanding_invites(store, telegram_id)
@@ -3276,8 +3283,19 @@ def awg_invites(telegram_id: int, token: str) -> InviteListResponse:
 
 @app.post("/api/awg/{telegram_id}/invites", response_model=InviteCreateResponse)
 def awg_invite_create(telegram_id: int, token: str) -> InviteCreateResponse:
-    """Mint an invite an existing subscriber can pass on outside Telegram."""
+    """Mint an invite an existing subscriber can pass on outside Telegram.
+
+    A website signup must never reach here: its own trial passes the same
+    active-subscription check, so one leaked code would let free access
+    replicate itself without limit.
+    """
     _limit, _registry = _awg_owner_access(telegram_id, token)
+    if is_web_account(telegram_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Приглашения доступны по платной подписке из Telegram.",
+        )
+
     try:
         invite = create_invite(build_account_store(), telegram_id, InviteConfig.from_env())
     except InviteError as exc:
@@ -3329,17 +3347,26 @@ def web_invite_redeem(code: str) -> InviteRedeemResponse:
     if not bot.config.configured:
         raise HTTPException(status_code=503, detail="Регистрация временно недоступна.")
 
+    # Claim first: this endpoint is public and unthrottled, so provisioning before
+    # claiming let N parallel requests each create a billing account and a trial
+    # while only one won the code — and the losers were unreachable afterwards,
+    # since nothing recorded them. Reserving the code makes the race harmless, and
+    # a failed signup releases it so nobody loses their only way in.
     account_id = web_account_id()
-    created = bot.create_user(account_id)
-    if not created or not created.get("id"):
-        raise HTTPException(status_code=502, detail="Не удалось создать аккаунт. Попробуйте позже.")
-    if not bot.grant_trial(int(created["id"]), days=config.trial_days):
-        raise HTTPException(status_code=502, detail="Не удалось выдать пробный доступ. Напишите тому, кто дал код.")
-
-    # Claim the code only once the account really exists, and atomically, so a
-    # shared SMS cannot hand two people the same invite.
     if not store.invite_redeem(invite["code"], account_id):
         raise HTTPException(status_code=409, detail="Это приглашение только что активировал кто-то другой.")
+    try:
+        created = bot.create_user(account_id)
+        if not created or not created.get("id"):
+            raise HTTPException(status_code=502, detail="Не удалось создать аккаунт. Попробуйте позже.")
+        if not bot.grant_trial(int(created["id"]), days=config.trial_days):
+            raise HTTPException(
+                status_code=502,
+                detail="Не удалось выдать пробный доступ. Напишите тому, кто дал код.",
+            )
+    except Exception:
+        store.invite_release(invite["code"], account_id)
+        raise
 
     return InviteRedeemResponse(
         ok=True,

@@ -873,3 +873,49 @@ def test_operator_preset_rewrites_the_config_it_serves(
 
     unknown = client.get("/api/awg/1/config", params={"token": token, "preset": "nope"})
     assert unknown.status_code == 404
+
+
+def test_a_website_trial_cannot_mint_its_own_invites(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    # A redeemed trial passes the same active-subscription check as a payer, so
+    # without this gate one leaked code would let free access replicate itself.
+    from vpn_wizard.web_signup import web_account_id
+
+    secret = "link-secret"
+    guest = web_account_id(11)
+    _configure_single_server(monkeypatch, secret)
+    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(1))
+    token = issue_token(secret, guest)
+
+    assert client.post(f"/api/awg/{guest}/invites", params={"token": token}).status_code == 403
+    assert client.get(f"/api/awg/{guest}/invites", params={"token": token}).status_code == 403
+    # A real Telegram subscriber is unaffected.
+    owner_token = issue_token(secret, 449066726)
+    assert client.post("/api/awg/449066726/invites", params={"token": owner_token}).status_code == 200
+
+
+def test_a_failed_signup_releases_the_code_it_claimed(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    secret = "link-secret"
+    owner = 449066726
+    _configure_single_server(monkeypatch, secret)
+    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(1))
+    code = client.post(
+        f"/api/awg/{owner}/invites", params={"token": issue_token(secret, owner)}
+    ).json()["code"]
+
+    class HalfBrokenBot:
+        config = type("C", (), {"configured": True})()
+
+        def create_user(self, telegram_id, **kwargs):
+            return {"id": 99, "telegram_id": telegram_id}
+
+        def grant_trial(self, user_id, **kwargs):
+            return None          # account made, trial refused
+
+    monkeypatch.setattr(server_module, "BotApiClient", lambda *a, **k: HalfBrokenBot())
+    assert client.post(f"/api/web/invite/{code}/redeem").status_code == 502
+    # The code is usable again rather than silently spent.
+    assert client.get(f"/api/web/invite/{code}").json()["valid"] is True

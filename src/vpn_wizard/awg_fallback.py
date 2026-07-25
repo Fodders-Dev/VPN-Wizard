@@ -317,15 +317,24 @@ class AwgFallbackService:
         return True
 
     def revoke(self, telegram_id: int) -> bool:
-        """Permanently remove the AWG peer and its stored config."""
+        """Permanently remove the AWG peer and its stored config.
+
+        The row is dropped only after the key is really gone from the exit.
+        Deleting it regardless used to make the retry lie: the first attempt
+        reported failure, the second found no row, returned "nothing to do", and
+        the caller told the owner the device was disconnected while the key was
+        still installed — and with no row left, reconcile could never find it.
+        """
         telegram_id = int(telegram_id)
         existing = self._get_peer(telegram_id)
         if not existing:
             return False
-        try:
-            self._deprovision(existing["client_name"])
-        finally:
-            self._delete_peer(telegram_id)
+        removed = self._deprovision(existing["client_name"])
+        if removed is False:
+            raise RuntimeError(
+                f"AWG peer {existing['client_name']} could not be removed from the exit."
+            )
+        self._delete_peer(telegram_id)
         return True
 
     # --- default SSH-backed provisioning ---------------------------------

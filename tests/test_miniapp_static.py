@@ -181,6 +181,11 @@ def test_connect_page_survives_the_telegram_webview() -> None:
     # nothing at all, with no file and no error for the user.
     html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
     assert "telegram-web-app.js" in html
+    # ...but this is the page for people who CANNOT reach Telegram, so it must
+    # never block on telegram.org. Load the SDK only inside Telegram, and async.
+    assert '<script src="https://telegram.org' not in html
+    assert "sdk.async=true" in html
+    assert "window.TelegramWebviewProxy" in html
     assert "tg.downloadFile" in html
     assert "tg.openLink" in html
     assert "tg.openTelegramLink" in html
