@@ -150,8 +150,10 @@ def test_bedolaga_exposes_family_link_with_the_api_token_namespace() -> None:
         / "handlers"
         / "fodders_vpn1.py"
     ).read_text(encoding="utf-8")
-    assert "f'family:{int(telegram_id)}'" in handler
-    assert "return f'{base}/connect/awg.html?{query}'" in handler
+    # The family token carries an epoch the API bumps on revoke, so the bot must
+    # ask for the link instead of signing one against a stale epoch.
+    assert "f'family:{int(telegram_id)}'" not in handler
+    assert "/family-link" in handler
     assert "callback_data='fodders_awg_family'" in handler
     assert "Command('family', 'share')" in handler
     assert "Command('miniapp', 'portal')" in handler

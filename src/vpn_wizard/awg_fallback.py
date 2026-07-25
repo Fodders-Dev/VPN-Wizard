@@ -129,9 +129,15 @@ def family_owner_id(peer_id: int) -> Optional[int]:
     return None
 
 
-def family_issue_token(secret: str, owner_telegram_id: int) -> str:
-    """Sign the one-family-slot link separately from the owner's own link."""
-    message = f"family:{int(owner_telegram_id)}"
+def family_issue_token(secret: str, owner_telegram_id: int, epoch: int = 0) -> str:
+    """Sign the one-family-slot link separately from the owner's own link.
+
+    ``epoch`` is bumped when the owner revokes the family slot. Without it the
+    link is a bearer credential with no way back: revoking deleted the peer, and
+    the relative's old URL simply re-provisioned it on the next request, while
+    the owner had been told their access was cut.
+    """
+    message = f"family:{int(owner_telegram_id)}" + (f":{int(epoch)}" if epoch else "")
     return hmac.new(secret.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
@@ -139,11 +145,12 @@ def verify_family_issue_token(
     secret: str,
     owner_telegram_id: int,
     token: Optional[str],
+    epoch: int = 0,
 ) -> bool:
     if not secret or not token:
         return False
     try:
-        expected = family_issue_token(secret, owner_telegram_id)
+        expected = family_issue_token(secret, owner_telegram_id, epoch)
     except (TypeError, ValueError):
         return False
     return hmac.compare_digest(expected, token.strip())

@@ -181,6 +181,15 @@ class AccountStore:
                 CREATE INDEX IF NOT EXISTS idx_web_invites_issuer
                     ON web_invites(issuer_telegram_id);
 
+                -- Bumped when the owner revokes the family slot. It goes into the
+                -- family link's signature, so a revoked link stops re-provisioning
+                -- the guest instead of quietly handing the key back.
+                CREATE TABLE IF NOT EXISTS awg_family_epoch (
+                    owner_telegram_id INTEGER PRIMARY KEY,
+                    epoch INTEGER NOT NULL DEFAULT 0,
+                    updated_at INTEGER NOT NULL
+                );
+
                 -- Last-seen/traffic per peer, refreshed by the reconcile pass.
                 -- Cached because reading it means SSH-ing every exit, which must
                 -- never happen on a user-facing request.
@@ -917,6 +926,30 @@ class AccountStore:
                 (str(code), int(issuer_telegram_id)),
             )
             return cursor.rowcount > 0
+
+    # --- family link epoch --------------------------------------------------
+    def awg_family_epoch(self, owner_telegram_id: int) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT epoch FROM awg_family_epoch WHERE owner_telegram_id = ?",
+                (int(owner_telegram_id),),
+            ).fetchone()
+        return int(row["epoch"]) if row else 0
+
+    def awg_bump_family_epoch(self, owner_telegram_id: int) -> int:
+        """Invalidate every family link this owner has handed out."""
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO awg_family_epoch (owner_telegram_id, epoch, updated_at)
+                VALUES (?, 1, ?)
+                ON CONFLICT(owner_telegram_id) DO UPDATE SET
+                    epoch = awg_family_epoch.epoch + 1,
+                    updated_at = excluded.updated_at
+                """,
+                (int(owner_telegram_id), _now()),
+            )
+        return self.awg_family_epoch(owner_telegram_id)
 
     # --- device slots: names and last-seen ---------------------------------
     def awg_get_device_labels(self, owner_telegram_id: int) -> dict[int, str]:

@@ -1250,7 +1250,11 @@ def portal_links(request: Request) -> Response:
     family_query = urlencode(
         {
             "family": telegram_id,
-            "token": family_issue_token(config.link_secret, telegram_id),
+            "token": family_issue_token(
+                config.link_secret,
+                telegram_id,
+                _account_store().awg_family_epoch(telegram_id),
+            ),
         }
     )
     payload = PortalLinksResponse(
@@ -2877,7 +2881,8 @@ def _awg_issue_family_config(
     awg_cfg = AwgFallbackConfig.from_env()
     if not awg_cfg.link_secret:
         raise HTTPException(status_code=503, detail="AWG fallback is not configured.")
-    if not verify_family_issue_token(awg_cfg.link_secret, owner_telegram_id, token):
+    epoch = build_account_store().awg_family_epoch(owner_telegram_id)
+    if not verify_family_issue_token(awg_cfg.link_secret, owner_telegram_id, token, epoch):
         raise HTTPException(status_code=403, detail="Invalid or missing family token.")
     try:
         peer_id = family_guest_id(owner_telegram_id)
@@ -2953,7 +2958,12 @@ def _awg_access(
     if not awg_cfg.link_secret:
         raise HTTPException(status_code=503, detail="AWG fallback is not configured.")
     valid = (
-        verify_family_issue_token(awg_cfg.link_secret, telegram_id, token)
+        verify_family_issue_token(
+            awg_cfg.link_secret,
+            telegram_id,
+            token,
+            build_account_store().awg_family_epoch(telegram_id),
+        )
         if family
         else verify_issue_token(awg_cfg.link_secret, telegram_id, token)
     )
@@ -3221,6 +3231,10 @@ def awg_device_revoke(telegram_id: int, slot: int, token: str) -> AwgDeviceActio
         _awg_all_services(),
         on_error=lambda service, exc: failures.append(service.server_id or "default"),
     )
+    if slot == FAMILY_SLOT and not failures:
+        # The confirm dialog promises the relative loses access. Without bumping
+        # the epoch their old link would just re-provision the same guest peer.
+        build_account_store().awg_bump_family_epoch(telegram_id)
     if failures:
         logger.warning(
             "awg.device.revoke_partial tid=%s slot=%s failed_on=%s",
@@ -3250,6 +3264,36 @@ def awg_device_label(
         ok=True,
         slot=slot,
         label=store.awg_get_device_labels(telegram_id).get(slot),
+    )
+
+
+@app.get("/api/awg/{telegram_id}/family-link")
+def awg_family_link(telegram_id: int, token: str) -> JSONResponse:
+    """The family link signed with the owner's current epoch.
+
+    Callers must not build this themselves: a locally signed link would use a
+    stale epoch after a revoke and be dead on arrival.
+    """
+    limit, _registry = _awg_owner_access(telegram_id, token)
+    if limit < 2:
+        raise HTTPException(
+            status_code=403,
+            detail="Семейная ссылка доступна на тарифах от 3 устройств.",
+        )
+    config = AwgFallbackConfig.from_env()
+    base = (os.getenv("VPNW_PUBLIC_BASE_URL", "") or "").strip().rstrip("/")
+    store = build_account_store()
+    query = urlencode(
+        {
+            "family": telegram_id,
+            "token": family_issue_token(
+                config.link_secret, telegram_id, store.awg_family_epoch(telegram_id)
+            ),
+        }
+    )
+    return JSONResponse(
+        {"ok": True, "url": f"{base}/connect/awg.html?{query}" if base else None},
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
     )
 
 

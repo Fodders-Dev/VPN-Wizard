@@ -150,19 +150,28 @@ def _awg_picker_url(telegram_id: int) -> str | None:
     return f'{base}/connect/awg.html?{query}'
 
 
-def _family_picker_url(telegram_id: int) -> str | None:
-    context = _awg_link_context(telegram_id)
-    if context is None:
+async def _family_picker_url(telegram_id: int) -> str | None:
+    """Ask the API for the link rather than signing it here.
+
+    The family token now carries an epoch that the API bumps when the owner
+    revokes the slot; signing locally would keep minting links against a stale
+    epoch and hand out URLs that are already dead.
+    """
+    api = _devices_api(telegram_id)
+    if api is None:
         return None
-    base, _personal_token = context
-    secret = (os.getenv('VPNW_AWG_LINK_SECRET') or '').strip()
-    family_token = hmac.new(
-        secret.encode('utf-8'),
-        f'family:{int(telegram_id)}'.encode('utf-8'),
-        hashlib.sha256,
-    ).hexdigest()
-    query = urlencode({'family': int(telegram_id), 'token': family_token})
-    return f'{base}/connect/awg.html?{query}'
+    url, token = api
+    links_url = url.replace('/devices', '/family-link')
+    timeout = aiohttp.ClientTimeout(total=FETCH_TIMEOUT_SECONDS)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(links_url, params={'token': token}) as response:
+                if response.status != 200:
+                    return None
+                body = await response.json()
+    except (aiohttp.ClientError, asyncio.TimeoutError):
+        return None
+    return body.get('url') or None
 
 
 def _keyboard(message: types.Message) -> types.InlineKeyboardMarkup:
@@ -306,7 +315,7 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
 async def _send_family_link(message: types.Message, user: types.User | None) -> None:
     if user is None:
         return
-    family_url = _family_picker_url(user.id)
+    family_url = await _family_picker_url(user.id)
     if family_url is None:
         await message.answer('Семейный доступ пока не настроен. Напишите в техподдержку.')
         return

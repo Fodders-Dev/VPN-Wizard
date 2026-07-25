@@ -919,3 +919,72 @@ def test_a_failed_signup_releases_the_code_it_claimed(
     assert client.post(f"/api/web/invite/{code}/redeem").status_code == 502
     # The code is usable again rather than silently spent.
     assert client.get(f"/api/web/invite/{code}").json()["valid"] is True
+
+
+def test_revoking_the_family_slot_kills_the_link_already_handed_out(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    # Both confirm dialogs promise the relative loses access. Before the epoch,
+    # their old URL simply re-provisioned the same guest peer on the next request.
+    secret = "link-secret"
+    owner = 449066726
+    _configure_single_server(monkeypatch, secret)
+    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(3))
+
+    def issue(self, telegram_id: int, *, remnawave_uuid=None):
+        return {"config": "[Interface]\nPrivateKey = k\n", "client_name": "x", "reused": False}
+
+    class Service:
+        server_id = None
+
+        @staticmethod
+        def revoke(peer_id: int) -> bool:
+            return True
+
+    monkeypatch.setattr(server_module.AwgFallbackService, "issue", issue)
+    monkeypatch.setattr(server_module, "_awg_all_services", lambda: [Service()])
+
+    old_link = family_issue_token(secret, owner)
+    assert client.get(f"/api/awg/family/{owner}/config", params={"token": old_link}).status_code == 200
+
+    revoked = client.post(
+        f"/api/awg/{owner}/devices/2/revoke", params={"token": issue_token(secret, owner)}
+    )
+    assert revoked.status_code == 200
+
+    # The link the relative already holds is now dead...
+    assert client.get(
+        f"/api/awg/family/{owner}/config", params={"token": old_link}
+    ).status_code == 403
+    # ...and a freshly issued one works again, so the owner can re-share.
+    new_link = family_issue_token(secret, owner, 1)
+    assert client.get(
+        f"/api/awg/family/{owner}/config", params={"token": new_link}
+    ).status_code == 200
+
+
+def test_a_failed_family_revoke_leaves_the_link_alive(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    # Bumping the epoch on a partial failure would tell the owner nothing changed
+    # while silently breaking a link whose key is still installed somewhere.
+    secret = "link-secret"
+    owner = 449066726
+    _configure_single_server(monkeypatch, secret)
+    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(3))
+
+    class DeadService:
+        server_id = "fi"
+
+        @staticmethod
+        def revoke(peer_id: int) -> bool:
+            raise RuntimeError("exit unreachable")
+
+    monkeypatch.setattr(server_module, "_awg_all_services", lambda: [DeadService()])
+    assert client.post(
+        f"/api/awg/{owner}/devices/2/revoke", params={"token": issue_token(secret, owner)}
+    ).status_code == 502
+
+    from vpn_wizard.account import build_account_store
+
+    assert build_account_store().awg_family_epoch(owner) == 0
