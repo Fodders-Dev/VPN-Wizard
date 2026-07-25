@@ -361,6 +361,27 @@
 
   if(tg){try{tg.ready();tg.expand();tg.BackButton&&tg.BackButton.hide();}catch(e){}}
 
+  // Inside the Mini App, target="_blank" silently does nothing, so every link
+  // out of the portal has to be handed to Telegram. Same-origin pages (the
+  // connect page, the wizard) keep navigating in-app.
+  if(tg&&tg.initData){
+    document.addEventListener("click",function(event){
+      var anchor=event.target&&event.target.closest?event.target.closest("a[href]"):null;
+      if(!anchor)return;
+      var href=anchor.getAttribute("href")||"";
+      if(!/^https?:\/\//i.test(href))return;
+      try{ if(new URL(href,location.href).origin===location.origin)return; }catch(e){}
+      event.preventDefault();
+      try{
+        if(/^https?:\/\/t\.me\//i.test(href)&&typeof tg.openTelegramLink==="function"){
+          tg.openTelegramLink(href);return;
+        }
+        if(typeof tg.openLink==="function"){tg.openLink(href);return;}
+      }catch(e){}
+      window.open(href,"_blank");
+    });
+  }
+
   function showLocked(title,copy){
     loading.hidden=true;portal.hidden=true;locked.hidden=false;
     if(title)document.getElementById("locked-title").textContent=title;

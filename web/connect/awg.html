@@ -376,10 +376,16 @@
   <footer>Fodder VPN · без рекламы и лимитов · работает пока активна подписка</footer>
 </div>
 
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script>
 (function(){
   "use strict";
   var $=function(id){return document.getElementById(id);};
+  var tg=window.Telegram&&window.Telegram.WebApp?window.Telegram.WebApp:null;
+  // initData is only present when Telegram actually launched us as a Mini App;
+  // the same page is also opened as a normal link (family links, "open in browser").
+  var inTelegram=!!(tg&&tg.initData);
+  if(tg){try{tg.ready();tg.expand();}catch(e){}}
   var pans={and:$("p-and"),ios:$("p-ios"),win:$("p-win"),mac:$("p-mac")};
   var platformInputs=document.querySelectorAll('input[name="platform"]');
   function selectPlatform(name){
@@ -429,10 +435,61 @@
   }
   var u=urls();
   var accessGranted=!u.access;
+  function tunnelName(){
+    var suffix=u.family?"-F":u.device>1?"-D"+u.device:"";
+    return ("FVPN"+(u.server?"-"+u.server:"")+suffix).slice(0,15);
+  }
   function render(){
     show(profileUrl(u.cfg,u.server,u.device),profileUrl(u.qr,u.server,u.device));
-    var suffix=u.family?"-F":u.device>1?"-D"+u.device:"";
-    $("qr-name").textContent=("FVPN"+(u.server?"-"+u.server:"")+suffix).slice(0,15);
+    $("qr-name").textContent=tunnelName();
+  }
+
+  // Telegram's WebView ignores <a download> outright: the tap does nothing and
+  // the user is stuck with no file and no error. Route it through the Mini App
+  // APIs instead — a native download on Bot API 8.0+, otherwise hand the link to
+  // the system browser, where downloading works normally.
+  $("dl").addEventListener("click",function(event){
+    if(!inTelegram)return;              // real browser: let it download natively
+    var url=this.href;
+    if(!isHttp(url))return;
+    event.preventDefault();
+    var name=tunnelName()+".conf";
+    try{
+      if(typeof tg.downloadFile==="function"&&tg.isVersionAtLeast&&tg.isVersionAtLeast("8.0")){
+        tg.downloadFile({url:url,file_name:name});
+        return;
+      }
+    }catch(e){}
+    try{
+      if(typeof tg.openLink==="function"){tg.openLink(url);return;}
+    }catch(e){}
+    window.open(url,"_blank");
+  });
+
+  // target="_blank" is equally dead inside the Mini App, so store and help links
+  // have to be handed to Telegram too. Same-origin navigation stays in-app.
+  if(inTelegram){
+    document.addEventListener("click",function(event){
+      var anchor=event.target&&event.target.closest?event.target.closest("a[href]"):null;
+      if(!anchor||anchor.id==="dl")return;
+      var href=anchor.getAttribute("href")||"";
+      if(!isHttp(href))return;
+      try{ if(new URL(href,location.href).origin===location.origin)return; }catch(e){}
+      event.preventDefault();
+      try{
+        if(/^https?:\/\/t\.me\//i.test(href)&&typeof tg.openTelegramLink==="function"){
+          tg.openTelegramLink(href);return;
+        }
+        if(typeof tg.openLink==="function"){tg.openLink(href);return;}
+      }catch(e){}
+      window.open(href,"_blank");
+    });
+    // Say what the button will actually do, so a browser opening is not a surprise.
+    var note=document.createElement("p");
+    note.className="tip";
+    note.textContent="Файл откроется через Telegram или в браузере — потом откройте его в AmneziaWG.";
+    var dl=$("dl");
+    if(dl&&dl.parentNode)dl.parentNode.insertBefore(note,dl.nextSibling);
   }
   $("cfg").addEventListener("input",function(e){
     var v=(e.target.value||"").trim();

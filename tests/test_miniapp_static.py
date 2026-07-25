@@ -174,3 +174,22 @@ def test_bedolaga_configures_telegram_menu_button_for_the_portal() -> None:
     assert "action': portal_url" in script
     assert "FODDERS_VPN1_MINIAPP_URL" in script
     assert "/portal/" in script
+
+
+def test_connect_page_survives_the_telegram_webview() -> None:
+    # Telegram's WebView ignores <a download> and target="_blank": the tap does
+    # nothing at all, with no file and no error for the user.
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    assert "telegram-web-app.js" in html
+    assert "tg.downloadFile" in html
+    assert "tg.openLink" in html
+    assert "tg.openTelegramLink" in html
+    # Only a real Mini App launch may hijack the click; a plain browser must keep
+    # its native download.
+    assert "if(!inTelegram)return;" in html
+
+
+def test_portal_hands_external_links_to_telegram() -> None:
+    html = (ROOT / "web" / "connect" / "index.html").read_text(encoding="utf-8")
+    assert "tg.openTelegramLink" in html
+    assert "tg.openLink" in html
