@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex">
+<title>Fodder VPN · UI-kit</title>
+<link rel="stylesheet" href="atlas.css">
+<style>
+  /* Только для витрины: подписи и сетка образцов. */
+  .kit-block { margin: 28px 0; }
+  .kit-label { margin: 0 0 10px; color: var(--text-mute); font-size: 12px;
+    font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+  .kit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 10px; }
+  .kit-sw { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .kit-sw i { display: block; height: 44px; }
+  .kit-sw span { display: block; padding: 5px 6px; background: var(--surface);
+    font-size: 11px; line-height: 14px; text-align: center; }
+  .kit-icons { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 12px;
+    padding: 16px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+  .kit-icons svg { display: block; margin: 0 auto; }
+  .kit-type > * + * { margin-top: 10px; }
+  .kit-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+</style>
+</head>
+<body>
+<script src="atlas.js"></script>
+
+<div class="app">
+
+  <header class="head">
+    <img class="head__crest" src="assets/crest.svg" alt="">
+    <div class="head__text">
+      <div class="head__title">Fodder VPN</div>
+      <div class="head__sub">UI-kit · система компонентов</div>
+    </div>
+    <button class="head__action" type="button" id="theme" aria-label="Сменить тему">
+      <svg class="i" aria-hidden="true"><use href="#i-star-line"/></svg>
+    </button>
+  </header>
+
+  <div class="note">
+    <svg class="i" aria-hidden="true"><use href="#i-info"/></svg>
+    <div>
+      <div class="note__title">Живая витрина</div>
+      <p class="note__body">Всё ниже — настоящие компоненты из <span class="code">atlas.css</span>.
+        Меняется здесь — меняется во всём приложении.</p>
+    </div>
+  </div>
+
+  <!-- ------------------------------------------------------- палитра -->
+  <section class="kit-block">
+    <h2 class="kit-label">Палитра</h2>
+    <div class="kit-grid">
+      <div class="kit-sw"><i style="background:#071827"></i><span>#071827</span></div>
+      <div class="kit-sw"><i style="background:#102A3B"></i><span>#102A3B</span></div>
+      <div class="kit-sw"><i style="background:#E9E1D2"></i><span>#E9E1D2</span></div>
+      <div class="kit-sw"><i style="background:#F5F0E4"></i><span>#F5F0E4</span></div>
+      <div class="kit-sw"><i style="background:#28C7E4"></i><span>#28C7E4</span></div>
+      <div class="kit-sw"><i style="background:#3B7C72"></i><span>#3B7C72</span></div>
+      <div class="kit-sw"><i style="background:#E3AE43"></i><span>#E3AE43</span></div>
+      <div class="kit-sw"><i style="background:#D65A5A"></i><span>#D65A5A</span></div>
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------- типографика -->
+  <section class="kit-block">
+    <h2 class="kit-label">Типографика · Onest</h2>
+    <div class="card kit-type">
+      <div class="kit-row"><span class="h1">Заголовок экрана</span><span class="cap mute">24/32 · 600</span></div>
+      <div class="kit-row"><span class="h2">Заголовок блока</span><span class="cap mute">20/28 · 600</span></div>
+      <div class="kit-row"><span class="h3">Подзаголовок</span><span class="cap mute">18/24 · 500</span></div>
+      <div class="kit-row"><span class="t">Текст основной</span><span class="cap mute">16/24 · 400</span></div>
+      <div class="kit-row"><span class="t-sm dim">Текст дополнительный</span><span class="cap mute">14/20 · 400</span></div>
+      <div class="kit-row"><span class="cap mute">Подпись</span><span class="cap mute">12/16 · 400</span></div>
+    </div>
+  </section>
+
+  <!-- -------------------------------------------------------- иконки -->
+  <section class="kit-block">
+    <h2 class="kit-label">Иконки · линейные</h2>
+    <div class="kit-icons" id="icons"></div>
+  </section>
+
+  <!-- -------------------------------------------------------- кнопки -->
+  <section class="kit-block">
+    <h2 class="kit-label">Кнопки</h2>
+    <div class="stack">
+      <button class="btn btn--primary" type="button"><span class="btn__label">Скачать профиль</span></button>
+      <button class="btn btn--secondary" type="button">
+        <svg class="i" aria-hidden="true"><use href="#i-globe"/></svg>
+        <span class="btn__label">Выбрать страну</span>
+      </button>
+      <button class="btn btn--danger" type="button"><span class="btn__label">Отключить устройство</span></button>
+      <button class="btn btn--primary is-loading" type="button"><span class="btn__label">Скачивание…</span></button>
+      <button class="btn btn--primary" type="button" disabled><span class="btn__label">Недоступно</span></button>
+      <div><button class="btn btn--text" type="button">Подробнее</button></div>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------- поля ввода -->
+  <section class="kit-block">
+    <h2 class="kit-label">Поля ввода</h2>
+    <div class="stack">
+      <div>
+        <label class="field-label" for="kit-f1">По умолчанию</label>
+        <div class="field">
+          <svg class="i i--sm" aria-hidden="true"><use href="#i-ticket"/></svg>
+          <input id="kit-f1" placeholder="ABCD-2345" autocomplete="off">
+        </div>
+      </div>
+      <div>
+        <label class="field-label" for="kit-f2">Ошибка</label>
+        <div class="field field--error">
+          <svg class="i i--sm" aria-hidden="true"><use href="#i-alert"/></svg>
+          <input id="kit-f2" value="ABCD-99" aria-invalid="true" aria-describedby="kit-f2-hint">
+        </div>
+        <p class="field-hint field-hint--error" id="kit-f2-hint">Код не подошёл. Ничего не изменилось.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------ сегментированный контрол -->
+  <section class="kit-block">
+    <h2 class="kit-label">Сегментированный контрол</h2>
+    <div class="seg" role="tablist" aria-label="Пример">
+      <button class="seg__btn" role="tab" aria-selected="true" type="button">1 · Личный</button>
+      <button class="seg__btn" role="tab" aria-selected="false" type="button">3 · Вместе</button>
+      <button class="seg__btn" role="tab" aria-selected="false" type="button">5 · Семья</button>
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------- выбор страны -->
+  <section class="kit-block">
+    <h2 class="kit-label">Страна</h2>
+    <div class="stack">
+      <button class="pick" type="button" role="radio" aria-checked="true">
+        <span class="pick__flag">🇳🇱</span>
+        <span class="pick__body">
+          <span class="pick__name">Нидерланды</span>
+          <span class="badge"><svg class="i" aria-hidden="true"><use href="#i-star"/></svg>Рекомендуем</span>
+        </span>
+        <span class="pick__status pick__status--ok">Доступен</span>
+        <span class="pick__radio"><svg class="i i--sm" aria-hidden="true"><use href="#i-check"/></svg></span>
+      </button>
+      <button class="pick" type="button" role="radio" aria-checked="false" aria-disabled="true">
+        <span class="pick__flag">🇹🇷</span>
+        <span class="pick__body"><span class="pick__name">Турция</span></span>
+        <span class="pick__status pick__status--off">Временно недоступен</span>
+        <span class="pick__radio"></span>
+      </button>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------ устройства -->
+  <section class="kit-block">
+    <h2 class="kit-label">Устройство · статус подписки</h2>
+    <div class="stack">
+      <div class="card card--flush">
+        <button class="row" type="button">
+          <svg class="i i--badge" aria-hidden="true"><use href="#i-phone"/></svg>
+          <span class="row__body">
+            <span class="row__title">iPhone Артёма</span>
+            <span class="row__sub"><i class="dot dot--on"></i>Подключалось 2 минуты назад</span>
+          </span>
+          <svg class="i row__chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+        </button>
+        <button class="row" type="button">
+          <svg class="i i--badge" aria-hidden="true"><use href="#i-monitor"/></svg>
+          <span class="row__body">
+            <span class="row__title">MacBook Air</span>
+            <span class="row__sub"><i class="dot"></i>Подключений пока не было</span>
+          </span>
+          <svg class="i row__chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+        </button>
+      </div>
+
+      <div class="note note--ok">
+        <svg class="i" aria-hidden="true"><use href="#i-shield-check"/></svg>
+        <div><div class="note__title">Подписка активна до 14 сентября</div>
+        <p class="note__body">3 устройства</p></div>
+      </div>
+      <div class="note note--warn">
+        <svg class="i" aria-hidden="true"><use href="#i-star-line"/></svg>
+        <div><div class="note__title">Пробный период</div>
+        <p class="note__body">Осталось 3 дня</p></div>
+      </div>
+      <div class="note note--bad">
+        <svg class="i" aria-hidden="true"><use href="#i-alert"/></svg>
+        <div><div class="note__title">Подписка закончилась</div>
+        <p class="note__body">Профили сохранены и заработают после продления</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------ пустое состояние и скелетон -->
+  <section class="kit-block">
+    <h2 class="kit-label">Пустое состояние · Skeleton</h2>
+    <div class="stack">
+      <div class="card empty">
+        <img class="empty__mascot" src="assets/crest.svg" alt="">
+        <div class="empty__title">Профилей пока нет</div>
+        <p class="empty__body">Скачайте VPN-профиль и откройте его в VPN-приложении на устройстве.</p>
+        <button class="btn btn--primary" type="button"><span class="btn__label">Скачать профиль</span></button>
+      </div>
+      <div class="card stack">
+        <div class="sk sk--block"></div>
+        <div class="sk sk--title"></div>
+        <div class="sk sk--line"></div>
+        <div class="sk sk--line" style="width:72%"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------- листы, диалог, тосты -->
+  <section class="kit-block">
+    <h2 class="kit-label">Наложения</h2>
+    <div class="stack">
+      <button class="btn btn--secondary" type="button" id="d-sheet"><span class="btn__label">Открыть нижний лист</span></button>
+      <button class="btn btn--secondary" type="button" id="d-confirm"><span class="btn__label">Показать подтверждение</span></button>
+      <button class="btn btn--secondary" type="button" id="d-toast"><span class="btn__label">Показать тост</span></button>
+      <details class="disclosure">
+        <summary>Не подключается у моего оператора</summary>
+        <div class="disclosure__body">Диагностика прячется сюда, чтобы не пугать обычного человека.</div>
+      </details>
+    </div>
+  </section>
+
+</div>
+
+<nav class="tabs" aria-label="Разделы">
+  <div class="tabs__inner">
+    <a class="tab" href="#" aria-current="page"><svg class="i" aria-hidden="true"><use href="#i-globe"/></svg>VPN</a>
+    <a class="tab" href="#"><svg class="i" aria-hidden="true"><use href="#i-devices"/></svg>Устройства</a>
+    <a class="tab" href="#"><svg class="i" aria-hidden="true"><use href="#i-crown"/></svg>Тариф</a>
+    <a class="tab" href="#"><svg class="i" aria-hidden="true"><use href="#i-user"/></svg>Профиль</a>
+  </div>
+</nav>
+
+<script>
+(function () {
+  var names = [];
+  document.querySelectorAll('#i-shield').length; // спрайт уже в документе
+  document.querySelectorAll('symbol').forEach(function (node) {
+    names.push(node.id.replace(/^i-/, ''));
+  });
+  document.getElementById('icons').innerHTML = names.map(function (name) {
+    return '<svg class="i" aria-hidden="true"><use href="#i-' + name + '"/></svg>';
+  }).join('');
+
+  document.getElementById('theme').addEventListener('click', function () {
+    var root = document.documentElement;
+    var now = root.getAttribute('data-theme');
+    if (!now) {
+      now = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    root.setAttribute('data-theme', now === 'dark' ? 'light' : 'dark');
+  });
+
+  document.getElementById('d-sheet').addEventListener('click', function () {
+    Atlas.sheet('Выберите страну', function () {
+      return '<div class="stack">' +
+        ['🇳🇱 Нидерланды', '🇫🇮 Финляндия', '🇹🇷 Турция', '🇺🇸 США'].map(function (label) {
+          return '<button class="row" type="button"><span class="row__body">' +
+            '<span class="row__title">' + label + '</span></span>' +
+            Atlas.icon('chevron', 'row__chev') + '</button>';
+        }).join('') + '</div>';
+    });
+  });
+
+  document.getElementById('d-confirm').addEventListener('click', function () {
+    Atlas.confirmDanger({
+      title: 'Отключить устройство?',
+      body: 'iPhone Артёма перестанет иметь доступ к VPN.',
+      confirmLabel: 'Отключить'
+    }).then(function (yes) {
+      Atlas.toast(yes ? 'Устройство отключено' : 'Ничего не изменилось', yes ? 'ok' : 'bad');
+    });
+  });
+
+  document.getElementById('d-toast').addEventListener('click', function () {
+    Atlas.toast('Профиль скачан');
+  });
+})();
+</script>
+</body>
+</html>

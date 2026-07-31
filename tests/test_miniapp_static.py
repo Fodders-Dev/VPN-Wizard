@@ -52,7 +52,9 @@ def test_connect_page_is_a_private_unified_portal() -> None:
     assert "tg.BackButton&&tg.BackButton.hide()" in html
     assert 'request("/api/auth/telegram/miniapp"' in html
     assert 'request("/api/portal/links")' in html
-    assert "stale browser" in html
+    # Telegram is the authority for this launch: a stale cookie from another
+    # account must not win over the current initData.
+    assert "init_data:tg.initData" in html
     assert "localStorage" not in html
     assert "Happ" not in html
     assert "Reality" not in html
@@ -90,15 +92,76 @@ def test_entry_urls_do_not_rely_on_a_cache_busting_version() -> None:
         assert "/wizard/?v=" not in text, path
 
 
-def test_connect_pages_share_one_glass_material() -> None:
-    for page in ("web/connect/index.html", "web/connect/awg.html"):
-        html = (ROOT / page).read_text(encoding="utf-8")
-        assert 'class="aurora"' in html, page
-        assert "backdrop-filter" in html, page
-        # Glass must degrade for people who cannot read text through it.
-        assert "prefers-reduced-transparency" in html, page
-        assert "prefers-reduced-motion" in html, page
+def test_connect_pages_share_one_design_system() -> None:
+    # Every user-facing page draws from one stylesheet, so a token changed once
+    # changes everywhere. Per-page CSS is what let the old pages drift apart.
+    for page in ("index.html", "awg.html", "join.html"):
+        html = (ROOT / "web" / "connect" / page).read_text(encoding="utf-8")
+        assert '<link rel="stylesheet" href="atlas.css">' in html, page
+        assert '<script src="atlas.js"></script>' in html, page
         assert 'name="color-scheme" content="light dark"' in html, page
+        # Glass was replaced deliberately: text over a blurred backdrop is the
+        # thing people with low vision cannot read, and it read as cheap.
+        assert "backdrop-filter" not in html, page
+
+    css = (ROOT / "web" / "connect" / "atlas.css").read_text(encoding="utf-8")
+    assert "prefers-reduced-motion" in css
+    assert "prefers-contrast" in css
+    # Dark is the brand, but the system preference still decides.
+    assert "prefers-color-scheme: dark" in css
+    assert ":root[data-theme='light']" in css
+    # The single most fragile rule in the file: without !important every screen
+    # renders at once, stacked on top of each other.
+    assert "display: none !important" in css
+
+
+def test_shared_layer_ships_its_own_font() -> None:
+    # telegram.org is unreachable for our audience without a VPN, and so is any
+    # font CDN on a bad day. A page that has to wait on one is a blank page.
+    css = (ROOT / "web" / "connect" / "atlas.css").read_text(encoding="utf-8")
+    assert "fonts.googleapis.com" not in css
+    assert "fonts.gstatic.com" not in css
+    assert "url('fonts/onest-cyrillic.woff2')" in css
+    for name in ("onest-cyrillic", "onest-latin", "onest-latin-ext"):
+        weight = (ROOT / "web" / "connect" / "fonts" / f"{name}.woff2")
+        assert weight.exists(), name
+        assert weight.read_bytes()[:4] == b"wOF2", name
+
+
+def test_portal_never_blocks_on_telegram_org() -> None:
+    # The portal used to load the SDK with a plain synchronous <script src>.
+    # For a Russian user without a VPN telegram.org never answers, so the
+    # personal cabinet stayed blank until the connection timed out — for exactly
+    # the people it exists for.
+    html = (ROOT / "web" / "connect" / "index.html").read_text(encoding="utf-8")
+    assert '<script src="https://telegram.org' not in html
+    assert "sdk.async=true" in html
+    assert "window.TelegramWebviewProxy" in html
+
+
+def test_connect_page_mirrors_the_server_filename_rule() -> None:
+    # The tunnel name in the QR caption, the browser download and the Telegram
+    # download must be one name. The client used to keep the full server id and
+    # slice to 15, so "netherlands" + device 2 told the user FVPN-netherland
+    # while the file arrived as FVPN-nether-D2.
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    assert 'replace(/[^A-Za-z0-9_=+.-]/g,"")' in html
+    assert ".slice(0,6)" in html
+    assert 'name.slice(0,15)' in html
+    server = (ROOT / "src" / "vpn_wizard" / "server.py").read_text(encoding="utf-8")
+    assert 'r"[^A-Za-z0-9_=+.-]"' in server
+    assert "[:6]" in server
+
+
+def test_connect_page_does_not_claim_the_link_is_missing_while_checking() -> None:
+    # "Персональную ссылку пришлёт тот, кто пригласил" is false for someone who
+    # is holding the link — it was shown to everyone until /access answered.
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    assert 'id="checking-access"' in html
+    assert '$("nolink").hidden=true;$("checking-access").hidden=false;' in html
+    # ...and the paste box must survive an access failure: it is the only way
+    # back for someone with a stale link who cannot reach Telegram.
+    assert '$("nolink").hidden=false;box.hidden=false;' in html
 
 
 def test_connect_page_shows_one_platform_at_a_time() -> None:
@@ -131,8 +194,10 @@ def test_awg_page_supports_private_family_links_without_telegram() -> None:
     assert "Ни Telegram, ни регистрация не нужны" in html
     assert "amnezia-vpn/amneziawg-android/releases/download/2.0.1" in html
     assert "(или AmneziaVPN)" not in html
-    assert 'value="win"' in html
-    assert 'value="mac"' in html
+    # The platform switch is the segmented control itself; a second, visually
+    # hidden set of radios only duplicated it in the focus order.
+    assert 'data-plat="win"' in html
+    assert 'data-plat="mac"' in html
     assert "amneziawg-windows-client/releases/latest" in html
     assert "amnezia-client/releases/latest" in html
     assert 'id="device-picker"' in html
@@ -209,8 +274,15 @@ def test_portal_exposes_device_control() -> None:
     assert "/devices" in html
     assert "/revoke" in html
     assert "/label" in html
-    # Revoking is destructive and irreversible for whoever holds that config.
-    assert "window.confirm" in html
+    # Revoking is destructive and irreversible for whoever holds that config, so
+    # it goes through an explicit confirm. window.confirm was replaced because it
+    # cannot say which access dies, and Telegram's WebView renders it as a bare
+    # system box with the origin in the title.
+    assert "Atlas.confirmDanger" in html
+    assert 'confirmLabel:"Отключить"' in html
+    # Slot 2 is the family slot: the same key backs the family link, so revoking
+    # it silently kills the relative's access too.
+    assert "Семейная ссылка тоже перестанет работать." in html
     # A partially revoked key is still live somewhere; never report success.
     assert "могла остаться" in html
 

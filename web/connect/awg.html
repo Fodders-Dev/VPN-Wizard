@@ -5,423 +5,376 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="data:,">
-<title>Подключить AmneziaWG · Fodder VPN</title>
+<title>Fodder VPN · подключение</title>
+<link rel="preload" href="fonts/onest-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="atlas.css">
 <style>
-@layer reset, tokens, material, layout, components;
-
-@layer reset{
-  *,*::before,*::after{box-sizing:border-box}
-  [hidden]{display:none!important}
-  body,h1,h2,p,fieldset,legend{margin:0}
-  fieldset{border:0;padding:0}
-  button,input{font:inherit;color:inherit}
-}
-
-@layer tokens{
-  :root{
-    color-scheme:light dark;
-
-    --ink-l:#0d1226;      --ink-d:#f3f5ff;
-    --soft-l:#414c72;     --soft-d:#b9c2e4;
-    --muted-l:#6e789e;    --muted-d:#8e98c0;
-
-    /* Glass only reads as glass when there is something behind it to refract:
-       a near-white backdrop turns every pane into a flat white rectangle. */
-    --bg-l:#e4eaf9;       --bg-d:#05070f;
-    --a1-l:#4b82ff;       --a1-d:#2a3ec9;
-    --a2-l:#a35cff;       --a2-d:#6d2bd9;
-    --a3-l:#12d3b4;       --a3-d:#0a8f80;
-
-    --pane-l:rgba(255,255,255,.44);   --pane-d:rgba(255,255,255,.055);
-    --pane-hi-l:rgba(255,255,255,.78);--pane-hi-d:rgba(255,255,255,.10);
-    --rim-l:rgba(255,255,255,.95);    --rim-d:rgba(255,255,255,.42);
-    --rim-dim-l:rgba(120,140,200,.22);--rim-dim-d:rgba(255,255,255,.05);
-    --sheen-l:rgba(255,255,255,.55);  --sheen-d:rgba(255,255,255,.10);
-
-    /* Controls sit ON the glass, so they must contrast with it rather than
-       repeat it: a light tint of the ink on light, of white on dark. */
-    --fill-l:rgba(13,18,38,.055);     --fill-d:rgba(255,255,255,.085);
-    --fill-hi-l:rgba(13,18,38,.10);   --fill-hi-d:rgba(255,255,255,.15);
-    --hair-l:rgba(13,18,38,.11);      --hair-d:rgba(255,255,255,.13);
-
-    --accent-l:#3f56ff;   --accent-d:#8ea3ff;
-    --go1-l:#00c98d;      --go1-d:#00e0a0;
-    --go2-l:#0aa7d8;      --go2-d:#22bdea;
-    --on-go-l:#00160f;    --on-go-d:#00160f;
-    --warn-l:#8a5a12;     --warn-d:#f3c983;
-
-    --ink:var(--ink-l); --soft:var(--soft-l); --muted:var(--muted-l);
-    --bg:var(--bg-l); --a1:var(--a1-l); --a2:var(--a2-l); --a3:var(--a3-l);
-    --pane:var(--pane-l); --pane-hi:var(--pane-hi-l); --rim:var(--rim-l);
-    --rim-dim:var(--rim-dim-l); --sheen:var(--sheen-l);
-    --accent:var(--accent-l); --go1:var(--go1-l); --go2:var(--go2-l);
-    --on-go:var(--on-go-l); --warn:var(--warn-l);
-    --fill:var(--fill-l); --fill-hi:var(--fill-hi-l); --hair:var(--hair-l);
-
-    @media (prefers-color-scheme:dark){
-      --fill:var(--fill-d); --fill-hi:var(--fill-hi-d); --hair:var(--hair-d);
-      --ink:var(--ink-d); --soft:var(--soft-d); --muted:var(--muted-d);
-      --bg:var(--bg-d); --a1:var(--a1-d); --a2:var(--a2-d); --a3:var(--a3-d);
-      --pane:var(--pane-d); --pane-hi:var(--pane-hi-d); --rim:var(--rim-d);
-      --rim-dim:var(--rim-dim-d); --sheen:var(--sheen-d);
-      --accent:var(--accent-d); --go1:var(--go1-d); --go2:var(--go2-d);
-      --on-go:var(--on-go-d); --warn:var(--warn-d);
-    }
-    @supports (color:light-dark(white,black)){
-      --ink:light-dark(var(--ink-l),var(--ink-d));
-      --soft:light-dark(var(--soft-l),var(--soft-d));
-      --muted:light-dark(var(--muted-l),var(--muted-d));
-      --bg:light-dark(var(--bg-l),var(--bg-d));
-      --a1:light-dark(var(--a1-l),var(--a1-d));
-      --a2:light-dark(var(--a2-l),var(--a2-d));
-      --a3:light-dark(var(--a3-l),var(--a3-d));
-      --pane:light-dark(var(--pane-l),var(--pane-d));
-      --pane-hi:light-dark(var(--pane-hi-l),var(--pane-hi-d));
-      --rim:light-dark(var(--rim-l),var(--rim-d));
-      --rim-dim:light-dark(var(--rim-dim-l),var(--rim-dim-d));
-      --sheen:light-dark(var(--sheen-l),var(--sheen-d));
-      --accent:light-dark(var(--accent-l),var(--accent-d));
-      --go1:light-dark(var(--go1-l),var(--go1-d));
-      --go2:light-dark(var(--go2-l),var(--go2-d));
-      --on-go:light-dark(var(--on-go-l),var(--on-go-d));
-      --warn:light-dark(var(--warn-l),var(--warn-d));
-      --fill:light-dark(var(--fill-l),var(--fill-d));
-      --fill-hi:light-dark(var(--fill-hi-l),var(--fill-hi-d));
-      --hair:light-dark(var(--hair-l),var(--hair-d));
-    }
-
-    --r-lg:1.75rem; --r-md:1.15rem; --r-sm:.85rem;
-    --lift:0 .5px 1px rgba(9,14,40,.10), 0 6px 16px -6px rgba(9,14,40,.22), 0 22px 48px -22px rgba(9,14,40,.42);
-    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI Variable Text","Segoe UI",system-ui,Roboto,sans-serif;
-    --mono:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
-    accent-color:var(--accent);
-  }
-}
-
-@layer layout{
-  body{
-    min-height:100dvh;color:var(--ink);background:var(--bg);
-    font-family:var(--sans);font-size:1.02rem;line-height:1.55;letter-spacing:-.011em;
-    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
-    padding:max(.75rem,env(safe-area-inset-top)) 1rem calc(2.75rem + env(safe-area-inset-bottom));
-  }
-  .aurora{position:fixed;inset:-20% -10%;z-index:-1;pointer-events:none;
-    background:
-      radial-gradient(36rem 30rem at 10% 2%, color-mix(in oklab,var(--a1),transparent 30%), transparent 66%),
-      radial-gradient(32rem 28rem at 94% 12%, color-mix(in oklab,var(--a2),transparent 36%), transparent 64%),
-      radial-gradient(40rem 34rem at 50% 104%, color-mix(in oklab,var(--a3),transparent 42%), transparent 66%);
-    animation:drift 34s ease-in-out infinite alternate}
-  @keyframes drift{from{transform:translate3d(0,0,0) scale(1)}to{transform:translate3d(0,-2.5%,0) scale(1.07)}}
-  .wrap{max-width:31rem;margin-inline:auto}
-  header{text-align:center;padding:1.1rem .25rem .3rem}
-  footer{text-align:center;color:var(--muted);font-size:.76rem;margin-block-start:1.5rem;text-wrap:balance}
-}
-
-@layer material{
-  .glass{position:relative;isolation:isolate;background:var(--pane);border-radius:var(--r-lg);box-shadow:var(--lift)}
-  .glass::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
-    background:linear-gradient(150deg,var(--rim),var(--rim-dim) 34%,transparent 62%,var(--rim) 100%);
-    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
-    -webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
-    mask-composite:exclude}
-  .glass::after{content:"";position:absolute;inset:0 0 auto;height:52%;border-radius:inherit;pointer-events:none;
-    background:linear-gradient(180deg,var(--sheen),transparent 78%);opacity:.75;z-index:-1}
-  @supports (backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px)){
-    .glass{-webkit-backdrop-filter:blur(28px) saturate(190%);backdrop-filter:blur(28px) saturate(190%)}
-  }
-  @supports (corner-shape:squircle){ .glass{corner-shape:squircle} }
-
-  @media (prefers-reduced-transparency:reduce){
-    .glass{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--bg)}
-    .glass::after{display:none}
-    .aurora{opacity:.35}
-  }
-  @media (prefers-reduced-motion:reduce){ .aurora{animation:none} }
-  @media (prefers-contrast:more){ .glass{background:var(--bg)} }
-}
-
-@layer components{
-  .sr-only{position:absolute;inline-size:1px;block-size:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-  .logo{display:inline-flex;align-items:center;gap:.6rem;font-weight:700;font-size:.92rem}
-  .logo .mark{inline-size:2.15rem;block-size:2.15rem;border-radius:.72rem;display:grid;place-items:center;color:#fff;font-size:1.05rem;
-    background:linear-gradient(145deg,var(--go1),var(--accent));
-    box-shadow:0 6px 18px -6px color-mix(in oklab,var(--accent),transparent 40%),inset 0 1px 0 rgba(255,255,255,.45)}
-  h1{font-size:clamp(1.75rem,7.5vw,2.3rem);line-height:1.06;letter-spacing:-.036em;font-weight:700;
-    margin-block:1.1rem .45rem;text-wrap:balance}
-  .sub{color:var(--soft);margin-inline:auto;max-width:31ch;font-size:.97rem;text-wrap:pretty}
-
-  /* Platform switch */
-  .seg{display:grid;grid-template-columns:1fr 1fr;gap:.3rem;padding:.32rem;margin-block:1.3rem .3rem;border-radius:var(--r-md)}
-  .seg label{position:relative;cursor:pointer}
-  .seg input{position:absolute;opacity:0;pointer-events:none}
-  .seg span{display:flex;align-items:center;justify-content:center;min-block-size:3rem;padding:.65rem .45rem;border-radius:.85rem;
-    color:var(--soft);font-size:.9rem;font-weight:600;transition:color .16s ease}
-  .seg input:checked+span{color:var(--ink);font-weight:650;background:var(--fill-hi);
-    box-shadow:inset 0 0 0 1px var(--hair),inset 0 1px 0 var(--rim),0 4px 12px -8px rgba(9,14,40,.35)}
-  @media (prefers-reduced-motion:reduce){ .seg span{transition:none} }
-  .seg input:focus-visible+span{outline:2.5px solid var(--accent);outline-offset:2px}
-
-  /* Steps */
-  .step{padding:1.2rem 1.15rem;margin-block-start:.85rem;display:grid;grid-template-columns:2.2rem 1fr;gap:.15rem .85rem}
-  .num{grid-row:1/3;inline-size:2.2rem;block-size:2.2rem;border-radius:50%;display:grid;place-items:center;
-    font-weight:700;font-size:.98rem;color:var(--on-go);background:linear-gradient(150deg,var(--go1),var(--go2));
-    box-shadow:0 6px 16px -8px color-mix(in oklab,var(--go2),transparent 30%),inset 0 1px 0 rgba(255,255,255,.45)}
-  .step h2{grid-column:2;margin-block:.32rem 0;font-size:1.14rem;font-weight:650;letter-spacing:-.024em;text-wrap:balance}
-  .step .body{grid-column:2;color:var(--soft);font-size:.95rem;margin-block-start:.4rem}
-  :where(.step .body) p{margin-block:0 .55rem;text-wrap:pretty}
-  :where(.step .body) p:last-child{margin-block-end:0}
-  .step.solo{grid-template-columns:1fr}
-  .step.solo h2,.step.solo .body{grid-column:1}
-  /* Only the selected platform's instructions are shown; without this every
-     platform stacks at once and the step turns into a wall of buttons. */
+  /* Ровно одна платформа на экране. Без этих двух правил инструкции всех
+     четырёх систем рисуются одновременно и шаг установки превращается
+     в стопку почти одинаковых кнопок. */
   .platform{display:none}
   .platform.on{display:block}
-  b{color:var(--ink);font-weight:650}
-  .tip{font-size:.86rem;color:var(--muted)}
-
-  /* Buttons */
-  .btn{position:relative;isolation:isolate;appearance:none;display:flex;align-items:center;justify-content:center;gap:.5rem;
-    inline-size:100%;min-block-size:3.35rem;padding:.9rem 1.15rem;border:0;border-radius:1rem;margin-block-start:.55rem;
-    font-weight:600;font-size:1.005rem;letter-spacing:-.014em;text-align:center;text-decoration:none;cursor:pointer;
-    -webkit-tap-highlight-color:transparent;transition:transform .16s cubic-bezier(.2,.9,.3,1),box-shadow .16s ease}
-  @supports (corner-shape:squircle){ .btn{corner-shape:squircle} }
-  .btn:active{transform:scale(.975)}
-  .btn:focus-visible{outline:2.5px solid var(--accent);outline-offset:3px}
-  @media (prefers-reduced-motion:reduce){ .btn{transition:none} }
-
-  /* Primary: lit from above — bright top edge, saturated body, coloured cast. */
-  .btn-go{color:var(--on-go);font-weight:650;
-    background:linear-gradient(168deg,
-      color-mix(in oklab,var(--go1),white 14%) 0%, var(--go1) 38%, var(--go2) 100%);
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,.55),
-      inset 0 -1px 0 rgba(0,0,0,.08),
-      0 1px 2px rgba(9,14,40,.14),
-      0 10px 26px -10px color-mix(in oklab,var(--go2),transparent 30%)}
-  .btn-go:active{box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 1px 2px rgba(9,14,40,.2)}
-
-  /* Secondary: a real surface, tinted against the glass instead of blending
-     into it — near-white on a near-white pane reads as an empty placeholder. */
-  .btn-out{color:var(--ink);background:var(--fill);font-weight:600;font-size:.965rem;
-    box-shadow:inset 0 0 0 1px var(--hair),inset 0 1px 0 var(--rim)}
-  .btn-out:active{background:var(--fill-hi)}
-
-  /* Pickers */
-  .server-picker{margin-block-end:.9rem}
-  .server-picker p{margin-block:0 .55rem;font-weight:650;color:var(--ink);font-size:.95rem}
-  .server-grid{display:grid;grid-template-columns:1fr 1fr;gap:.45rem}
-  .server-btn{appearance:none;border:0;cursor:pointer;border-radius:.9rem;padding:.85rem .5rem;
-    font-weight:600;font-size:.92rem;color:var(--ink);background:var(--fill);
-    box-shadow:inset 0 0 0 1px var(--hair),inset 0 1px 0 var(--rim);
-    transition:transform .16s cubic-bezier(.2,.9,.3,1)}
-  .server-btn:active{transform:scale(.97)}
-  .server-btn[aria-pressed="true"]{color:var(--ink);
-    background:color-mix(in oklab,var(--go2),transparent 84%);
-    box-shadow:inset 0 0 0 1.5px var(--go2),inset 0 1px 0 var(--rim),0 6px 16px -10px var(--go2)}
-  .server-btn:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px}
-  @media (prefers-reduced-motion:reduce){ .server-btn{transition:none} }
-
-  .device-picker{margin-block-end:.95rem}
-  .device-picker legend{font-weight:650;color:var(--ink);margin-block-end:.55rem;font-size:.95rem}
-  .device-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem}
-  .device-grid label{position:relative;cursor:pointer}
-  .device-grid input{position:absolute;opacity:0;pointer-events:none}
-  .device-grid span{display:flex;align-items:center;justify-content:center;min-block-size:3rem;padding:.65rem;border-radius:.9rem;
-    font-size:.9rem;font-weight:600;background:var(--fill);
-    box-shadow:inset 0 0 0 1px var(--hair),inset 0 1px 0 var(--rim)}
-  .device-grid input:checked+span{background:color-mix(in oklab,var(--go2),transparent 84%);
-    box-shadow:inset 0 0 0 1.5px var(--go2),inset 0 1px 0 var(--rim)}
-  .device-grid input:focus-visible+span{outline:2.5px solid var(--accent);outline-offset:2px}
-
-  .fixbox{margin-block-end:.9rem;border-radius:var(--r-md);padding:.7rem .85rem;
-    background:var(--fill);box-shadow:inset 0 0 0 1px var(--hair)}
-  .fixbox summary{cursor:pointer;font-weight:600;font-size:.92rem;color:var(--ink);list-style-position:inside}
-  .fixbox summary:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px}
-  .fixbox .tip{margin-block:.5rem .6rem}
-  .srv{display:inline-block;margin-block-end:.75rem;padding:.35rem .8rem;border-radius:999px;font-size:.88rem;font-weight:600;
-    color:var(--ink);background:color-mix(in oklab,var(--accent),transparent 88%);
-    box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--accent),transparent 70%)}
-  .srv b{font-weight:700}
-
-  /* QR */
-  .qrwrap{margin-block-start:1rem;text-align:center}
-  .qrwrap img{inline-size:190px;block-size:190px;border-radius:var(--r-md);background:#fff;padding:.55rem;
-    box-shadow:0 8px 24px -12px rgba(9,14,40,.5),inset 0 0 0 1px var(--rim-dim)}
-  .qrwrap .cap{font-size:.84rem;color:var(--muted);margin-block-start:.6rem;text-wrap:pretty}
-
-  /* Error + paste */
-  .access-error{border-radius:var(--r-md);padding:.95rem 1rem;color:var(--ink);font-size:.94rem;
-    background:color-mix(in oklab,var(--warn),transparent 88%);
-    box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--warn),transparent 62%)}
-  .access-error b{color:var(--warn)}
-  .pastebox{margin-block-start:.65rem}
-  .pastebox label{display:block;font-size:.84rem;color:var(--muted);margin-block-end:.4rem}
-  .pastebox input{inline-size:100%;font-family:var(--mono);font-size:.84rem;padding:.85rem;border:0;border-radius:.9rem;
-    color:var(--ink);background:var(--fill);box-shadow:inset 0 0 0 1px var(--hair)}
-  .pastebox input:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px}
-
-  .help{border-radius:var(--r-md);padding:1rem;margin-block-start:1.15rem;font-size:.92rem;color:var(--soft);
-    background:color-mix(in oklab,var(--accent),transparent 90%);
-    box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--accent),transparent 74%)}
-  .help b{color:var(--ink)}
-  a{color:var(--accent)}
-}
+  .plat-seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:4px}
+  .plat-seg .seg__btn{min-height:46px}
+  .qr-img{display:block;width:220px;max-width:100%;margin:12px auto 0;border-radius:12px;
+    background:#fff;padding:10px;box-sizing:border-box}
+  .check-list{display:grid;gap:12px;margin:0;padding:0;list-style:none;counter-reset:s}
+  .check-list li{display:flex;gap:12px;align-items:flex-start;counter-increment:s}
+  .check-list li::before{content:counter(s);flex:none;width:26px;height:26px;border-radius:999px;
+    background:var(--accent-soft);color:var(--accent-text);font-size:14px;font-weight:600;
+    line-height:26px;text-align:center}
 </style>
 </head>
 <body>
-<div class="aurora" aria-hidden="true"></div>
+<script src="atlas.js"></script>
 
-<div class="wrap">
-  <header>
-    <span class="logo"><span class="mark" aria-hidden="true">🛡</span> Fodder VPN</span>
-    <h1>Подключение за 3 шага</h1>
-    <p class="sub">Стабильно работает в РФ. Российские сайты и банки — как обычно.</p>
+<div class="app app--plain">
+
+  <header class="subhead">
+    <button class="back" type="button" id="back" hidden>
+      <svg class="i i--sm" aria-hidden="true"><use href="#i-arrow-left"/></svg>Назад
+    </button>
+    <img class="subhead__crest" src="assets/avatar.png" alt="" onerror="this.onerror=null;this.src='assets/crest.svg'">
+    <div class="subhead__title" id="screen-title">Подключение</div>
   </header>
 
-  <fieldset class="glass seg">
-    <legend class="sr-only">Выберите устройство</legend>
-    <label><input type="radio" name="platform" value="and" checked><span>🤖 Android</span></label>
-    <label><input type="radio" name="platform" value="ios"><span>📱 iPhone / iPad</span></label>
-    <label><input type="radio" name="platform" value="win"><span>🪟 Windows</span></label>
-    <label><input type="radio" name="platform" value="mac"><span>🍎 Mac</span></label>
-  </fieldset>
-
-  <section class="glass step">
-    <div class="num">1</div>
-    <h2>Установите AmneziaWG</h2>
-    <div class="body">
-      <div class="platform on" id="p-and">
-        <p>Приложение <b>AmneziaWG</b> — Google Play, RuStore или файл APK.</p>
-        <a class="btn btn-out" href="https://play.google.com/store/apps/details?id=org.amnezia.awg" target="_blank" rel="noopener noreferrer">Открыть в Google Play →</a>
-        <a class="btn btn-out" href="https://github.com/amnezia-vpn/amneziawg-android/releases/download/2.0.1/amneziawg-2.0.1.apk" target="_blank" rel="noopener noreferrer">Если Play не открывается — скачать APK</a>
-        <p class="tip">APK взят из официального репозитория AmneziaWG.</p>
-      </div>
-      <div class="platform" id="p-ios">
-        <p>Приложение <b>AmneziaWG</b> в App Store. Если не находится — нужен Apple ID другой страны, напишите тому, кто дал ссылку.</p>
-        <a class="btn btn-out" href="https://apps.apple.com/app/amneziawg/id6478942365" target="_blank" rel="noopener noreferrer">Открыть в App Store →</a>
-      </div>
-      <div class="platform" id="p-win">
-        <p>Установите официальный клиент <b>AmneziaWG для Windows</b>, затем импортируйте файл конфигурации.</p>
-        <a class="btn btn-out" href="https://github.com/amnezia-vpn/amneziawg-windows-client/releases/latest" target="_blank" rel="noopener noreferrer">Скачать AmneziaWG для Windows →</a>
-      </div>
-      <div class="platform" id="p-mac">
-        <p>На Mac установите официальный <b>AmneziaVPN</b>: он умеет импортировать конфигурацию AmneziaWG.</p>
-        <a class="btn btn-out" href="https://github.com/amnezia-vpn/amnezia-client/releases/latest" target="_blank" rel="noopener noreferrer">Скачать AmneziaVPN для macOS →</a>
-      </div>
-    </div>
-  </section>
-
-  <section class="glass step">
-    <div class="num">2</div>
-    <h2>Получите свой конфиг</h2>
-    <div class="body">
-      <div id="have" hidden>
-        <fieldset class="device-picker" id="device-picker" hidden>
-          <legend>Какое устройство подключаете?</legend>
-          <div class="device-grid" id="device-buttons"></div>
-          <p class="tip">У каждого устройства — свой ключ. Не импортируйте один профиль на несколько устройств.</p>
-        </fieldset>
-        <div class="server-picker" id="server-picker" hidden>
-          <p>Выберите страну</p>
-          <div class="server-grid" id="server-buttons"></div>
-        </div>
-        <div class="srv" id="srv" hidden>🌍 Сервер: <b id="srv-name"></b></div>
-        <details class="fixbox" id="preset-box" hidden>
-          <summary>Не подключается? Попробуйте профиль под вашего оператора</summary>
-          <p class="tip">Некоторые операторы режут стандартный профиль. Тогда туннель
-            подключается, но интернета нет — или не подключается вовсе. Выберите своего
-            оператора, скачайте конфиг заново и замените им старый.</p>
-          <div class="server-grid" id="preset-buttons"></div>
-        </details>
-        <a class="btn btn-go" id="dl" href="#" download>📥 Скачать конфиг</a>
-        <div class="qrwrap">
-          <img id="qr" alt="QR конфигурации" referrerpolicy="no-referrer">
-          <div class="cap">…или отсканируйте этот QR прямо в приложении AmneziaWG.<br>
-            При импорте по QR приложение спросит название — введите <b id="qr-name">FVPN</b>,
-            чтобы потом было видно, с какого это сервера.</div>
-        </div>
-      </div>
-      <div class="access-error" id="access-error" hidden></div>
-      <div id="nolink">
-        <p>Персональную ссылку пришлёт тот, кто пригласил. Откройте её на нужном устройстве — или вставьте ссылку-конфиг сюда:</p>
-        <div class="pastebox">
-          <label for="cfg">Ссылка на конфиг</label>
-          <input id="cfg" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://…/api/awg/…/config?token=…">
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="glass step">
-    <div class="num">3</div>
-    <h2>Импортируйте и включите</h2>
-    <div class="body">
-      <p>Откройте скачанный файл в приложении (на телефоне можно отсканировать QR) → импортируйте профиль → включите VPN.</p>
-      <p class="tip">Первый раз система спросит разрешение на VPN — согласитесь. Значок VPN = всё работает. 🎉</p>
-    </div>
-  </section>
-
-  <section class="glass step solo" id="personal-access">
-    <h2>💡 Как это работает</h2>
-    <div class="body">
-      <p>🔐 Каждый номер устройства получает <b>отдельный ключ</b>. Сервер выдаст не больше профилей, чем включено в подписку.</p>
-      <p>🔁 Срок закончился — все ключи отключатся. После продления те же профили заработают снова, импортировать их заново не нужно.</p>
-      <p>💳 Управление подпиской — в <b><a href="https://t.me/foddervpnbot">@foddervpnbot</a></b>.</p>
-      <p class="tip">Не пересылайте личную ссылку: для близкого есть отдельная семейная ссылка.</p>
-    </div>
-  </section>
-
-  <section class="glass step solo" id="family-access" hidden>
-    <h2>👵 Вам дали семейный доступ</h2>
-    <div class="body">
-      <p>Это <b>отдельный VPN-профиль</b>: он не отключит устройство того, кто прислал ссылку.</p>
-      <p>Ни Telegram, ни регистрация не нужны — установите AmneziaWG, выберите страну и скачайте конфиг.</p>
-      <p>Профиль работает, пока активна подписка у пригласившего. После продления этот же профиль включится снова — скачивать новый не придётся.</p>
-      <p class="tip">Ссылку лучше не публиковать: это один семейный слот, предназначенный для близкого человека.</p>
-    </div>
-  </section>
-
-  <div class="help" id="help">
-    <b>Не получается?</b> Напишите тому, кто дал ссылку — поможем за пару минут.
+  <p class="steps__label" id="steps-label">Шаг 1 из 4</p>
+  <div class="steps" id="steps" aria-hidden="true">
+    <span class="steps__dot is-now"></span><span class="steps__dot"></span>
+    <span class="steps__dot"></span><span class="steps__dot"></span>
   </div>
-  <footer>Fodder VPN · без рекламы и лимитов · работает пока активна подписка</footer>
+
+  <!-- ============================================ шаг 1 · приложение -->
+  <section id="view-1" class="stack">
+    <h1 class="h1">Установите VPN-приложение</h1>
+    <p class="t dim">Само приложение включает VPN на устройстве. Сайт этого сделать не может —
+      он только выдаёт вам профиль.</p>
+
+    <div class="seg plat-seg" role="tablist" aria-label="Ваше устройство">
+      <button class="seg__btn" type="button" role="tab" data-plat="and" aria-selected="true">Android</button>
+      <button class="seg__btn" type="button" role="tab" data-plat="ios" aria-selected="false">iPhone и iPad</button>
+      <button class="seg__btn" type="button" role="tab" data-plat="win" aria-selected="false">Windows</button>
+      <button class="seg__btn" type="button" role="tab" data-plat="mac" aria-selected="false">Mac</button>
+    </div>
+
+    <div class="platform on" id="p-and">
+      <div class="stack">
+        <a class="btn btn--primary" href="https://play.google.com/store/apps/details?id=org.amnezia.awg" target="_blank" rel="noopener noreferrer">
+          <svg class="i" aria-hidden="true"><use href="#i-download"/></svg>
+          <span class="btn__label">Открыть Google Play</span>
+        </a>
+        <a class="btn btn--secondary" href="https://github.com/amnezia-vpn/amneziawg-android/releases/download/2.0.1/amneziawg-2.0.1.apk" target="_blank" rel="noopener noreferrer">
+          <span class="btn__label">Если Play не открывается — скачать APK</span>
+        </a>
+        <p class="t-sm mute">Приложение называется AmneziaWG. APK взят из официального репозитория.</p>
+      </div>
+    </div>
+    <div class="platform" id="p-ios">
+      <div class="stack">
+        <a class="btn btn--primary" href="https://apps.apple.com/app/amneziawg/id6478942365" target="_blank" rel="noopener noreferrer">
+          <svg class="i" aria-hidden="true"><use href="#i-download"/></svg>
+          <span class="btn__label">Открыть App Store</span>
+        </a>
+        <div class="note note--warn">
+          <svg class="i" aria-hidden="true"><use href="#i-info"/></svg>
+          <p class="note__body">Если приложение не находится — в вашем регионе App Store его не показывает.
+            Нужен Apple ID другой страны. Напишите тому, кто дал ссылку.</p>
+        </div>
+      </div>
+    </div>
+    <div class="platform" id="p-win">
+      <div class="stack">
+        <a class="btn btn--primary" href="https://github.com/amnezia-vpn/amneziawg-windows-client/releases/latest" target="_blank" rel="noopener noreferrer">
+          <svg class="i" aria-hidden="true"><use href="#i-download"/></svg>
+          <span class="btn__label">Скачать AmneziaWG для Windows</span>
+        </a>
+        <p class="t-sm mute">Официальный клиент AmneziaWG. Установите его, профиль импортируем на следующем шаге.</p>
+      </div>
+    </div>
+    <div class="platform" id="p-mac">
+      <div class="stack">
+        <a class="btn btn--primary" href="https://github.com/amnezia-vpn/amnezia-client/releases/latest" target="_blank" rel="noopener noreferrer">
+          <svg class="i" aria-hidden="true"><use href="#i-download"/></svg>
+          <span class="btn__label">Скачать AmneziaVPN для macOS</span>
+        </a>
+        <p class="t-sm mute">На Mac профиль AmneziaWG импортирует клиент AmneziaVPN.</p>
+      </div>
+    </div>
+
+    <button class="btn btn--secondary" type="button" id="have-app">
+      <span class="btn__label">Приложение уже установлено</span>
+    </button>
+  </section>
+
+  <!-- ============================================== шаг 2 · профиль -->
+  <section id="view-2" class="stack" hidden>
+    <h1 class="h1">Получите свой VPN-профиль</h1>
+
+    <div id="have" hidden>
+      <div class="card card--flush stack" style="gap:0">
+        <button class="row" type="button" id="row-device">
+          <svg class="i i--badge" aria-hidden="true"><use href="#i-phone"/></svg>
+          <span class="row__body">
+            <span class="row__sub">Устройство</span>
+            <span class="row__title" id="device-name">Устройство 1</span>
+          </span>
+          <svg class="i row__chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+        </button>
+        <button class="row" type="button" id="row-country">
+          <svg class="i i--badge" aria-hidden="true"><use href="#i-globe"/></svg>
+          <span class="row__body">
+            <span class="row__sub">Страна</span>
+            <span class="row__title" id="srv"><b id="srv-name">Определяем…</b></span>
+          </span>
+          <svg class="i row__chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+        </button>
+      </div>
+
+      <div class="stack" style="margin-top:12px">
+        <a class="btn btn--primary" id="dl" href="#" download>
+          <svg class="i" aria-hidden="true"><use href="#i-download"/></svg>
+          <span class="btn__label">Скачать VPN-профиль</span>
+        </a>
+        <p class="t-sm mute" style="text-align:center">Файл .conf для AmneziaWG</p>
+
+        <details class="disclosure" id="qr-box">
+          <summary>Показать QR для другого устройства</summary>
+          <div class="disclosure__body">
+            <p>QR нужен, только чтобы перенести профиль на <b>другое</b> устройство.
+              На этом телефоне просто скачайте файл.</p>
+            <img class="qr-img" id="qr" alt="QR-код профиля" referrerpolicy="no-referrer">
+            <p style="margin-top:10px">При импорте по QR приложение спросит название —
+              введите <b id="qr-name">FVPN</b>, чтобы потом было видно, с какого это сервера.</p>
+          </div>
+        </details>
+
+        <div class="note">
+          <svg class="i" aria-hidden="true"><use href="#i-info"/></svg>
+          <p class="note__body">У каждого устройства — свой ключ. Не устанавливайте один профиль
+            на два устройства: они будут выбивать друг друга.</p>
+        </div>
+
+        <details class="disclosure" id="preset-box" hidden>
+          <summary>Не подключается у моего оператора</summary>
+          <div class="disclosure__body">
+            <p>Некоторые операторы режут стандартный профиль: туннель поднимается, но интернета нет —
+              или не подключается вовсе. Выберите оператора, скачайте профиль заново и замените им старый.</p>
+            <div class="stack" id="preset-buttons" style="margin-top:12px"></div>
+          </div>
+        </details>
+
+        <button class="btn btn--secondary" type="button" id="to-3">
+          <span class="btn__label">Я скачал профиль</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="card stack" id="checking-access" hidden>
+      <div class="sk sk--block"></div>
+      <div class="sk sk--line"></div>
+      <div class="sk sk--line" style="width:64%"></div>
+    </div>
+
+    <div class="note note--bad" id="access-error" hidden></div>
+
+    <div id="nolink">
+      <div class="stack">
+        <div class="note">
+          <svg class="i" aria-hidden="true"><use href="#i-info"/></svg>
+          <p class="note__body">Персональную ссылку пришлёт тот, кто пригласил.
+            Откройте её на нужном устройстве — или вставьте ссылку сюда.</p>
+        </div>
+        <div>
+          <label class="field-label" for="cfg">Ссылка на профиль</label>
+          <div class="field">
+            <svg class="i i--sm" aria-hidden="true"><use href="#i-key"/></svg>
+            <input id="cfg" type="url" inputmode="url" autocomplete="off" spellcheck="false"
+                   placeholder="https://…/api/awg/…/config?token=…">
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =============================================== шаг 3 · импорт -->
+  <section id="view-3" class="stack" hidden>
+    <h1 class="h1">Откройте профиль в AmneziaWG</h1>
+    <div class="card">
+      <ol class="check-list">
+        <li><span>Откройте <b>скачанный файл</b>. На Android ищите его в папке
+          <b>Загрузки</b> — в списке «Недавние» он иногда показывается без имени и не открывается.</span></li>
+        <li><span>Приложение предложит <b>добавить профиль</b> — согласитесь.</span></li>
+        <li><span><b>Включите VPN</b> внутри приложения. Первый раз система спросит разрешение.</span></li>
+      </ol>
+    </div>
+    <button class="btn btn--primary" type="button" id="to-4">
+      <span class="btn__label">Я включил VPN</span>
+    </button>
+    <button class="btn btn--secondary" type="button" id="back-to-2">
+      <span class="btn__label">Скачать профиль ещё раз</span>
+    </button>
+  </section>
+
+  <!-- ============================================== шаг 4 · проверка -->
+  <section id="view-4" class="stack" hidden>
+    <h1 class="h1" id="check-title">Проверяем подключение</h1>
+    <div class="card" id="check-card">
+      <div class="hero">
+        <img class="hero__mascot" src="assets/mascot-helping.png" alt="" id="check-mascot" onerror="this.onerror=null;this.src='assets/crest.svg'">
+        <div class="hero__facts">
+          <p class="t" id="check-text">Спрашиваем сервер, видел ли он ваше соединение.
+            Сервер обновляет эти данные примерно раз в две минуты.</p>
+        </div>
+      </div>
+    </div>
+    <button class="btn btn--primary" type="button" id="check-again" hidden>
+      <span class="btn__label">Проверить ещё раз</span>
+    </button>
+    <button class="btn btn--secondary" type="button" id="check-fix" hidden>
+      <span class="btn__label">Исправить подключение</span>
+    </button>
+  </section>
+
+  <!-- ============================================== выбор страны -->
+  <section id="view-country" class="stack" hidden>
+    <h1 class="h1">Выберите страну</h1>
+    <div class="stack" id="server-picker">
+      <div class="stack" id="server-buttons">
+        <div class="sk sk--block"></div><div class="sk sk--block"></div>
+      </div>
+    </div>
+    <div class="note note--ok">
+      <svg class="i" aria-hidden="true"><use href="#i-shield-check"/></svg>
+      <div>
+        <div class="note__title">Страна не занимает ещё одно устройство.</div>
+        <p class="note__body">Профиль для новой страны скачивается отдельно, но место в тарифе
+          он не забирает.</p>
+      </div>
+    </div>
+    <div class="sticky-cta sticky-cta--plain">
+      <button class="btn btn--primary" type="button" id="use-country">
+        <span class="btn__label">Выбрать страну</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- ============================================ выбор устройства -->
+  <section id="view-device" class="stack" hidden>
+    <h1 class="h1">Какое устройство подключаете?</h1>
+    <fieldset id="device-picker" style="border:0;padding:0;margin:0">
+      <legend class="sr-only">Номер устройства</legend>
+      <div class="stack" id="device-buttons"></div>
+    </fieldset>
+    <div class="note">
+      <svg class="i" aria-hidden="true"><use href="#i-info"/></svg>
+      <p class="note__body">У каждого устройства — свой ключ. Сервер выдаст не больше профилей,
+        чем включено в подписку.</p>
+    </div>
+  </section>
+
+  <!-- =============================================== пояснения -->
+  <section class="stack" id="context" style="margin-top:28px">
+    <details class="disclosure" id="personal-access">
+      <summary>Как это работает</summary>
+      <div class="disclosure__body">
+        <p>Каждое устройство получает отдельный ключ. Сервер выдаст не больше профилей,
+          чем включено в подписку.</p>
+        <p>Когда срок закончится, ключи отключатся. После продления те же профили заработают
+          снова — импортировать их заново не нужно.</p>
+        <p>Управление подпиской — в <a href="https://t.me/foddervpnbot">@foddervpnbot</a>.</p>
+        <p>Не пересылайте личную ссылку: для близкого есть отдельная семейная.</p>
+      </div>
+    </details>
+
+    <details class="disclosure" id="family-access" hidden open>
+      <summary>Вам дали семейный доступ</summary>
+      <div class="disclosure__body">
+        <p>Это отдельный VPN-профиль: он не отключит устройство того, кто прислал ссылку.</p>
+        <p>Ни Telegram, ни регистрация не нужны — установите приложение, выберите страну
+          и скачайте профиль.</p>
+        <p>Профиль работает, пока активна подписка у пригласившего. После продления этот же
+          профиль включится снова.</p>
+        <p>Ссылку лучше не публиковать: это один семейный слот для близкого человека.</p>
+      </div>
+    </details>
+
+    <p class="t-sm mute" style="text-align:center">Не получается? Напишите тому, кто дал ссылку.</p>
+  </section>
+
 </div>
 
 <script>
 (function(){
   "use strict";
   var $=function(id){return document.getElementById(id);};
+
+  /* --------------------------------------------------------- Telegram */
+  // Эта страница существует для людей, которые НЕ могут открыть Telegram,
+  // поэтому она никогда не ждёт telegram.org. SDK грузим только если нас
+  // запустил сам Telegram, и всё равно асинхронно.
   var tg=null;
-  // This page exists for people who cannot reach Telegram, so it must never wait
-  // on telegram.org. The SDK is fetched only when Telegram itself launched us,
-  // and asynchronously even then; everything below runs immediately either way.
   var inTelegram=false;
+  var sdkPending=false;
   function setupTelegram(){
+    sdkPending=false;
     tg=window.Telegram&&window.Telegram.WebApp?window.Telegram.WebApp:null;
-    if(!tg||!tg.initData)return;
+    if(!tg||!tg.initData){syncDownloadState();return;}
     inTelegram=true;
     try{tg.ready();tg.expand();}catch(e){}
+    Atlas.syncTheme(tg);
     installTelegramLinks();
+    syncDownloadState();
   }
   if(window.TelegramWebviewProxy||(location.hash||"").indexOf("tgWebApp")>=0){
+    sdkPending=true;
     var sdk=document.createElement("script");
     sdk.src="https://telegram.org/js/telegram-web-app.js";
     sdk.async=true;
     sdk.onload=setupTelegram;
-    sdk.onerror=function(){};   // outside Telegram this is expected, not an error
+    sdk.onerror=function(){sdkPending=false;syncDownloadState();};  // вне Telegram это норма
     document.head.appendChild(sdk);
+    // Не ждать вечно: если SDK не ответил, страница обязана остаться рабочей.
+    setTimeout(function(){if(sdkPending){sdkPending=false;syncDownloadState();}},4000);
   }
+  // Пока SDK не определился, нативная загрузка внутри Telegram молча ничего не
+  // делает. Кнопка ждёт вместо того, чтобы притворяться рабочей.
+  function syncDownloadState(){
+    var dl=$("dl");
+    if(!dl)return;
+    if(sdkPending){
+      dl.setAttribute("aria-disabled","true");
+      dl.classList.add("is-loading");
+      dl.querySelector(".btn__label").textContent="Готовим загрузку…";
+    }else{
+      dl.removeAttribute("aria-disabled");
+      dl.classList.remove("is-loading");
+      dl.querySelector(".btn__label").textContent="Скачать VPN-профиль";
+    }
+  }
+
+  /* -------------------------------------------------------- платформа */
   var pans={and:$("p-and"),ios:$("p-ios"),win:$("p-win"),mac:$("p-mac")};
-  var platformInputs=document.querySelectorAll('input[name="platform"]');
+  var platformTabs=document.querySelectorAll('[data-plat]');
   function selectPlatform(name){
     for(var key in pans)pans[key].classList.toggle("on",key===name);
-    for(var i=0;i<platformInputs.length;i++)platformInputs[i].checked=platformInputs[i].value===name;
+    for(var j=0;j<platformTabs.length;j++)
+      platformTabs[j].setAttribute("aria-selected",platformTabs[j].dataset.plat===name?"true":"false");
   }
-  for(var pi=0;pi<platformInputs.length;pi++)platformInputs[pi].addEventListener("change",function(){selectPlatform(this.value);});
+  for(var pt=0;pt<platformTabs.length;pt++){
+    platformTabs[pt].addEventListener("click",function(){selectPlatform(this.dataset.plat);});
+  }
   var agent=navigator.userAgent||"";
-  selectPlatform(/iphone|ipad|ipod/i.test(agent)?"ios":/windows/i.test(agent)?"win":/macintosh|mac os x/i.test(agent)?"mac":"and");
+  // iPadOS 13+ представляется как "Macintosh", поэтому проверка на Mac без этой
+  // поправки отправляла владельцев iPad ставить десктопный AmneziaVPN.
+  var isMacLike=/macintosh|mac os x/i.test(agent);
+  var isIPad=/ipad/i.test(agent)||(isMacLike&&(navigator.maxTouchPoints||0)>1);
+  selectPlatform(/iphone|ipod/i.test(agent)||isIPad?"ios":
+                 /windows/i.test(agent)?"win":
+                 isMacLike?"mac":"and");
 
+  /* ------------------------------------------------------------ ссылки */
   function base(){var o=location.origin;return /^https?:/i.test(o)?o.replace(/\/$/,""):"https://212-69-84-167.nip.io";}
   function isHttp(u){return /^https?:\/\//i.test(u);}
 
@@ -429,7 +382,7 @@
     var p=new URLSearchParams(location.search);
     var cfg=(p.get("config")||"").trim(), qr=(p.get("qr")||"").trim();
     var tid=(p.get("tid")||"").trim(), family=(p.get("family")||"").trim(), tok=(p.get("token")||"").trim();
-    var access="";
+    var access="",devices="";
     if(!cfg && family && tok){
       cfg=base()+"/api/awg/family/"+encodeURIComponent(family)+"/config?token="+encodeURIComponent(tok);
       qr=base()+"/api/awg/family/"+encodeURIComponent(family)+"/qr?token="+encodeURIComponent(tok);
@@ -438,10 +391,11 @@
       cfg=base()+"/api/awg/"+encodeURIComponent(tid)+"/config?token="+encodeURIComponent(tok);
       qr=base()+"/api/awg/"+encodeURIComponent(tid)+"/qr?token="+encodeURIComponent(tok);
       access=base()+"/api/awg/"+encodeURIComponent(tid)+"/access?token="+encodeURIComponent(tok);
+      devices=base()+"/api/awg/"+encodeURIComponent(tid)+"/devices?token="+encodeURIComponent(tok);
     }
     if(cfg && !qr){ qr=cfg.replace("/config?","/qr?"); }
     var device=parseInt(p.get("device")||"1",10);
-    return {cfg:cfg,qr:qr,access:access,server:(p.get("server")||"").trim(),
+    return {cfg:cfg,qr:qr,access:access,devices:devices,server:(p.get("server")||"").trim(),
             preset:(p.get("preset")||"").trim(),family:!!family,device:device>0?device:1};
   }
   function profileUrl(url,server,device){
@@ -450,36 +404,67 @@
       var parsed=new URL(url);
       if(server)parsed.searchParams.set("server",server);else parsed.searchParams.delete("server");
       if(!u.family&&device>1)parsed.searchParams.set("device",String(device));else parsed.searchParams.delete("device");
-      // "default" is the plain profile; sending it would only add noise to the URL.
+      // "default" — это обычный профиль; отправлять его значило бы только сорить в URL.
       if(u.preset&&u.preset!=="default")parsed.searchParams.set("preset",u.preset);
       else parsed.searchParams.delete("preset");
       return parsed.toString();
     }
     catch(e){return url;}
   }
-  function show(cfg,qr){
-    if(!accessGranted||!isHttp(cfg)) return false;
-    $("dl").href=cfg;
-    if(isHttp(qr)) $("qr").src=qr; else $("qr").parentNode.style.display="none";
-    $("access-error").hidden=true;$("have").hidden=false; $("nolink").hidden=true; return true;
-  }
+
   var u=urls();
   var accessGranted=!u.access;
+  var deviceLimit=1;
+  var qrLoaded=false;
+
+  // Точная копия правила сервера (_awg_file_slug): те же запрещённые символы,
+  // те же 6 символов на идентификатор и тот же общий предел в 15. Иначе имя в
+  // подписи к QR, имя файла из браузера и имя файла из Telegram расходятся —
+  // и «-D2» у второго устройства может молча потеряться.
   function tunnelName(){
-    var suffix=u.family?"-F":u.device>1?"-D"+u.device:"";
-    return ("FVPN"+(u.server?"-"+u.server:"")+suffix).slice(0,15);
+    var slug=String(u.server||"").trim().replace(/[^A-Za-z0-9_=+.-]/g,"").slice(0,6);
+    var name=slug?"FVPN-"+slug:"FVPN";
+    if(u.family)name+="-F";
+    else if(u.device>1)name+="-D"+u.device;
+    return name.slice(0,15);
+  }
+
+  function show(cfg,qr){
+    if(!accessGranted||!isHttp(cfg)) return false;
+    $("checking-access").hidden=true;
+    $("dl").href=cfg;
+    // QR перевыпускает профиль на сервере (Remnawave + SSH), поэтому картинку
+    // грузим только когда её действительно раскрыли.
+    if(isHttp(qr)){ $("qr").dataset.src=qr; if(qrLoaded)$("qr").src=qr; }
+    else { $("qr-box").hidden=true; }
+    $("access-error").hidden=true;$("have").hidden=false; $("nolink").hidden=true; return true;
   }
   function render(){
     show(profileUrl(u.cfg,u.server,u.device),profileUrl(u.qr,u.server,u.device));
     $("qr-name").textContent=tunnelName();
+    $("device-name").textContent=u.family?"Профиль для близкого":("Устройство "+u.device);
+    $("row-device").hidden=u.family||deviceLimit<2;
   }
 
-  // Telegram's WebView ignores <a download> outright: the tap does nothing and
-  // the user is stuck with no file and no error. Route it through the Mini App
-  // APIs instead — a native download on Bot API 8.0+, otherwise hand the link to
-  // the system browser, where downloading works normally.
+  $("qr-box").addEventListener("toggle",function(){
+    if(!this.open||qrLoaded)return;
+    var src=$("qr").dataset.src;
+    if(src){qrLoaded=true;$("qr").src=src;}
+  });
+  // Выдача QR может упасть так же, как выдача файла (страна отключена, слот вне
+  // подписки). Молча битая картинка выглядит как поломка сайта.
+  $("qr").addEventListener("error",function(){
+    if(!this.src)return;
+    this.hidden=true;
+    Atlas.toast("QR сейчас не получается выдать — скачайте файл","bad");
+  });
+
+  /* ---------------------------------------------------------- загрузка */
+  // Telegram молча игнорирует <a download>: нажатие не делает НИЧЕГО — ни файла,
+  // ни ошибки. Внутри Mini App идём через его собственные API.
   $("dl").addEventListener("click",function(event){
-    if(!inTelegram)return;              // real browser: let it download natively
+    if(this.getAttribute("aria-disabled")==="true"){event.preventDefault();return;}
+    if(!inTelegram)return;              // настоящий браузер: пусть качает сам
     var url=this.href;
     if(!isHttp(url))return;
     event.preventDefault();
@@ -496,8 +481,8 @@
     window.open(url,"_blank");
   });
 
-  // target="_blank" is equally dead inside the Mini App, so store and help links
-  // have to be handed to Telegram too. Same-origin navigation stays in-app.
+  // target="_blank" внутри Mini App так же мёртв, поэтому ссылки на магазины и
+  // помощь тоже отдаём Telegram. Свой origin остаётся внутри приложения.
   function installTelegramLinks(){
     document.addEventListener("click",function(event){
       var anchor=event.target&&event.target.closest?event.target.closest("a[href]"):null;
@@ -514,27 +499,72 @@
       }catch(e){}
       window.open(href,"_blank");
     });
-    // Say what the button will actually do, so a browser opening is not a surprise.
-    var note=document.createElement("p");
-    note.className="tip";
-    note.textContent="Файл откроется через Telegram или в браузере — потом откройте его в AmneziaWG.";
-    var dl=$("dl");
-    if(dl&&dl.parentNode&&!dl.parentNode.querySelector(".tg-note")){
-      note.classList.add("tg-note");
-      dl.parentNode.insertBefore(note,dl.nextSibling);
+    var host=$("dl").parentNode;
+    if(host&&!host.querySelector(".tg-note")){
+      var note=document.createElement("p");
+      note.className="t-sm mute tg-note";
+      note.style.textAlign="center";
+      note.textContent="Файл откроется через Telegram или в браузере — потом откройте его в AmneziaWG.";
+      host.insertBefore(note,$("dl").nextSibling);
     }
   }
+
   $("cfg").addEventListener("input",function(e){
     var v=(e.target.value||"").trim();
     if(isHttp(v)){accessGranted=true;u.cfg=v;u.qr=v.replace("/config?","/qr?");render();}
   });
-  $("personal-access").hidden=u.family;
-  $("family-access").hidden=!u.family;
-  if(u.cfg&&!u.access)render();
 
-  // The API states the real reason in English; collapsing every 403 into
-  // "subscription inactive" told active subscribers something false, so map the
-  // known causes and always offer a way out.
+  /* ------------------------------------------------------------ шаги */
+  var step=1, returnTo=1;
+  var TITLES={1:"Подключение",2:"Ваш профиль",3:"Импорт",4:"Проверка",
+              country:"Страна",device:"Устройство"};
+  function go(next){
+    var views=["1","2","3","4","country","device"];
+    for(var i=0;i<views.length;i++){
+      var node=$("view-"+views[i]);
+      if(node)node.hidden=String(views[i])!==String(next);
+    }
+    var numeric=/^[1-4]$/.test(String(next));
+    if(numeric)step=parseInt(next,10);
+    $("screen-title").textContent=TITLES[next]||"Подключение";
+    $("steps").hidden=!numeric;
+    $("steps-label").hidden=!numeric;
+    $("context").hidden=!numeric||step>2;
+    if(numeric){
+      $("steps-label").textContent="Шаг "+step+" из 4";
+      var dots=$("steps").children;
+      for(var d=0;d<dots.length;d++){
+        dots[d].className="steps__dot"+(d+1<step?" is-done":d+1===step?" is-now":"");
+      }
+    }
+    $("back").hidden=(next==="1"||next===1);
+    try{
+      if(tg&&tg.BackButton){
+        if(next==="1"||next===1)tg.BackButton.hide();else tg.BackButton.show();
+      }
+    }catch(e){}
+    window.scrollTo(0,0);
+  }
+  function back(){
+    var current=$("view-country").hidden===false?"country":
+                $("view-device").hidden===false?"device":String(step);
+    if(current==="country"||current==="device")go(returnTo);
+    else go(Math.max(1,step-1));
+  }
+  $("back").addEventListener("click",back);
+  try{ if(window.Telegram&&window.Telegram.WebApp&&window.Telegram.WebApp.BackButton){
+    window.Telegram.WebApp.BackButton.onClick(back);
+  } }catch(e){}
+
+  $("have-app").addEventListener("click",function(){go(2);});
+  $("to-3").addEventListener("click",function(){go(3);});
+  $("back-to-2").addEventListener("click",function(){go(2);});
+  $("to-4").addEventListener("click",function(){go(4);runCheck();});
+  $("row-country").addEventListener("click",function(){returnTo=step;go("country");});
+  $("row-device").addEventListener("click",function(){returnTo=step;go("device");});
+  $("use-country").addEventListener("click",function(){go(returnTo);});
+
+  /* ------------------------------------------------------ объяснения */
   function explain(status,detail){
     var text=String(detail||"");
     if(/at least two devices/i.test(text))
@@ -552,23 +582,29 @@
   function showError(info){
     var box=$("access-error");
     box.textContent="";
-    var line=document.createElement("p");
-    line.style.margin="0";
-    line.textContent=info.msg;
-    box.appendChild(line);
+    box.innerHTML=Atlas.icon("alert")+'<div><div class="note__title">Не удалось выдать профиль</div>'+
+      '<p class="note__body" id="access-error-text"></p></div>';
+    $("access-error-text").textContent=info.msg;
     if(info.cta){
       var link=document.createElement("a");
-      link.className="btn btn-go";link.href="https://t.me/foddervpnbot";
-      link.target="_blank";link.rel="noopener noreferrer";link.textContent=info.cta;
-      box.appendChild(link);
+      link.className="btn btn--secondary";link.style.marginTop="12px";
+      link.href="https://t.me/foddervpnbot";link.target="_blank";link.rel="noopener noreferrer";
+      link.innerHTML='<span class="btn__label"></span>';
+      link.querySelector(".btn__label").textContent=info.cta;
+      box.lastChild.appendChild(link);
     }
-    $("have").hidden=true;$("nolink").hidden=true;box.hidden=false;
+    // Поле для ссылки остаётся на месте: у человека с протухшей ссылкой это
+    // единственный способ подставить новую, а до Telegram он может не дойти.
+    $("have").hidden=true;$("checking-access").hidden=true;
+    $("nolink").hidden=false;box.hidden=false;
   }
 
+  /* ---------------------------------------------------------- доступ -->*/
   function selectDevice(slot,limit){
     u.device=Math.max(1,Math.min(slot,limit));
-    var inputs=$("device-buttons").querySelectorAll("input");
-    for(var i=0;i<inputs.length;i++)inputs[i].checked=parseInt(inputs[i].value,10)===u.device;
+    var inputs=$("device-buttons").querySelectorAll('[role="radio"]');
+    for(var i=0;i<inputs.length;i++)
+      inputs[i].setAttribute("aria-checked",parseInt(inputs[i].dataset.slot,10)===u.device?"true":"false");
     try{
       var page=new URL(location.href);
       if(u.device>1)page.searchParams.set("device",String(u.device));else page.searchParams.delete("device");
@@ -591,20 +627,26 @@
       })
       .then(function(data){
         var limit=Math.max(1,parseInt(data.device_limit||"1",10));
+        deviceLimit=limit;
         accessGranted=true;
         if(!u.family){
           var box=$("device-buttons");box.textContent="";
           for(var i=1;i<=limit;i++){
             (function(slot){
-              var label=document.createElement("label");
-              var input=document.createElement("input");input.type="radio";input.name="device-slot";input.value=String(slot);
-              var span=document.createElement("span");span.textContent="Устройство "+slot;
-              input.addEventListener("change",function(){selectDevice(slot,limit);});
-              label.appendChild(input);label.appendChild(span);box.appendChild(label);
+              var item=document.createElement("button");
+              item.type="button";item.className="pick";item.setAttribute("role","radio");
+              item.setAttribute("aria-checked","false");item.dataset.slot=String(slot);
+              // Второй слот и семейная ссылка — это один и тот же ключ, поэтому
+              // здесь он называется так же, как в личном кабинете.
+              item.innerHTML=Atlas.icon("phone","i--badge")+
+                '<span class="pick__body"><span class="pick__name">Устройство '+slot+'</span>'+
+                (slot===2?'<span class="row__sub">Этот же профиль получает близкий по семейной ссылке</span>':'')+
+                '</span>'+
+                '<span class="pick__radio">'+Atlas.icon("check","i--sm")+'</span>';
+              item.addEventListener("click",function(){selectDevice(slot,limit);go(returnTo);});
+              box.appendChild(item);
             })(i);
           }
-          // A one-device plan has nothing to choose between.
-          $("device-picker").hidden=limit<2;
           selectDevice(u.device,limit);
         }else render();
       })
@@ -613,65 +655,85 @@
       });
   }
 
-  // The picker is functional: the selected id is sent to both provisioning
-  // endpoints, so each country receives its own peer and downloadable profile.
+  /* ---------------------------------------------------------- страны */
   function loadServers(){
     if(!window.fetch) return;
     fetch(base()+"/api/awg/servers",{credentials:"omit"})
       .then(function(r){return r.ok?r.json():null;})
       .then(function(d){
-        if(!d||!d.servers||!d.servers.length) return;
+        if(!d||!d.servers||!d.servers.length){$("server-buttons").innerHTML="";return;}
         var pick=d.servers[0];
         var wanted=u.server||d.default_server;
         for(var i=0;i<d.servers.length;i++){ if(d.servers[i].id===wanted){ pick=d.servers[i]; break; } }
         var box=$("server-buttons");box.textContent="";
+        function mark(){
+          var items=box.querySelectorAll(".pick");
+          for(var j=0;j<items.length;j++)
+            items[j].setAttribute("aria-checked",items[j].dataset.id===u.server?"true":"false");
+        }
         function select(item){
-          pick=item;
-          u.server=item.id;render();
+          pick=item;u.server=item.id;render();
           $("srv-name").textContent=item.display||item.label||item.id;
-          $("srv").hidden=false;
-          var buttons=box.querySelectorAll("button");
-          for(var j=0;j<buttons.length;j++){buttons[j].setAttribute("aria-pressed",buttons[j].dataset.id===item.id?"true":"false");}
-          try{var page=new URL(location.href);page.searchParams.set("server",item.id);history.replaceState(null,"",page.toString());}catch(e){}
+          $("use-country").querySelector(".btn__label").textContent=
+            "Использовать: "+(item.label||item.display||item.id);
+          mark();
+          try{var page=new URL(location.href);page.searchParams.set("server",item.id);
+              history.replaceState(null,"",page.toString());}catch(e){}
         }
         for(var k=0;k<d.servers.length;k++){
-          (function(item){
-            var button=document.createElement("button");button.type="button";button.className="server-btn";
-            button.dataset.id=item.id;button.textContent=item.display||item.label||item.id;
-            button.setAttribute("aria-pressed","false");button.onclick=function(){select(item);};box.appendChild(button);
-          })(d.servers[k]);
+          (function(item,index){
+            var flag=(item.display||"").trim().split(" ")[0];
+            var name=item.label||item.id;
+            var node=document.createElement("button");
+            node.type="button";node.className="pick";node.dataset.id=item.id;
+            node.setAttribute("role","radio");node.setAttribute("aria-checked","false");
+            node.innerHTML=
+              '<span class="pick__flag">'+Atlas.escapeHtml(flag===name?"":flag)+'</span>'+
+              '<span class="pick__body"><span class="pick__name">'+Atlas.escapeHtml(name)+'</span>'+
+              (index===0?'<span class="badge">'+Atlas.icon("star")+'Рекомендуем</span>':'')+
+              '</span>'+
+              '<span class="pick__status pick__status--ok">Доступен</span>'+
+              '<span class="pick__radio">'+Atlas.icon("check","i--sm")+'</span>';
+            node.addEventListener("click",function(){select(item);});
+            box.appendChild(node);
+          })(d.servers[k],k);
         }
-        $("server-picker").hidden=false;
         select(pick);
 
-        // Only sender-side knobs differ between presets, so switching one is just
-        // a different file from the same peer — no server round trip needed.
-        var presets=d.presets||[];
+        // Между пресетами отличаются только настройки на стороне клиента, поэтому
+        // смена пресета — это другой файл того же ключа, без похода на сервер.
+        // Семейный маршрут выдачи не принимает preset вообще — сервер молча
+        // игнорирует параметр. Показывать близкому переключатель, который ничего
+        // не меняет, хуже, чем не показывать его совсем.
+        var presets=u.family?[]:(d.presets||[]);
         if(presets.length>1){
           var pbox=$("preset-buttons");pbox.textContent="";
           function markPresets(){
-            var buttons=pbox.querySelectorAll("button");
-            for(var n=0;n<buttons.length;n++){
-              var active=(u.preset||"default")===buttons[n].dataset.id;
-              buttons[n].setAttribute("aria-pressed",active?"true":"false");
+            var items=pbox.querySelectorAll(".pick");
+            for(var n=0;n<items.length;n++){
+              var active=(u.preset||"default")===items[n].dataset.id;
+              items[n].setAttribute("aria-checked",active?"true":"false");
             }
           }
           for(var m=0;m<presets.length;m++){
             (function(item){
-              var button=document.createElement("button");
-              button.type="button";button.className="server-btn";button.dataset.id=item.id;
-              button.textContent=item.label||item.id;
-              button.setAttribute("aria-pressed","false");
-              button.onclick=function(){
+              var node=document.createElement("button");
+              node.type="button";node.className="pick";node.dataset.id=item.id;
+              node.setAttribute("role","radio");node.setAttribute("aria-checked","false");
+              node.innerHTML='<span class="pick__body"><span class="pick__name">'+
+                Atlas.escapeHtml(item.label||item.id)+'</span></span>'+
+                '<span class="pick__radio">'+Atlas.icon("check","i--sm")+'</span>';
+              node.addEventListener("click",function(){
                 u.preset=item.id;render();markPresets();
+                Atlas.toast("Профиль обновлён — скачайте его заново");
                 try{
                   var page=new URL(location.href);
                   if(item.id&&item.id!=="default")page.searchParams.set("preset",item.id);
                   else page.searchParams.delete("preset");
                   history.replaceState(null,"",page.toString());
                 }catch(e){}
-              };
-              pbox.appendChild(button);
+              });
+              pbox.appendChild(node);
             })(presets[m]);
           }
           markPresets();
@@ -680,8 +742,77 @@
       })
       .catch(function(){});
   }
+
+  /* -------------------------------------------------- проверка связи */
+  // Сервер пересчитывает «последнее подключение» примерно раз в две минуты,
+  // поэтому это не мгновенная проверка и притворяться ей нельзя.
+  var checkTimer=null,checkUntil=0;
+  function finishCheck(ok,text){
+    if(checkTimer){clearTimeout(checkTimer);checkTimer=null;}
+    $("check-title").textContent=ok?"Готово":"Пока не видим соединение";
+    $("check-text").innerHTML="";
+    $("check-text").textContent=text;
+    $("check-again").hidden=ok;
+    $("check-fix").hidden=ok;
+    if(ok)$("check-card").classList.add("note--ok");
+    else $("check-card").classList.remove("note--ok");
+  }
+  function pollOnce(){
+    if(!u.devices){
+      finishCheck(false,"Мы не можем проверить это по семейной ссылке. "+
+        "Если в приложении появился значок VPN и сайты открываются — всё работает.");
+      return;
+    }
+    fetch(u.devices,{credentials:"omit",headers:{"Accept":"application/json"}})
+      .then(function(r){return r.ok?r.json():null;})
+      .then(function(d){
+        var slot=null;
+        if(d&&d.devices)for(var i=0;i<d.devices.length;i++)
+          if(parseInt(d.devices[i].slot,10)===u.device)slot=d.devices[i];
+        var seen=slot&&slot.last_seen_at?parseInt(slot.last_seen_at,10):0;
+        if(seen&&(Math.floor(Date.now()/1000)-seen)<600){
+          finishCheck(true,"Сервер видит подключение через "+
+            ($("srv-name").textContent||"выбранную страну")+". Последний раз — "+Atlas.ago(seen)+".");
+          return;
+        }
+        if(Date.now()<checkUntil){checkTimer=setTimeout(pollOnce,15000);return;}
+        finishCheck(false,"VPN включён, но сервер пока не видит соединение. Профиль сохранён — "+
+          "данные обновляются примерно раз в две минуты, попробуйте проверить ещё раз.");
+      })
+      .catch(function(){
+        if(Date.now()<checkUntil){checkTimer=setTimeout(pollOnce,15000);return;}
+        finishCheck(false,"Не удалось спросить сервер. Проверьте интернет и попробуйте ещё раз.");
+      });
+  }
+  function runCheck(){
+    $("check-title").textContent="Проверяем подключение";
+    $("check-text").textContent="Спрашиваем сервер, видел ли он ваше соединение. Это занимает до двух минут.";
+    $("check-again").hidden=true;$("check-fix").hidden=true;
+    $("check-card").classList.remove("note--ok");
+    checkUntil=Date.now()+135000;   // ограничено по времени, без вечного спиннера
+    pollOnce();
+  }
+  $("check-again").addEventListener("click",runCheck);
+  $("check-fix").addEventListener("click",function(){
+    go(2);
+    var box=$("preset-box");
+    if(!box.hidden){box.open=true;box.scrollIntoView({block:"center"});}
+  });
+
+  /* ------------------------------------------------------------ старт */
+  $("personal-access").hidden=u.family;
+  $("family-access").hidden=!u.family;
+  // Пока подписка не проверена, «ссылку пришлёт тот, кто пригласил» — неправда:
+  // ссылка у человека уже есть. Показываем скелетон, а не чужой текст.
+  if(u.access){$("nolink").hidden=true;$("checking-access").hidden=false;}
+  if(u.cfg&&!u.access)render();
+  syncDownloadState();
   loadServers();
   loadAccess();
+  // Ссылка уже персональная — значит человек пришёл за профилем, а не за
+  // рассказом про установку. Но шаг 1 всё равно первый: без приложения
+  // скачанный файл открыть нечем.
+  go(1);
 })();
 </script>
 </body>
