@@ -57,7 +57,7 @@ from vpn_wizard.awg_devices import (
     revoke_device,
 )
 from vpn_wizard.awg_servers import AwgRegistry, AwgRegistryError, apply_preset
-from vpn_wizard.bot_api import BotApiClient, referral_link
+from vpn_wizard.bot_api import BotApiClient, referral_link, subscription_facts_of
 from vpn_wizard.metrics import collect as collect_metrics, owner_ids
 from vpn_wizard.web_signup import (
     InviteConfig,
@@ -549,6 +549,14 @@ class PortalLinksResponse(BaseModel):
     subscription_active: bool = False
     device_limit: int = 1
     referral_url: Optional[str] = None
+    # Remnawave knows the entitlement but not whether anyone paid for it. Only
+    # the billing bot knows a trial is a trial, and a cabinet that cannot tell
+    # the difference says "подписка активна" to someone whose free week ends
+    # tonight — and never mentions money.
+    is_trial: bool = False
+    expires_at: Optional[str] = None
+    traffic_limit_gb: Optional[float] = None
+    traffic_used_gb: Optional[float] = None
 
 
 class AwgAccessResponse(BaseModel):
@@ -1274,10 +1282,18 @@ def portal_links(request: Request) -> Response:
     # The invite link must be personal, or nobody is credited for bringing
     # anyone in. The code lives in the bot's database; if it is unreachable the
     # portal simply shows no invite rather than a shared link that rewards no one.
-    payload.referral_url = referral_link(
-        os.getenv("VPNW_BOT_USERNAME") or "",
-        BotApiClient().referral_code(telegram_id),
-    )
+    # One fetch: the referral code and the subscription facts come from the same
+    # user object, and this call is already on the portal's critical path.
+    bot_user = BotApiClient().user_by_telegram_id(telegram_id)
+    code = str((bot_user or {}).get("referral_code") or "").strip() or None
+    payload.referral_url = referral_link(os.getenv("VPNW_BOT_USERNAME") or "", code)
+    # An unreachable bot must degrade to "we don't know" — the defaults above —
+    # never to a confident claim that a trial is a paid subscription.
+    facts = subscription_facts_of(bot_user)
+    payload.is_trial = bool(facts["is_trial"])
+    payload.expires_at = facts["expires_at"]
+    payload.traffic_limit_gb = facts["traffic_limit_gb"]
+    payload.traffic_used_gb = facts["traffic_used_gb"]
     return JSONResponse(
         payload.model_dump(),
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},

@@ -25,6 +25,10 @@
   .check-list li::before{content:counter(s);flex:none;width:26px;height:26px;border-radius:999px;
     background:var(--accent-soft);color:var(--accent-text);font-size:14px;font-weight:600;
     line-height:26px;text-align:center}
+  .progress{height:6px;margin-top:16px;border-radius:999px;background:var(--surface-2);overflow:hidden}
+  .progress span{display:block;height:100%;width:0;border-radius:999px;background:var(--accent);
+    transition:width .5s linear}
+  #check-tick{margin-top:8px;text-align:center}
 </style>
 </head>
 <body>
@@ -227,6 +231,12 @@
           <p class="t" id="check-text">Спрашиваем сервер, видел ли он ваше соединение.
             Сервер обновляет эти данные примерно раз в две минуты.</p>
         </div>
+      </div>
+      <!-- Проверка идёт до трёх минут. Без видимого движения экран выглядит
+           зависшим, и человек уходит, так и не узнав результат. -->
+      <div id="check-progress">
+        <div class="progress" aria-hidden="true"><span id="check-bar"></span></div>
+        <p class="t-sm mute" id="check-tick" role="status" aria-live="polite">Проверяем…</p>
       </div>
     </div>
     <button class="btn btn--primary" type="button" id="check-again" hidden>
@@ -746,16 +756,33 @@
   /* -------------------------------------------------- проверка связи */
   // Сервер пересчитывает «последнее подключение» примерно раз в две минуты,
   // поэтому это не мгновенная проверка и притворяться ей нельзя.
-  var checkTimer=null,checkUntil=0;
-  function finishCheck(ok,text){
+  var checkTimer=null,checkUntil=0,checkStart=0,tickTimer=null;
+  var CHECK_WINDOW=185000;   // сервер пересчитывает раз в ~2 мин, даём запас
+  function stopTicker(){
+    if(tickTimer){clearInterval(tickTimer);tickTimer=null;}
     if(checkTimer){clearTimeout(checkTimer);checkTimer=null;}
+  }
+  function tick(){
+    var passed=Date.now()-checkStart;
+    var share=Math.min(1,passed/CHECK_WINDOW);
+    $("check-bar").style.width=Math.round(share*100)+"%";
+    var left=Math.max(0,Math.ceil((CHECK_WINDOW-passed)/1000));
+    $("check-tick").textContent=left
+      ? "Проверяем… осталось около "+left+" с"
+      : "Заканчиваем проверку…";
+  }
+  function finishCheck(ok,text){
+    stopTicker();
     $("check-title").textContent=ok?"Готово":"Пока не видим соединение";
     $("check-text").innerHTML="";
     $("check-text").textContent=text;
     $("check-again").hidden=ok;
     $("check-fix").hidden=ok;
+    $("check-progress").hidden=true;
     if(ok)$("check-card").classList.add("note--ok");
     else $("check-card").classList.remove("note--ok");
+    var mascot=$("check-mascot");
+    if(mascot)mascot.src="assets/mascot-"+(ok?"success":"error")+".png";
   }
   function pollOnce(){
     if(!u.devices){
@@ -775,21 +802,30 @@
             ($("srv-name").textContent||"выбранную страну")+". Последний раз — "+Atlas.ago(seen)+".");
           return;
         }
-        if(Date.now()<checkUntil){checkTimer=setTimeout(pollOnce,15000);return;}
+        if(Date.now()<checkUntil){checkTimer=setTimeout(pollOnce,10000);return;}
         finishCheck(false,"VPN включён, но сервер пока не видит соединение. Профиль сохранён — "+
           "данные обновляются примерно раз в две минуты, попробуйте проверить ещё раз.");
       })
       .catch(function(){
-        if(Date.now()<checkUntil){checkTimer=setTimeout(pollOnce,15000);return;}
+        if(Date.now()<checkUntil){checkTimer=setTimeout(pollOnce,10000);return;}
         finishCheck(false,"Не удалось спросить сервер. Проверьте интернет и попробуйте ещё раз.");
       });
   }
   function runCheck(){
+    stopTicker();
     $("check-title").textContent="Проверяем подключение";
-    $("check-text").textContent="Спрашиваем сервер, видел ли он ваше соединение. Это занимает до двух минут.";
+    $("check-text").textContent="Спрашиваем сервер, видел ли он ваше соединение. "+
+      "Сервер пересчитывает это примерно раз в две минуты, поэтому ответ не мгновенный.";
     $("check-again").hidden=true;$("check-fix").hidden=true;
     $("check-card").classList.remove("note--ok");
-    checkUntil=Date.now()+135000;   // ограничено по времени, без вечного спиннера
+    var mascot=$("check-mascot");
+    if(mascot)mascot.src="assets/mascot-helping.png";
+    checkStart=Date.now();
+    checkUntil=checkStart+CHECK_WINDOW;   // ограничено по времени, без вечного спиннера
+    $("check-progress").hidden=false;
+    $("check-bar").style.width="0%";
+    tick();
+    tickTimer=setInterval(tick,1000);
     pollOnce();
   }
   $("check-again").addEventListener("click",runCheck);

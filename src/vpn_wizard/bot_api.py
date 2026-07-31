@@ -130,6 +130,54 @@ class BotApiClient:
         code = str(user.get("referral_code") or "").strip()
         return code or None
 
+    def subscription_facts(self, telegram_id: int) -> dict[str, Any]:
+        """The few subscription facts the cabinet must state truthfully.
+
+        Remnawave knows the entitlement but not whether it was paid for; only the
+        billing bot knows a trial is a trial. Without that the cabinet cheerfully
+        reports "подписка активна" to someone whose free week ends tonight and
+        never mentions money — which is precisely when they need to hear about it.
+        """
+        user = self.user_by_telegram_id(telegram_id)
+        return subscription_facts_of(user)
+
+
+def subscription_facts_of(user: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """Reshape the bot's user payload into what the cabinet shows.
+
+    Kept separate from the client so it can be tested without a bot, and so a
+    schema drift shows up in one place. Every field is optional: an unreachable
+    bot must degrade to "we don't know", never to a confident wrong answer.
+    """
+    facts: dict[str, Any] = {
+        "is_trial": False,
+        "expires_at": None,
+        "traffic_limit_gb": None,
+        "traffic_used_gb": None,
+    }
+    if not isinstance(user, dict):
+        return facts
+    subscription = user.get("subscription")
+    if not isinstance(subscription, dict):
+        # Older payloads carry a list instead of a single object.
+        items = user.get("subscriptions")
+        subscription = items[0] if isinstance(items, list) and items else None
+    if not isinstance(subscription, dict):
+        return facts
+
+    facts["is_trial"] = bool(subscription.get("is_trial"))
+    end = subscription.get("end_date") or subscription.get("expire_at")
+    facts["expires_at"] = str(end) if end else None
+    for key in ("traffic_limit_gb", "traffic_used_gb"):
+        value = subscription.get(key)
+        if value is None:
+            continue
+        try:
+            facts[key] = float(value)
+        except (TypeError, ValueError):
+            pass
+    return facts
+
 
 def referral_link(bot_username: str, code: Optional[str]) -> Optional[str]:
     """The bot deep link that credits this subscriber for the newcomer."""

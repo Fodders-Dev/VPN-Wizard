@@ -171,6 +171,14 @@ def _awg_picker_url(telegram_id: int) -> str | None:
     return f'{base}/connect/awg.html?{query}'
 
 
+class FamilyUnavailable(Exception):
+    """The family link cannot be issued, with the API's own reason attached."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+        self.detail = (detail or '').strip()
+
+
 async def _family_picker_url(telegram_id: int) -> str | None:
     """Ask the API for the link rather than signing it here.
 
@@ -188,10 +196,19 @@ async def _family_picker_url(telegram_id: int) -> str | None:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(links_url, params={'token': token}) as response:
                 if response.status != 200:
-                    return None
+                    # The API already says why in Russian — "Семейная ссылка
+                    # доступна на тарифах от 3 устройств." Throwing that away and
+                    # printing "не настроен, напишите в техподдержку" turns a
+                    # normal plan limit into an apparent outage.
+                    detail = ''
+                    try:
+                        detail = str((await response.json()).get('detail') or '')
+                    except Exception:  # noqa: BLE001 - a body we cannot read is not a reason
+                        detail = ''
+                    raise FamilyUnavailable(detail)
                 body = await response.json()
     except (aiohttp.ClientError, asyncio.TimeoutError):
-        return None
+        raise FamilyUnavailable('')
     return body.get('url') or None
 
 
@@ -337,9 +354,20 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
 async def _send_family_link(message: types.Message, user: types.User | None) -> None:
     if user is None:
         return
-    family_url = await _family_picker_url(user.id)
+    try:
+        family_url = await _family_picker_url(user.id)
+    except FamilyUnavailable as unavailable:
+        await message.answer(
+            unavailable.detail
+            or 'Не удалось получить семейную ссылку. Попробуйте через минуту.',
+            reply_markup=main_keyboard(),
+        )
+        return
     if family_url is None:
-        await message.answer('Семейный доступ пока не настроен. Напишите в техподдержку.')
+        await message.answer(
+            'Семейный доступ пока не настроен. Напишите в техподдержку.',
+            reply_markup=main_keyboard(),
+        )
         return
     if _user_is_russian(user):
         text = (
@@ -856,12 +884,54 @@ def _start_payload(text: str) -> str:
     return parts[1].strip() if len(parts) > 1 else ''
 
 
+# The site sends people here with a payload saying what they came for, so the
+# bot can answer that question instead of repeating a generic greeting.
+START_TOPICS = {
+    'plan': (
+        '💳 <b>Оплата подписки</b>\n\n'
+        'Оплата проходит в Telegram Stars. Откройте экран подписки — там видно '
+        'сроки, число устройств и точную сумму.\n\n'
+        'Профили сохраняются: после оплаты те же ключи включатся снова, '
+        'переподключать устройства не нужно.'
+    ),
+    'help': (
+        '❓ <b>Помощь</b>\n\n'
+        'Опишите, что не получается — отвечу здесь же. '
+        'Быстрые действия — на кнопках под полем ввода.'
+    ),
+    'portal': (
+        '🛡 <b>Личный кабинет открыт.</b>\n\n'
+        'Подписка, устройства и приглашения — на кнопках ниже.'
+    ),
+}
+
+
+def _start_topic(payload: str) -> str:
+    return payload.split('_')[0].lower() if payload else ''
+
+
+def _start_followup_markup(topic: str) -> types.InlineKeyboardMarkup | None:
+    """One tap from the website straight into Bedolaga's own subscription screen."""
+    if topic != 'plan':
+        return None
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[[
+            types.InlineKeyboardButton(
+                text='📊 Подписка и оплата', callback_data='menu_subscription'
+            ),
+        ]]
+    )
+
+
 def _start_followup_text(payload: str, russian: bool) -> str:
     if not russian:
         return (
             '🛡 <b>Fodder VPN</b>\n\nUse the buttons below the input field, '
             'or /help for every command.'
         )
+    topic = _start_topic(payload)
+    if topic in START_TOPICS:
+        return START_TOPICS[topic]
     opening = (
         '✅ <b>Ссылка открыта.</b>\n\n'
         if payload
@@ -903,11 +973,17 @@ async def start_followup_middleware(handler, event, data):
         state = data.get('state')
         if state is not None and await state.get_state():
             return result
+        payload = _start_payload(text)
         await event.answer(
-            _start_followup_text(_start_payload(text), _is_russian(event)),
+            _start_followup_text(payload, _is_russian(event)),
             reply_markup=main_keyboard(),
             parse_mode='HTML',
         )
+        # A reply keyboard and an inline keyboard cannot ride on the same
+        # message, so the shortcut into payment goes in a second, short one.
+        markup = _start_followup_markup(_start_topic(payload))
+        if markup is not None:
+            await event.answer('Открыть экран оплаты:', reply_markup=markup)
     except Exception:  # a follow-up must never break the real /start
         logger.exception('Failed to send /start follow-up')
     return result

@@ -95,6 +95,10 @@
             <svg class="i" aria-hidden="true"><use href="#i-clock"/></svg>
             <span class="fact__text" id="fact-seen">Смотрим последнее подключение…</span>
           </div>
+          <div class="fact" id="fact-traffic-row" hidden>
+            <svg class="i" aria-hidden="true"><use href="#i-globe"/></svg>
+            <span class="fact__text" id="fact-traffic"></span>
+          </div>
         </div>
       </div>
       <div class="card__divider"></div>
@@ -105,6 +109,14 @@
         </span>
         <svg class="i row__chev" aria-hidden="true"><use href="#i-chevron"/></svg>
       </a>
+    </div>
+
+    <div class="note note--warn" id="trial-note" hidden>
+      <svg class="i" aria-hidden="true"><use href="#i-star-line"/></svg>
+      <div>
+        <div class="note__title" id="trial-title">Пробный период</div>
+        <p class="note__body" id="trial-body"></p>
+      </div>
     </div>
 
     <a class="btn btn--primary" id="personal-link" href="#">
@@ -150,37 +162,59 @@
   <!-- ---------------------------------------------- вкладка Тариф -->
   <section id="view-plan" class="stack" hidden>
     <h1 class="h1">Тариф</h1>
-    <p class="t dim">Во всех тарифах: все страны, безлимитный трафик и отдельный ключ
-      на каждое устройство.</p>
+    <p class="t dim">Во всех тарифах: все четыре страны и отдельный ключ на каждое
+      устройство.</p>
 
-    <div class="card stack">
+    <div class="card stack" id="plan-current">
+      <p class="t-sm mute">Сейчас у вас</p>
       <div class="plan-row">
-        <b>Личный · 1 устройство</b><strong>от 199 ₽</strong>
-        <span class="t-sm mute">30 дней 199 ₽ · 90 дней 499 ₽ · 180 дней 899 ₽ · год 1 490 ₽</span>
-      </div>
-    </div>
-    <div class="card stack">
-      <div class="plan-row">
-        <b>Вместе · 3 устройства</b><strong>от 299 ₽</strong>
-        <span class="t-sm mute">30 дней 299 ₽ · 90 дней 799 ₽ · 180 дней 1 390 ₽ · год 2 390 ₽</span>
-      </div>
-    </div>
-    <div class="card stack">
-      <div class="plan-row">
-        <b>Семья · 5 устройств</b><strong>от 399 ₽</strong>
-        <span class="t-sm mute">30 дней 399 ₽ · 90 дней 1 090 ₽ · 180 дней 1 890 ₽ · год 3 290 ₽</span>
+        <strong id="plan-current-title">—</strong>
+        <span class="t-sm dim" id="plan-current-note"></span>
       </div>
     </div>
 
-    <div class="chips" aria-label="Доступные сроки">
-      <span>1 месяц</span><span>3 месяца</span><span>6 месяцев</span><span>1 год</span>
+    <h2 class="section-title">Из чего складывается цена</h2>
+    <div class="card card--flush">
+      <div class="row row--static">
+        <svg class="i i--badge" aria-hidden="true"><use href="#i-calendar"/></svg>
+        <span class="row__body"><span class="row__title">Срок</span>
+          <span class="row__sub">30, 90, 180 или 360 дней — чем длиннее, тем дешевле месяц</span></span>
+      </div>
+      <div class="row row--static">
+        <svg class="i i--badge" aria-hidden="true"><use href="#i-devices"/></svg>
+        <span class="row__body"><span class="row__title">Число устройств</span>
+          <span class="row__sub">У каждого свой ключ. Второе устройство можно отдать близкому</span></span>
+      </div>
+      <div class="row row--static">
+        <svg class="i i--badge" aria-hidden="true"><use href="#i-globe"/></svg>
+        <span class="row__body"><span class="row__title">Трафик</span>
+          <span class="row__sub">Пакет или без лимита</span></span>
+      </div>
     </div>
+    <p class="t-sm mute">Все четыре страны входят в любой тариф, доплаты за страну нет.
+      Точную сумму бот покажет на экране оплаты — здесь мы её не дублируем, чтобы
+      цифры не разошлись.</p>
 
-    <a class="btn btn--primary" href="https://t.me/foddervpnbot" target="_blank" rel="noopener noreferrer">
-      <span class="btn__label">Выбрать тариф в боте</span>
+    <h2 class="section-title">Как оплатить</h2>
+    <div class="card card--flush">
+      <div class="row row--static">
+        <svg class="i i--badge is-gold" aria-hidden="true"><use href="#i-star"/></svg>
+        <span class="row__body"><span class="row__title">Telegram Stars</span>
+          <span class="row__sub">Сейчас это единственный способ оплаты</span></span>
+      </div>
+    </div>
+    <ol class="t-sm dim" style="padding-left:20px;margin:0">
+      <li>Откройте бота кнопкой ниже — он сразу ответит.</li>
+      <li>Нажмите «Подписка» и выберите срок и число устройств.</li>
+      <li>Оплатите звёздами. Профили включатся сами, переподключать ничего не нужно.</li>
+    </ol>
+
+    <a class="btn btn--primary" id="buy-link" href="https://t.me/foddervpnbot?start=plan" target="_blank" rel="noopener noreferrer">
+      <svg class="i" aria-hidden="true"><use href="#i-crown"/></svg>
+      <span class="btn__label">Открыть оплату в боте</span>
     </a>
-    <p class="t-sm mute" style="text-align:center">Оплата проходит в Telegram. Профили сохраняются
-      между продлениями — переподключать устройства не нужно.</p>
+    <p class="t-sm mute" style="text-align:center">Профили сохраняются между продлениями:
+      после оплаты те же самые ключи заработают снова.</p>
   </section>
 
   <!-- -------------------------------------------- вкладка Профиль -->
@@ -239,7 +273,7 @@
 
     <h2 class="section-title">Помощь</h2>
     <div class="card card--flush">
-      <a class="row" href="https://t.me/foddervpnbot" target="_blank" rel="noopener noreferrer">
+      <a class="row" href="https://t.me/foddervpnbot?start=help" target="_blank" rel="noopener noreferrer">
         <svg class="i i--badge" aria-hidden="true"><use href="#i-help"/></svg>
         <span class="row__body"><span class="row__title">Написать в бот</span>
           <span class="row__sub">Подписка, оплата, вопросы</span></span>
@@ -371,6 +405,10 @@
   // Личная ссылка уже несёт подписанную пару (tid, token), поэтому ручкам
   // устройств не нужен второй секрет и никаких изменений на сервере.
   var creds=null;
+  // Один источник правды о подписке: заполняется при входе, дочитывается
+  // после загрузки устройств (подключался ли человек хоть раз).
+  var state={active:false,trial:false,expiresAt:null,deviceLimit:1,
+             everConnected:false,personalUrl:"#"};
   function readCreds(personalUrl){
     try{
       var q=new URL(personalUrl,location.href).searchParams;
@@ -421,18 +459,24 @@
     $("wizard-link").href=links.server_wizard_url;
     familyUrl=links.family_vpn_url;
 
+    state.active=!!links.subscription_active;
+    state.trial=!!links.is_trial;
+    state.expiresAt=links.expires_at||null;
+    state.deviceLimit=deviceLimit;
+
     var personal=$("personal-link");
     var addDevice=$("add-device-link");
     if(links.subscription_active){
+      state.personalUrl=links.personal_vpn_url;
       personal.href=links.personal_vpn_url;
       addDevice.href=links.personal_vpn_url;
       addDevice.hidden=deviceLimit<2;
+      renderSubscription(links);
       loadServerNames();
       loadDevices();
       loadInvites();
-      loadExpiry();
     }else{
-      personal.href="https://t.me/foddervpnbot";
+      personal.href="https://t.me/foddervpnbot?start=plan";
       personal.target="_blank";personal.rel="noopener noreferrer";
       personal.className="btn btn--danger";
       personal.querySelector(".btn__label").textContent="Продлить подписку";
@@ -464,21 +508,64 @@
     openTab("vpn");
   }
 
-  // Срок подписки живёт не в /portal/links, а в проверке доступа. Ручка только
-  // читает право и не выдаёт ключ, поэтому лишней работы серверу не создаёт.
-  async function loadExpiry(){
-    if(!creds)return;
-    try{
-      var url="/api/awg/"+encodeURIComponent(creds.tid)+"/access?token="+encodeURIComponent(creds.token);
-      var response=await fetch(url,{headers:{"Accept":"application/json"}});
-      if(!response.ok)return;
-      var data=await response.json();
-      var pretty=humanDate(data.expires_at);
-      $("fact-sub").innerHTML=pretty
-        ? 'Подписка активна<br>до <span class="fact__value"></span>'
-        : '<span class="fact__value">Подписка активна</span>';
-      if(pretty)$("fact-sub").querySelector(".fact__value").textContent=pretty;
-    }catch(e){/* дата — приятная мелочь, а не условие работы кабинета */}
+  function daysLeft(raw){
+    if(!raw)return null;
+    var when=new Date(raw);
+    if(isNaN(when.getTime()))return null;
+    return Math.max(0,Math.ceil((when.getTime()-Date.now())/86400000));
+  }
+
+  // Пробный период — это не «подписка активна». Человеку, у которого бесплатная
+  // неделя заканчивается сегодня, надо сказать об этом прямо и один раз.
+  function renderSubscription(links){
+    var pretty=humanDate(links.expires_at);
+    var left=daysLeft(links.expires_at);
+    var word=state.trial?"Пробный период":"Подписка активна";
+
+    $("fact-sub").innerHTML='<span class="fact__value"></span>'+(pretty?'<br>до ':'');
+    $("fact-sub").querySelector(".fact__value").textContent=word;
+    if(pretty)$("fact-sub").appendChild(document.createTextNode(pretty));
+    $("fact-sub").parentNode.className="fact";
+
+    if(links.traffic_limit_gb){
+      var used=Math.round((links.traffic_used_gb||0)*10)/10;
+      $("fact-traffic").innerHTML='Трафик<br><span class="fact__value"></span>';
+      $("fact-traffic").querySelector(".fact__value").textContent=
+        used+" из "+links.traffic_limit_gb+" ГБ";
+      $("fact-traffic-row").hidden=false;
+    }
+
+    $("plan-current-title").textContent=word+": "+state.deviceLimit+" "+
+      Atlas.plural(state.deviceLimit,"устройство","устройства","устройств");
+    $("plan-current-note").textContent=pretty
+      ? ("действует до "+pretty+(left!==null?(" · осталось "+left+" "+
+          Atlas.plural(left,"день","дня","дней")):""))
+      : "";
+
+    if(state.trial){
+      $("trial-title").textContent=left!==null&&left<=1
+        ? "Пробный период заканчивается сегодня"
+        : "Пробный период"+(left!==null?(" · осталось "+left+" "+
+            Atlas.plural(left,"день","дня","дней")):"");
+      $("trial-body").textContent="Когда он закончится, профили приостановятся. "+
+        "После оплаты те же ключи включатся снова — переподключать устройства не нужно.";
+      $("trial-note").hidden=false;
+    }
+  }
+
+  // Деньги показываем только тому, у кого проблема уже решена: пока человек ни
+  // разу не подключился, главное действие — подключиться, а не заплатить.
+  function offerSubscription(){
+    if(!state.trial||!state.everConnected)return;
+    var personal=$("personal-link");
+    personal.href="https://t.me/foddervpnbot?start=plan";
+    personal.target="_blank";personal.rel="noopener noreferrer";
+    personal.querySelector(".btn__label").textContent="Оформить подписку";
+    personal.querySelector("use").setAttribute("href","#i-crown");
+    var addDevice=$("add-device-link");
+    addDevice.hidden=false;
+    addDevice.href=state.personalUrl;
+    addDevice.querySelector(".btn__label").textContent="Подключить ещё устройство";
   }
 
   /* ------------------------------------------------------- устройства */
@@ -561,6 +648,8 @@
       $("fact-seen").textContent="Это устройство ещё не подключено";
       $("fact-seen").parentNode.className="fact fact--muted";
     }
+    state.everConnected=!!newest;
+    offerSubscription();
 
     list.textContent="";
     devices.forEach(function(device){

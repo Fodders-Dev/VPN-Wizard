@@ -60,9 +60,45 @@ def test_connect_page_is_a_private_unified_portal() -> None:
     assert "Reality" not in html
     assert "Поделиться VPN с близким" in html
     assert "Открыть» и «Скопировать» — это одна и та же семейная ссылка" in html
-    assert "Личный · 1 устройство" in html
-    assert "Семья · 5 устройств" in html
     assert "Делиться выгодно" in html
+
+
+def test_portal_does_not_invent_prices() -> None:
+    # The tariff table used to carry hand-written roubles (199/299/399) that
+    # matched nothing in the bot, where the real periods are 30/90/180/360 with
+    # separate device and traffic components. There is no pricing endpoint to
+    # read, so the page must describe the model and let the bot state the sum.
+    html = (ROOT / "web" / "connect" / "index.html").read_text(encoding="utf-8")
+    for invented in ("199 ₽", "299 ₽", "399 ₽", "1 490 ₽", "2 390 ₽", "3 290 ₽"):
+        assert invented not in html, invented
+    assert "Точную сумму бот покажет на экране оплаты" in html
+    # Stars is the only method actually switched on in the bot.
+    assert "Telegram Stars" in html
+
+
+def test_portal_tells_a_trial_apart_from_a_paid_subscription() -> None:
+    # Remnawave only knows "entitled"; the billing bot knows it is a free week.
+    # Without this the cabinet told someone whose trial ends tonight that their
+    # subscription was active, and never mentioned paying.
+    html = (ROOT / "web" / "connect" / "index.html").read_text(encoding="utf-8")
+    assert "links.is_trial" in html
+    assert "Пробный период" in html
+    # ...but money comes after the problem is solved, not before: the buy CTA
+    # only replaces the connect CTA once the server has seen a real handshake.
+    assert "state.everConnected" in html
+    server = (ROOT / "src" / "vpn_wizard" / "server.py").read_text(encoding="utf-8")
+    assert "is_trial: bool = False" in server
+    assert "subscription_facts_of" in server
+
+
+def test_portal_bot_links_always_carry_a_start_payload() -> None:
+    # A bare t.me/<bot> link opens the chat and sends nothing, so the bot has no
+    # message to answer: the user lands in a silent chat with no idea what to do.
+    import re
+
+    html = (ROOT / "web" / "connect" / "index.html").read_text(encoding="utf-8")
+    for link in re.findall(r"t\.me/foddervpnbot[^\"'\s]*", html):
+        assert "?start=" in link, link
 
 
 def test_invite_button_carries_a_deep_link_payload() -> None:
@@ -376,6 +412,33 @@ def test_bot_actions_are_discoverable_without_typing_commands() -> None:
     # Exact-text filters only: a loose one would swallow promocodes and support
     # messages, which reach Bedolaga's handlers after ours.
     assert "F.text == BTN_CONNECT" in handler
+
+
+def test_bot_reports_the_real_reason_a_family_link_is_refused() -> None:
+    # The API answers 403 with "Семейная ссылка доступна на тарифах от 3
+    # устройств." The bot used to swallow that and print "Семейный доступ пока
+    # не настроен. Напишите в техподдержку." — turning an ordinary plan limit
+    # into an apparent outage, and sending the owner support tickets for it.
+    handler = (
+        ROOT / "deploy" / "bedolaga" / "overrides" / "app" / "handlers" / "fodders_vpn1.py"
+    ).read_text(encoding="utf-8")
+    assert "class FamilyUnavailable" in handler
+    assert "raise FamilyUnavailable(detail)" in handler
+    assert "unavailable.detail" in handler
+
+
+def test_start_payload_decides_what_the_bot_answers() -> None:
+    # Every portal link into the bot carries a payload, so the bot can answer the
+    # question the person actually arrived with instead of a generic greeting.
+    handler = (
+        ROOT / "deploy" / "bedolaga" / "overrides" / "app" / "handlers" / "fodders_vpn1.py"
+    ).read_text(encoding="utf-8")
+    assert "START_TOPICS" in handler
+    for topic in ("'plan'", "'help'", "'portal'"):
+        assert topic in handler
+    # Money has to be one tap away once someone asks for it: this is Bedolaga's
+    # own subscription screen, not a re-implementation of checkout.
+    assert "callback_data='menu_subscription'" in handler
 
 
 def test_every_command_is_listed_in_the_telegram_menu() -> None:
