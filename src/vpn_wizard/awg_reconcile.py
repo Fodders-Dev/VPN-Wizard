@@ -104,8 +104,20 @@ def reconcile_awg_peers(
 
     if to_suspend:
         considered = active_seen + len(to_suspend)
-        systemic_failure = active_seen == 0 or (
-            considered >= 5 and len(to_suspend) / considered > max_suspend_ratio
+        # "Nobody is active" used to count as a systemic failure, because a broken
+        # panel route returned the same thing as an unentitled user. It no longer
+        # does: the client raises on any HTTP error, so a peer whose lookup failed
+        # is skipped and recorded above and can never reach this list. Everything
+        # here got a successful answer meaning "not entitled".
+        #
+        # On a young service every subscriber lapsing at once is an ordinary
+        # Tuesday, and treating it as an outage left expired keys working — the
+        # service was given away for free and nothing said so. What remains worth
+        # guarding is drift that makes almost everyone look inactive while the
+        # panel still answers 200, so the ratio guard stays, but only at a scale
+        # and a proportion that no honest churn reaches.
+        systemic_failure = (
+            considered >= 10 and len(to_suspend) / considered > max_suspend_ratio
         )
         if systemic_failure:
             result["errors"].append(

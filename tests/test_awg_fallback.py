@@ -316,33 +316,82 @@ def test_reconcile_enforces_paid_device_limit_and_restores_after_upgrade(tmp_pat
     assert resumed == [peer_name(third)]
 
 
-def test_reconcile_circuit_breaker_skips_mass_suspend_on_panel_outage(tmp_path: Path) -> None:
-    # Panel 404 / wrong URL / schema drift makes active_user() None for everyone.
-    # The reconcile pass must NOT suspend every paying customer.
-    store = _store(tmp_path)
-    suspended: list[str] = []
-    service = AwgFallbackService(
+def _suspending_service(store, suspended: list[str]) -> AwgFallbackService:
+    return AwgFallbackService(
         store,
         provision=lambda n: f"[Interface]\n# {n}\n",
         deprovision=lambda n: True,
         suspend=lambda n: suspended.append(n) or True,
         resume=lambda n: True,
     )
-    for tid in (1, 2, 3):
-        service.issue(tid)  # all active
 
-    class DeadPanel:
+
+def test_reconcile_holds_when_the_panel_cannot_answer(tmp_path: Path) -> None:
+    # A wrong URL, a revoked key, a dead host: the client raises, so no peer can
+    # reach the suspend list at all. Nobody loses access over our outage.
+    store = _store(tmp_path)
+    suspended: list[str] = []
+    service = _suspending_service(store, suspended)
+    for tid in (1, 2, 3):
+        service.issue(tid)
+
+    class BrokenPanel:
         @staticmethod
         def active_user(telegram_id: int):
-            return None  # panel confirms nobody -> looks like an outage, not mass expiry
+            raise RuntimeError("Remnawave API error 404 for /api/users/by-telegram-id/1")
 
-    result = reconcile_awg_peers(store, DeadPanel(), service)
+    result = reconcile_awg_peers(store, BrokenPanel(), service)
     assert result["checked"] == 3
-    assert result["suspended"] == 0  # circuit breaker held
+    assert result["suspended"] == 0
     assert suspended == []
-    assert result["errors"]  # recorded why it skipped
+    assert len(result["errors"]) == 3  # one per peer, saying why
     for tid in (1, 2, 3):
         assert store.awg_get_peer(tid)["status"] == "active"  # untouched
+
+
+def test_reconcile_suspends_when_everyone_has_genuinely_expired(tmp_path: Path) -> None:
+    # On a young service every subscriber lapsing at once is ordinary, not an
+    # outage. This used to be read as a systemic failure, so expired keys kept
+    # working and the VPN was quietly given away for free.
+    store = _store(tmp_path)
+    suspended: list[str] = []
+    service = _suspending_service(store, suspended)
+    for tid in (1, 2, 3):
+        service.issue(tid)
+
+    class HonestPanel:
+        @staticmethod
+        def active_user(telegram_id: int):
+            return None  # answered fine: this person simply has not paid
+
+    result = reconcile_awg_peers(store, HonestPanel(), service)
+    assert result["checked"] == 3
+    assert result["suspended"] == 3
+    assert sorted(suspended) == sorted(peer_name(tid) for tid in (1, 2, 3))
+    for tid in (1, 2, 3):
+        assert store.awg_get_peer(tid)["status"] == "suspended"
+
+
+def test_reconcile_still_refuses_an_implausible_mass_suspend(tmp_path: Path) -> None:
+    # The remaining systemic risk is drift that keeps answering 200 while making
+    # almost everyone look inactive. At real scale that is not churn.
+    store = _store(tmp_path)
+    suspended: list[str] = []
+    service = _suspending_service(store, suspended)
+    everyone = list(range(1, 13))
+    for tid in everyone:
+        service.issue(tid)
+
+    class DriftedPanel:
+        @staticmethod
+        def active_user(telegram_id: int):
+            return {"uuid": "active"} if telegram_id == 1 else None
+
+    result = reconcile_awg_peers(store, DriftedPanel(), service)
+    assert result["suspended"] == 0
+    assert result["skipped_suspends"] == 11
+    assert any("circuit_breaker" in str(item.get("error")) for item in result["errors"])
+    assert suspended == []
 
 
 def test_fallback_ssh_fails_fast_on_a_dead_exit(tmp_path: Path) -> None:

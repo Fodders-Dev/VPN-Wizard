@@ -152,8 +152,12 @@ class RemnawaveClient:
             with urlopen(request, timeout=self.timeout) as resp:
                 body = resp.read()
         except HTTPError as exc:
-            if exc.code == 404:
-                return {"response": []}
+            # A 404 used to be swallowed as "this user does not exist". The panel
+            # answers 200 with an empty list for an unknown user and only 404s
+            # when the route itself is wrong — so conflating them made a broken
+            # endpoint indistinguishable from every subscriber having expired.
+            # That ambiguity is what forced reconcile to refuse to suspend anyone
+            # whenever nobody was active, which in turn let lapsed keys stay live.
             raise RemnawaveError(f"Remnawave API error {exc.code} for {path}") from exc
         except URLError as exc:
             raise RemnawaveError(f"Remnawave API unreachable: {exc.reason}") from exc
