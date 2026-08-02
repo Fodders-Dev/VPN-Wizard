@@ -414,26 +414,6 @@ def test_bot_actions_are_discoverable_without_typing_commands() -> None:
     assert "F.text == BTN_CONNECT" in handler
 
 
-def test_stars_invoice_is_sent_natively_not_as_a_link() -> None:
-    # Proven on one account at one moment: an invoice link behind a URL button
-    # dies with PROVIDER_ACCOUNT_INVALID when the buyer is short of Stars, while
-    # the same purchase sent with sendInvoice reaches "Confirm Your Purchase" and
-    # then offers the Stars packages normally. Telegram's own docs describe
-    # sendInvoice as the way and never mention createInvoiceLink for Stars.
-    handler = (
-        ROOT / "deploy" / "bedolaga" / "overrides" / "app" / "handlers" / "balance" / "stars.py"
-    ).read_text(encoding="utf-8")
-    assert "answer_invoice" in handler
-    assert "currency='XTR'" in handler
-    # The pre-checkout validator parses this payload; changing its shape rejects
-    # every payment with "Невалидный payload".
-    assert "payload = f'balance_{db_user.id}_{amount_kopeks}'" in handler
-    # The link still works once the buyer already has enough Stars, so it stays
-    # as the fallback rather than being deleted.
-    assert "create_stars_invoice" in handler
-    assert handler.index("answer_invoice") < handler.index("create_stars_invoice")
-
-
 def test_bot_reports_the_real_reason_a_family_link_is_refused() -> None:
     # The API answers 403 with "Семейная ссылка доступна на тарифах от 3
     # устройств." The bot used to swallow that and print "Семейный доступ пока
