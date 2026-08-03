@@ -63,17 +63,38 @@ def test_connect_page_is_a_private_unified_portal() -> None:
     assert "Делиться выгодно" in html
 
 
-def test_portal_does_not_invent_prices() -> None:
-    # The tariff table used to carry hand-written roubles (199/299/399) that
-    # matched nothing in the bot, where the real periods are 30/90/180/360 with
-    # separate device and traffic components. There is no pricing endpoint to
-    # read, so the page must describe the model and let the bot state the sum.
+def test_portal_prices_match_the_bot() -> None:
+    # The table used to carry hand-written roubles that matched nothing in the
+    # bot. It may state prices again only because the bot was reconfigured to
+    # produce exactly these three, verified through its own pricing engine:
+    #
+    #   99 ₽ = PRICE_30_DAYS 9900 + 200GB package 0    + 0 extra devices
+    #  179 ₽ = 9900 + 500GB 2000  + 2 × PRICE_PER_DEVICE 3000
+    #  299 ₽ = 9900 + 1TB   8000  + 4 × 3000
+    #
+    # If someone changes the bot's numbers, this test is the tripwire.
     html = (ROOT / "web" / "connect" / "index.html").read_text(encoding="utf-8")
-    for invented in ("199 ₽", "299 ₽", "399 ₽", "1 490 ₽", "2 390 ₽", "3 290 ₽"):
+    for price, plan in (("99 ₽", "Личный · 1 устройство"),
+                        ("179 ₽", "Вместе · 3 устройства"),
+                        ("299 ₽", "Семья · 5 устройств")):
+        assert price in html, price
+        assert plan in html, plan
+    # The old invented ladder must not creep back.
+    for invented in ("399 ₽", "1 490 ₽", "2 390 ₽", "3 290 ₽"):
         assert invented not in html, invented
-    assert "Точную сумму бот покажет на экране оплаты" in html
     # Stars is the only method actually switched on in the bot.
     assert "Telegram Stars" in html
+    # The trial is the hook, and it costs the visitor nothing to check.
+    assert "7 дней бесплатно, карта не нужна" in html
+
+
+def test_help_does_not_advertise_a_competitor() -> None:
+    # amnezia.org sells its own VPN. Linking a paying customer there from our
+    # own help text is showing them a rival's shop window.
+    handler = (
+        ROOT / "deploy" / "bedolaga" / "overrides" / "app" / "handlers" / "fodders_vpn1.py"
+    ).read_text(encoding="utf-8")
+    assert "https://amnezia.org" not in handler
 
 
 def test_portal_tells_a_trial_apart_from_a_paid_subscription() -> None:

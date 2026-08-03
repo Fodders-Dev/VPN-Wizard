@@ -862,9 +862,11 @@ async def show_help(message: types.Message) -> None:
             '• /awg — стабильное подключение через AmneziaWG\n'
             '• /miniapp — единый портал Fodder VPN\n'
             '• /vpn1 или /wizard — прежний мастер своего сервера\n\n'
-            'AmneziaWG: https://amnezia.org/ru/downloads\n'
-            'Гайд по VPS: '
-            'https://telegra.ph/Kak-arendovat-minimalnyj-server-VPS-na-HostKey-dlya-VPN-12-28'
+            # Ссылка на amnezia.org отсюда убрана намеренно: это сайт компании,
+            # которая продаёт свой VPN. Отправлять туда своего покупателя —
+            # значит показывать ему витрину конкурента. Ссылка на приложение
+            # выдаётся на шаге установки, где она к месту и ведёт в магазин.
+            'Установка приложения и конфиг — в разделе «Подключить VPN».'
         )
     else:
         text = (
@@ -873,7 +875,7 @@ async def show_help(message: types.Message) -> None:
             '• /awg — stable connection through AmneziaWG\n'
             '• /miniapp — unified Fodder VPN portal\n'
             '• /vpn1 or /wizard — original server wizard\n\n'
-            'AmneziaWG: https://amnezia.org/en/downloads'
+            'App setup and config live under "Подключить VPN".'
         )
     await message.answer(text, reply_markup=_keyboard(message))
 
