@@ -129,15 +129,18 @@ async def process_stars_payment_amount(message: types.Message, db_user: User, am
             payload=f'balance_{db_user.id}_{amount_kopeks}',
         )
 
+        # Пополнение стоит первым намеренно. У большинства людей звёзд нет
+        # вообще, и «Оплатить» для них заканчивается непонятной английской
+        # ошибкой. А тому, у кого звёзд уже достаточно, Telegram по этой ссылке
+        # просто ответит «You have enough stars at the moment» — то есть первый
+        # шаг безопасен в обоих случаях, в отличие от второго.
         keyboard = types.InlineKeyboardMarkup(
             inline_keyboard=[
-                [types.InlineKeyboardButton(text='⭐ Оплатить', url=invoice_link)],
-                # Выход из тупика: непривязанное пополнение, которое работает.
-                # balance — итоговый желаемый баланс, а не недостающая часть.
                 [types.InlineKeyboardButton(
-                    text=f'💫 Сначала пополнить звёзды ({stars_amount})',
+                    text=f'1️⃣ Пополнить звёзды ({stars_amount})',
                     url=f'tg://stars_topup?balance={stars_amount}',
                 )],
+                [types.InlineKeyboardButton(text='2️⃣ Оплатить', url=invoice_link)],
                 [types.InlineKeyboardButton(text=texts.BACK, callback_data='balance_topup')],
             ]
         )
@@ -163,8 +166,9 @@ async def process_stars_payment_amount(message: types.Message, db_user: User, am
             f'💰 Сумма: {texts.format_price(amount_kopeks)}\n'
             f'⭐ К оплате: {stars_amount} звезд\n'
             f'📊 Курс: {stars_rate}₽ за звезду\n\n'
-            f'Нажмите «Оплатить». Если звёзд не хватает — сначала пополните их '
-            f'второй кнопкой, потом вернитесь и нажмите «Оплатить» ещё раз.',
+            f'Сначала пополните звёзды, затем нажмите «Оплатить».\n'
+            f'Если звёзд уже достаточно, Telegram сам об этом скажет — '
+            f'тогда сразу жмите «Оплатить».',
             reply_markup=keyboard,
             parse_mode='HTML',
         )

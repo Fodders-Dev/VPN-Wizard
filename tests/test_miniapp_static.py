@@ -432,8 +432,11 @@ def test_stars_screen_offers_a_way_out_when_stars_run_short() -> None:
     # The pay button must stay first, and the payload must stay parseable by
     # the pre-checkout validator. Compare inside the keyboard, not the file:
     # the docstring mentions the link before the code does.
+    # Top-up goes FIRST: most people have no Stars at all, so paying straight
+    # away ends in a cryptic English error for them, while someone who already
+    # has enough is simply told so by Telegram. Safe either way; paying is not.
     keyboard = handler[handler.index("inline_keyboard=["):]
-    assert keyboard.index("'⭐ Оплатить'") < keyboard.index("stars_topup")
+    assert keyboard.index("stars_topup") < keyboard.index("Оплатить")
     assert "payload=f'balance_{db_user.id}_{amount_kopeks}'" in handler
 
 
