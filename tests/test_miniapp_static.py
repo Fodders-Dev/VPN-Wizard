@@ -414,6 +414,29 @@ def test_bot_actions_are_discoverable_without_typing_commands() -> None:
     assert "F.text == BTN_CONNECT" in handler
 
 
+def test_stars_screen_offers_a_way_out_when_stars_run_short() -> None:
+    # Telegram's own "top up and pay" flow, offered when the buyer is short of
+    # Stars, dies with PROVIDER_ACCOUNT_INVALID — on two accounts, on desktop
+    # and Android, with both an invoice link and a native sendInvoice. Our bot
+    # is not a party to that step: pre_checkout_query never arrives.
+    #
+    # Buying Stars unattached to any bot does work, and tg://stars_topup opens
+    # exactly that, so the screen offers it rather than leaving a dead end.
+    handler = (
+        ROOT / "deploy" / "bedolaga" / "overrides" / "app" / "handlers" / "balance" / "stars.py"
+    ).read_text(encoding="utf-8")
+    assert "tg://stars_topup?balance=" in handler
+    # balance is the TOTAL desired balance, not the shortfall, per
+    # https://core.telegram.org/api/links#stars-topup-links
+    assert "url=f'tg://stars_topup?balance={stars_amount}'" in handler
+    # The pay button must stay first, and the payload must stay parseable by
+    # the pre-checkout validator. Compare inside the keyboard, not the file:
+    # the docstring mentions the link before the code does.
+    keyboard = handler[handler.index("inline_keyboard=["):]
+    assert keyboard.index("'⭐ Оплатить'") < keyboard.index("stars_topup")
+    assert "payload=f'balance_{db_user.id}_{amount_kopeks}'" in handler
+
+
 def test_bot_reports_the_real_reason_a_family_link_is_refused() -> None:
     # The API answers 403 with "Семейная ссылка доступна на тарифах от 3
     # устройств." The bot used to swallow that and print "Семейный доступ пока
