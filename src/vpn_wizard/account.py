@@ -163,7 +163,7 @@ class AccountStore:
                     PRIMARY KEY (owner_telegram_id, slot)
                 );
 
-                -- Invite codes: the only way to start a trial from the website.
+                -- Invite codes: the only way to start 12-hour NL grace from the website.
                 -- Telegram is unreachable in Russia without a VPN, so requiring it
                 -- to GET a VPN is circular; an invite lets an existing subscriber
                 -- hand access to someone over SMS or in person instead. Keeping it
@@ -193,6 +193,23 @@ class AccountStore:
                     claimed_at INTEGER,
                     expires_at INTEGER,
                     PRIMARY KEY (promo_key, telegram_id)
+                );
+
+                -- Free Netherlands access is independent from billing. Telegram
+                -- members live indefinitely while membership remains valid; a
+                -- website invite starts as a synthetic id with a short grace
+                -- window and is later rebound to the real Telegram id.
+                CREATE TABLE IF NOT EXISTS channel_access (
+                    access_id INTEGER PRIMARY KEY,
+                    telegram_id INTEGER UNIQUE,
+                    invite_code TEXT UNIQUE,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    grace_expires_at INTEGER,
+                    linked_at INTEGER,
+                    membership_active INTEGER,
+                    membership_checked_at INTEGER,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
                 );
 
                 -- Bumped when the owner revokes the family slot. It goes into the
@@ -1022,6 +1039,202 @@ class AccountStore:
                 WHERE promo_key = ? AND telegram_id = ? AND status = 'pending'
                 """,
                 (str(promo_key), int(telegram_id)),
+            )
+            return cursor.rowcount > 0
+
+    # --- permanent channel access ------------------------------------------
+    @staticmethod
+    def _channel_access_row(row: Optional[sqlite3.Row]) -> Optional[dict[str, Any]]:
+        if row is None:
+            return None
+        item = dict(row)
+        item["access_id"] = int(item["access_id"])
+        if item.get("telegram_id") is not None:
+            item["telegram_id"] = int(item["telegram_id"])
+        item["membership_active"] = (
+            None if item.get("membership_active") is None else bool(item["membership_active"])
+        )
+        return item
+
+    def channel_access_get(self, access_id: int) -> Optional[dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM channel_access WHERE access_id = ?", (int(access_id),)
+            ).fetchone()
+        return self._channel_access_row(row)
+
+    def channel_access_by_telegram(self, telegram_id: int) -> Optional[dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM channel_access WHERE telegram_id = ?", (int(telegram_id),)
+            ).fetchone()
+        return self._channel_access_row(row)
+
+    def channel_access_by_invite(self, invite_code: str) -> Optional[dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM channel_access WHERE invite_code = ?", (str(invite_code),)
+            ).fetchone()
+        return self._channel_access_row(row)
+
+    def channel_access_list(self) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM channel_access ORDER BY created_at").fetchall()
+        return [self._channel_access_row(row) for row in rows if row is not None]
+
+    def channel_access_grant_grace(
+        self,
+        access_id: int,
+        invite_code: str,
+        *,
+        expires_at: int,
+        now: Optional[int] = None,
+    ) -> dict[str, Any]:
+        stamp = int(now if now is not None else _now())
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO channel_access (
+                    access_id, invite_code, status, grace_expires_at,
+                    created_at, updated_at
+                ) VALUES (?, ?, 'active', ?, ?, ?)
+                """,
+                (int(access_id), str(invite_code), int(expires_at), stamp, stamp),
+            )
+        item = self.channel_access_get(access_id)
+        assert item is not None
+        return item
+
+    def channel_access_grant_member(
+        self,
+        telegram_id: int,
+        *,
+        checked_at: Optional[int] = None,
+    ) -> dict[str, Any]:
+        stamp = int(checked_at if checked_at is not None else _now())
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO channel_access (
+                    access_id, telegram_id, status, linked_at,
+                    membership_active, membership_checked_at, created_at, updated_at
+                ) VALUES (?, ?, 'active', ?, 1, ?, ?, ?)
+                ON CONFLICT(access_id) DO UPDATE SET
+                    telegram_id = excluded.telegram_id,
+                    status = 'active',
+                    linked_at = COALESCE(channel_access.linked_at, excluded.linked_at),
+                    membership_active = 1,
+                    membership_checked_at = excluded.membership_checked_at,
+                    updated_at = excluded.updated_at
+                """,
+                (int(telegram_id), int(telegram_id), stamp, stamp, stamp, stamp),
+            )
+        item = self.channel_access_by_telegram(telegram_id)
+        assert item is not None
+        return item
+
+    def channel_access_set_membership(
+        self,
+        telegram_id: int,
+        active: bool,
+        *,
+        checked_at: Optional[int] = None,
+    ) -> bool:
+        stamp = int(checked_at if checked_at is not None else _now())
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE channel_access
+                SET membership_active = ?, membership_checked_at = ?,
+                    status = ?, updated_at = ?
+                WHERE telegram_id = ?
+                """,
+                (1 if active else 0, stamp, "active" if active else "suspended", stamp, int(telegram_id)),
+            )
+            return cursor.rowcount > 0
+
+    def channel_access_owner_has_peers(self, access_id: int) -> bool:
+        with self._connect() as conn:
+            legacy = conn.execute(
+                "SELECT 1 FROM awg_fallback_peers WHERE telegram_id = ?", (int(access_id),)
+            ).fetchone()
+            server = conn.execute(
+                "SELECT 1 FROM awg_fallback_server_peers WHERE telegram_id = ? LIMIT 1",
+                (int(access_id),),
+            ).fetchone()
+        return legacy is not None or server is not None
+
+    def channel_access_link_owner(
+        self,
+        web_access_id: int,
+        telegram_id: int,
+        *,
+        invite_code: str,
+        now: Optional[int] = None,
+    ) -> bool:
+        """Move retained peer rows to the real Telegram id without changing keys.
+
+        Returns False when the real account already owns any peer; the caller then
+        revokes the temporary duplicate and keeps the existing real profile.
+        """
+        stamp = int(now if now is not None else _now())
+        with self._connect() as conn:
+            web = conn.execute(
+                "SELECT * FROM channel_access WHERE access_id = ? AND invite_code = ?",
+                (int(web_access_id), str(invite_code)),
+            ).fetchone()
+            if web is None or web["telegram_id"] is not None:
+                return False
+            existing_access = conn.execute(
+                "SELECT 1 FROM channel_access WHERE telegram_id = ? OR access_id = ?",
+                (int(telegram_id), int(telegram_id)),
+            ).fetchone()
+            existing_peer = conn.execute(
+                """
+                SELECT 1 FROM awg_fallback_peers WHERE telegram_id = ?
+                UNION ALL
+                SELECT 1 FROM awg_fallback_server_peers WHERE telegram_id = ? LIMIT 1
+                """,
+                (int(telegram_id), int(telegram_id)),
+            ).fetchone()
+            if existing_access is not None or existing_peer is not None:
+                return False
+
+            conn.execute(
+                "UPDATE awg_fallback_peers SET telegram_id = ? WHERE telegram_id = ?",
+                (int(telegram_id), int(web_access_id)),
+            )
+            conn.execute(
+                "UPDATE awg_fallback_server_peers SET telegram_id = ? WHERE telegram_id = ?",
+                (int(telegram_id), int(web_access_id)),
+            )
+            conn.execute(
+                "UPDATE awg_device_labels SET owner_telegram_id = ? WHERE owner_telegram_id = ?",
+                (int(telegram_id), int(web_access_id)),
+            )
+            conn.execute(
+                "DELETE FROM awg_peer_usage WHERE telegram_id = ?",
+                (int(web_access_id),),
+            )
+            conn.execute(
+                """
+                UPDATE channel_access
+                SET access_id = ?, telegram_id = ?, status = 'active',
+                    grace_expires_at = NULL, linked_at = ?, membership_active = 1,
+                    membership_checked_at = ?, updated_at = ?
+                WHERE access_id = ? AND invite_code = ?
+                """,
+                (
+                    int(telegram_id), int(telegram_id), stamp, stamp, stamp,
+                    int(web_access_id), str(invite_code),
+                ),
+            )
+        return True
+
+    def channel_access_delete(self, access_id: int) -> bool:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM channel_access WHERE access_id = ?", (int(access_id),)
             )
             return cursor.rowcount > 0
 

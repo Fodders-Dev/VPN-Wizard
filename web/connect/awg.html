@@ -34,13 +34,13 @@
 <body>
 <script src="atlas.js"></script>
 
-<div class="app app--plain">
+<main class="app app--plain">
 
   <header class="subhead">
     <button class="back" type="button" id="back" hidden>
       <svg class="i i--sm" aria-hidden="true"><use href="#i-arrow-left"/></svg>Назад
     </button>
-    <img class="subhead__crest" src="assets/avatar.png" alt="" onerror="this.onerror=null;this.src='assets/crest.svg'">
+    <img class="subhead__crest" src="assets/crest.svg" alt="">
     <div class="subhead__title" id="screen-title">Подключение</div>
   </header>
 
@@ -49,6 +49,26 @@
     <span class="steps__dot is-now"></span><span class="steps__dot"></span>
     <span class="steps__dot"></span><span class="steps__dot"></span>
   </div>
+
+  <section class="note note--warn" id="web-grace" hidden style="margin-bottom:18px">
+    <svg class="i" aria-hidden="true"><use href="#i-clock"/></svg>
+    <div>
+      <h2 class="note__title" id="grace-title">Временный доступ: 12 часов</h2>
+      <p class="note__body" id="grace-copy">Сейчас Нидерланды работают временно. Подключите профиль,
+        откройте Telegram через VPN, подпишитесь на Fodder’s Dev и привяжите профиль.</p>
+      <p class="offer__timer" id="grace-countdown" role="timer" aria-live="off"></p>
+      <p class="t-sm" id="grace-hint" style="margin-top:10px">Сначала закончите подключение ниже —
+        кнопки Telegram появятся, когда вы включите VPN.</p>
+      <div class="stack" id="grace-actions" hidden style="margin-top:12px;gap:8px">
+        <a class="btn btn--secondary" id="channel-link" href="https://t.me/fodders_dev" target="_blank" rel="noopener noreferrer">
+          <span class="btn__label">1. Подписаться на Fodder’s Dev</span>
+        </a>
+        <a class="btn btn--primary" id="bind-link" href="#" target="_blank" rel="noopener noreferrer">
+          <span class="btn__label">2. Сохранить этот профиль навсегда</span>
+        </a>
+      </div>
+    </div>
+  </section>
 
   <!-- ============================================ шаг 1 · приложение -->
   <section id="view-1" class="stack">
@@ -226,7 +246,7 @@
     <h1 class="h1" id="check-title">Проверяем подключение</h1>
     <div class="card" id="check-card">
       <div class="hero">
-        <img class="hero__mascot" src="assets/mascot-helping.png" alt="" id="check-mascot" onerror="this.onerror=null;this.src='assets/crest.svg'">
+        <img class="hero__mascot" src="assets/crest.svg" alt="" id="check-mascot">
         <div class="hero__facts">
           <p class="t" id="check-text">Спрашиваем сервер, видел ли он ваше соединение.
             Сервер обновляет эти данные примерно раз в две минуты.</p>
@@ -313,7 +333,7 @@
     <p class="t-sm mute" style="text-align:center">Не получается? Напишите тому, кто дал ссылку.</p>
   </section>
 
-</div>
+</main>
 
 <script>
 (function(){
@@ -406,8 +426,9 @@
     if(cfg && !qr){ qr=cfg.replace("/config?","/qr?"); }
     var device=parseInt(p.get("device")||"1",10);
     return {cfg:cfg,qr:qr,access:access,devices:devices,server:(p.get("server")||"").trim(),
-            preset:(p.get("preset")||"").trim(),family:!!family,trial:p.get("trial")==="1",
-            device:device>0?device:1};
+            preset:(p.get("preset")||"").trim(),family:!!family,free:p.get("free")==="1",
+            web:p.get("web")==="1",graceUntil:parseInt(p.get("grace_until")||"0",10),
+            bind:(p.get("bind")||"").trim(),device:device>0?device:1};
   }
   function profileUrl(url,server,device){
     if(!isHttp(url))return url;
@@ -547,6 +568,14 @@
       for(var d=0;d<dots.length;d++){
         dots[d].className="steps__dot"+(d+1<step?" is-done":d+1===step?" is-now":"");
       }
+      if(u.web){
+        var readyToBind=step===4;
+        $("grace-actions").hidden=!readyToBind;
+        $("grace-hint").hidden=readyToBind;
+        $("grace-title").textContent=readyToBind
+          ?"Сохраните профиль через Telegram"
+          :"Временный доступ: 12 часов";
+      }
     }
     $("back").hidden=(next==="1"||next===1);
     try{
@@ -572,7 +601,7 @@
   $("back-to-2").addEventListener("click",function(){go(2);});
   $("to-4").addEventListener("click",function(){go(4);runCheck();});
   $("row-country").addEventListener("click",function(){
-    if(u.trial)return;
+    if(u.free)return;
     returnTo=step;go("country");
   });
   $("row-device").addEventListener("click",function(){returnTo=step;go("device");});
@@ -585,10 +614,10 @@
       return {msg:"Семейная ссылка доступна на тарифах от 3 устройств. На текущем тарифе оплачен один профиль.",cta:"Сменить тариф в боте"};
     if(/temporarily unavailable|pick another/i.test(text))
       return {msg:"Эта страна сейчас недоступна. Выберите другую — остальные работают.",cta:""};
-    if(/France server only|free profile/i.test(text))
-      return {msg:"Бесплатный профиль работает на сервере во Франции. Вернитесь в кабинет и откройте его заново.",cta:""};
-    if(/No active subscription/i.test(text))
-      return {msg:"Подписка неактивна или закончилась. Продлите её — уже импортированный профиль заработает снова.",cta:"Продлить в боте"};
+    if(/Нидерланды|Netherlands|free profile/i.test(text))
+      return {msg:"Бесплатный профиль работает только через Нидерланды. Другие страны доступны по подписке.",cta:""};
+    if(/Нет активного|No active subscription/i.test(text))
+      return {msg:"Бесплатные 12 часов закончились или подписка на канал не подтверждена. Откройте бота и сохраните профиль.",cta:"Открыть бота"};
     if(/Invalid or missing/i.test(text)||status===403)
       return {msg:"Ссылка недействительна или устарела. Попросите новую у того, кто её прислал.",cta:""};
     if(status===503)
@@ -679,11 +708,11 @@
       .then(function(d){
         if(!d||!d.servers||!d.servers.length){$("server-buttons").innerHTML="";return;}
         var servers=d.servers;
-        if(u.trial&&u.server){
+        if(u.free&&u.server){
           servers=servers.filter(function(item){return item.id===u.server;});
           if(!servers.length){$("server-buttons").innerHTML="";return;}
           $("row-country").disabled=true;
-          $("row-country").querySelector(".row__sub").textContent="Бесплатный сервер";
+          $("row-country").querySelector(".row__sub").textContent="Бесплатно подписчикам";
           $("row-country").querySelector(".row__chev").hidden=true;
         }
         var pick=servers[0];
@@ -796,7 +825,7 @@
     if(ok)$("check-card").classList.add("note--ok");
     else $("check-card").classList.remove("note--ok");
     var mascot=$("check-mascot");
-    if(mascot)mascot.src="assets/mascot-"+(ok?"success":"error")+".png";
+    if(mascot)mascot.src="assets/crest.svg";
   }
   function pollOnce(){
     if(!u.devices){
@@ -833,7 +862,7 @@
     $("check-again").hidden=true;$("check-fix").hidden=true;
     $("check-card").classList.remove("note--ok");
     var mascot=$("check-mascot");
-    if(mascot)mascot.src="assets/mascot-helping.png";
+    if(mascot)mascot.src="assets/crest.svg";
     checkStart=Date.now();
     checkUntil=checkStart+CHECK_WINDOW;   // ограничено по времени, без вечного спиннера
     $("check-progress").hidden=false;
@@ -850,6 +879,24 @@
   });
 
   /* ------------------------------------------------------------ старт */
+  var graceTicker=null;
+  function renderGrace(){
+    if(!u.web||!u.graceUntil)return;
+    var seconds=Math.max(0,u.graceUntil-Math.floor(Date.now()/1000));
+    var hours=Math.floor(seconds/3600);
+    var minutes=Math.floor((seconds%3600)/60);
+    var secs=seconds%60;
+    $("grace-countdown").textContent=seconds
+      ? "Осталось: "+hours+":"+String(minutes).padStart(2,"0")+":"+String(secs).padStart(2,"0")
+      : "12 часов закончились — откройте Telegram и завершите привязку.";
+    if(!seconds&&graceTicker){clearInterval(graceTicker);graceTicker=null;}
+  }
+  if(u.web&&u.bind){
+    $("web-grace").hidden=false;
+    $("bind-link").href=u.bind;
+    renderGrace();
+    graceTicker=setInterval(renderGrace,1000);
+  }
   $("personal-access").hidden=u.family;
   $("family-access").hidden=!u.family;
   // Пока подписка не проверена, «ссылку пришлёт тот, кто пригласил» — неправда:

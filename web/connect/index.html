@@ -27,7 +27,7 @@
 <!-- ================================================== загрузка -->
 <div class="app app--plain" id="loading" aria-live="polite">
   <header class="head">
-    <img class="head__crest" src="assets/avatar.png" alt="" onerror="this.onerror=null;this.src='assets/crest.svg'">
+    <img class="head__crest" src="assets/crest.svg" alt="">
     <div class="head__text">
       <div class="head__title">Fodder VPN</div>
       <div class="head__sub">Подключаем аккаунт…</div>
@@ -44,13 +44,13 @@
 <!-- ================================================== вход закрыт -->
 <div class="app app--plain" id="locked" hidden aria-live="polite">
   <header class="head">
-    <img class="head__crest" src="assets/avatar.png" alt="" onerror="this.onerror=null;this.src='assets/crest.svg'">
+    <img class="head__crest" src="assets/crest.svg" alt="">
     <div class="head__text">
       <div class="head__title">Fodder VPN</div>
     </div>
   </header>
   <div class="card empty">
-    <img class="empty__mascot" src="assets/mascot-empty.png" alt="" onerror="this.onerror=null;this.src='assets/crest.svg'">
+    <img class="empty__mascot" src="assets/crest.svg" alt="">
     <div class="empty__title" id="locked-title">Откройте портал из бота</div>
     <p class="empty__body" id="locked-copy">Так мы безопасно определим вашу подписку
       и выдадим именно ваш профиль.</p>
@@ -67,7 +67,7 @@
 <div class="app" id="portal" hidden>
 
   <header class="head">
-    <img class="head__crest" src="assets/avatar.png" alt="" onerror="this.onerror=null;this.src='assets/crest.svg'">
+    <img class="head__crest" src="assets/crest.svg" alt="">
     <div class="head__text">
       <div class="head__title">Fodder VPN</div>
       <div class="head__sub" id="head-sub">Личный кабинет</div>
@@ -82,7 +82,7 @@
     <h1 class="sr-only">Fodder VPN</h1>
     <div class="card" id="status-card">
       <div class="hero">
-        <img class="hero__mascot" src="assets/mascot-calm.png" alt="" id="status-mascot" onerror="this.onerror=null;this.src='assets/crest.svg'">
+        <img class="hero__mascot" src="assets/crest.svg" alt="" id="status-mascot">
         <div class="hero__facts" id="status-facts">
           <div class="fact">
             <svg class="i" aria-hidden="true"><use href="#i-calendar"/></svg>
@@ -113,14 +113,15 @@
     </div>
 
     <div class="card stack offer" id="channel-offer" hidden>
-      <div class="offer__badge">Подарок подписчикам Fodder’s Dev</div>
+      <div class="offer__badge">Бесплатно подписчикам Fodder’s Dev</div>
       <div>
-        <h2 class="h2">Бесплатный VPN на 7 дней</h2>
-        <p class="t dim">Один профиль на новом сервере во Франции. Карта и оплата не нужны.</p>
+        <h2 class="h2">Нидерланды без срока окончания</h2>
+        <p class="t dim">Один личный профиль работает, пока вы остаётесь подписчиком канала.
+          Карта и оплата не нужны.</p>
       </div>
       <ol class="quick-steps" aria-label="Как получить бесплатный VPN">
         <li><span>1</span><div><b>Подпишитесь на канал</b><small>Бот проверит подписку сам</small></div></li>
-        <li><span>2</span><div><b>Получите подарок</b><small>Нажмите кнопку — включатся настоящие 7 дней</small></div></li>
+        <li><span>2</span><div><b>Подтвердите подписку</b><small>Нажмите кнопку — бот проверит канал</small></div></li>
         <li><span>3</span><div><b>Подключитесь</b><small>Мы проведём по установке шаг за шагом</small></div></li>
       </ol>
       <a class="btn btn--secondary" id="offer-channel-link" href="https://t.me/fodders_dev" target="_blank" rel="noopener noreferrer">
@@ -129,7 +130,7 @@
       </a>
       <button class="btn btn--primary" id="claim-offer" type="button">
         <svg class="i" aria-hidden="true"><use href="#i-gift"/></svg>
-        <span class="btn__label">Я подписался — получить 7 дней</span>
+        <span class="btn__label">Я подписался — проверить</span>
       </button>
       <p class="t-sm mute" id="claim-offer-status" role="status" aria-live="polite"></p>
     </div>
@@ -160,7 +161,7 @@
       </div>
       <ol class="quick-steps quick-steps--compact">
         <li><span>1</span><div><b>Установите AmneziaWG</b></div></li>
-        <li><span>2</span><div><b>Скачайте профиль Франции</b></div></li>
+        <li><span>2</span><div><b>Скачайте профиль Нидерландов</b></div></li>
         <li><span>3</span><div><b>Откройте файл и включите переключатель</b></div></li>
       </ol>
     </div>
@@ -208,8 +209,8 @@
   <!-- ---------------------------------------------- вкладка Тариф -->
   <section id="view-plan" class="stack" hidden>
     <h1 class="h1">Тариф</h1>
-    <p class="t dim">Во всех тарифах: все пять стран и отдельный ключ на каждое
-      устройство.</p>
+    <p class="t dim" id="plan-description">Нидерланды бесплатны подписчикам Fodder’s Dev. Платный тариф
+      открывает остальные страны, дополнительные устройства и прокси для приставок.</p>
 
     <div class="card stack" id="plan-current">
       <p class="t-sm mute">Сейчас у вас</p>
@@ -240,15 +241,15 @@
         <span class="row__aside">299 ₽</span>
       </div>
     </div>
-    <p class="t-sm mute">Все пять стран входят в любой тариф, доплаты за страну нет.
+    <p class="t-sm mute">Все платные локации входят в любой тариф, доплаты за выбор страны нет.
       На 3, 6 и 12 месяцев дешевле: «Вместе» на год — 1619 ₽, это 135 ₽ в месяц.</p>
 
-    <div class="note note--ok">
+    <div class="note note--ok" id="free-plan-note">
       <svg class="i" aria-hidden="true"><use href="#i-shield-check"/></svg>
       <div>
-        <div class="note__title">7 дней бесплатно, карта не нужна</div>
-        <p class="note__body">Сначала проверьте, что VPN работает у вашего оператора
-          и на вашем устройстве. Платить — только если всё устроило.</p>
+        <div class="note__title">Нидерланды остаются бесплатными</div>
+        <p class="note__body">Платить нужно только за другие страны, дополнительные
+          устройства и настройку прокси для приставок.</p>
       </div>
     </div>
 
@@ -294,10 +295,11 @@
     </div>
 
     <div class="card stack" id="invites-card" hidden>
-      <h3 class="h3">Дать попробовать без Telegram</h3>
+      <h3 class="h3">Помочь тому, у кого не открывается Telegram</h3>
       <p class="t-sm dim">В России Telegram без VPN не открывается — значит человек не может
         получить VPN через бота. Код приглашения решает это: он вводится на обычном сайте,
-        даёт свой пробный доступ и свой кабинет.</p>
+        даёт Нидерланды на 12 часов. За это время человек подпишется на Fodder’s Dev
+        и сохранит тот же профиль без срока.</p>
       <p class="t-sm mute" id="invites-summary">Загружаем…</p>
       <div class="card card--flush" id="invites-list"></div>
       <button class="btn btn--secondary" id="make-invite" type="button">
@@ -327,7 +329,7 @@
       </button>
       <p class="t-sm mute">Бонус приходит после того, как приглашённый оплатит подписку —
         так система отличает реального пользователя от случайного захода.
-        Ему самому платить за приглашение не нужно: у него уже есть 7 дней бесплатно.</p>
+        Ему самому платить за приглашение не нужно: Нидерланды бесплатны подписчикам канала.</p>
     </div>
 
     <h2 class="section-title">Помощь</h2>
@@ -466,8 +468,8 @@
   var creds=null;
   // Один источник правды о подписке: заполняется при входе, дочитывается
   // после загрузки устройств (подключался ли человек хоть раз).
-  var state={active:false,trial:false,expiresAt:null,deviceLimit:1,
-             everConnected:false,personalUrl:"#",offerAvailable:false};
+  var state={active:false,paid:false,channel:false,trial:false,expiresAt:null,deviceLimit:1,
+             everConnected:false,personalUrl:"#",channelAvailable:false};
   var trialTicker=null;
   function readCreds(personalUrl){
     try{
@@ -514,48 +516,60 @@
       inviteBox.closest(".card").hidden=true;
     }
 
-    $("plan-row-title").textContent="Тариф: "+deviceLimit+" "+deviceWord;
+    $("plan-row-title").textContent=links.subscription_active
+      ?("Тариф: "+deviceLimit+" "+deviceWord)
+      :(links.channel_access_active?"Бесплатно: Нидерланды":"Тариф");
     $("family-link").href=links.family_vpn_url;
     $("wizard-link").href=links.server_wizard_url;
     $("wizard-link-main").href=links.server_wizard_url;
     familyUrl=links.family_vpn_url;
 
-    state.active=!!links.subscription_active;
+    state.paid=!!links.subscription_active;
+    state.channel=!!links.channel_access_active;
+    state.active=state.paid||state.channel;
     state.trial=!!links.is_trial;
     state.expiresAt=links.expires_at||null;
     state.deviceLimit=deviceLimit;
-    state.offerAvailable=!!links.channel_offer_available;
-    if(links.channel_offer_channel_url){
-      $("offer-channel-link").href=links.channel_offer_channel_url;
+    state.channelAvailable=!!links.channel_access_available;
+    if(!links.channel_access_enabled){
+      $("plan-description").textContent="Платный тариф открывает доступные страны, дополнительные устройства и прокси для приставок.";
+      $("free-plan-note").hidden=true;
+    }
+    if(links.channel_access_channel_url){
+      $("offer-channel-link").href=links.channel_access_channel_url;
     }
 
     var personal=$("personal-link");
     var addDevice=$("add-device-link");
-    if(links.subscription_active){
+    if(state.active){
       state.personalUrl=links.personal_vpn_url;
       personal.href=links.personal_vpn_url;
       addDevice.href=links.personal_vpn_url;
       addDevice.hidden=deviceLimit<2;
       $("quick-start").hidden=false;
-      renderSubscription(links);
+      if(state.paid)renderSubscription(links);else renderChannelAccess();
       loadServerNames();
       loadDevices();
       loadInvites();
     }else{
       addDevice.hidden=true;
       $("quick-start").hidden=true;
-      if(links.channel_offer_available){
+      if(links.channel_access_available){
         $("channel-offer").hidden=false;
         $("status-card").hidden=true;
         personal.hidden=true;
       }else{
-        personal.href="https://t.me/foddervpnbot?start=plan";
+        personal.href=links.channel_access_enabled
+          ?"https://t.me/foddervpnbot?start=portal"
+          :"https://t.me/foddervpnbot?start=plan";
         personal.target="_blank";personal.rel="noopener noreferrer";
         personal.className="btn btn--danger";
-        personal.querySelector(".btn__label").textContent="Продлить подписку";
+        personal.querySelector(".btn__label").textContent=links.channel_access_enabled
+          ?"Подписаться и получить Нидерланды"
+          :"Открыть подписку";
         $("status-card").classList.add("note--bad");
-        $("fact-sub").innerHTML='<span class="fact__value">Подписка закончилась</span><br>'+
-          'Профили сохранены и заработают после продления';
+        $("fact-sub").innerHTML='<span class="fact__value">Доступ не активирован</span><br>'+
+          (links.channel_access_enabled?'Подпишитесь на Fodder’s Dev — Нидерланды бесплатны':'Бесплатная выдача пока не включена');
         $("fact-sub").parentNode.className="fact fact--bad";
         $("fact-devices").textContent="Тариф: "+deviceLimit+" "+deviceWord;
         $("fact-seen").parentNode.hidden=true;
@@ -564,7 +578,7 @@
     }
 
     var familyHowto=$("family-howto");
-    if(links.subscription_active&&deviceLimit>=2){
+    if(state.paid&&deviceLimit>=2){
       $("family-actions").hidden=false;
       familyHowto.hidden=false;
       $("family-status").textContent="Семейный профиль занимает устройство №2 из "+deviceLimit+
@@ -572,7 +586,7 @@
     }else{
       $("family-actions").hidden=true;
       familyHowto.hidden=true;
-      $("family-status").textContent=links.subscription_active
+      $("family-status").textContent=state.paid
         ?"Сейчас оплачен 1 профиль. Для семейной ссылки выберите тариф на 3 или 5 устройств."
         :"Семейная ссылка появится после активации тарифа на 3 или 5 устройств.";
     }
@@ -646,12 +660,23 @@
     }
   }
 
+  function renderChannelAccess(){
+    $("fact-sub").innerHTML='<span class="fact__value">Нидерланды бесплатно</span><br>'+
+      'работают, пока вы подписаны на Fodder’s Dev';
+    $("fact-sub").parentNode.className="fact";
+    $("fact-devices").textContent="Один личный профиль";
+    $("plan-current-title").textContent="Бесплатные Нидерланды";
+    $("plan-current-note").textContent="Без срока окончания · пока вы в канале";
+    $("country-name").textContent="🇳🇱 Нидерланды";
+    $("country-row").hidden=false;
+  }
+
   $("claim-offer").addEventListener("click",async function(){
     var button=this,label=button.querySelector(".btn__label"),status=$("claim-offer-status");
     button.disabled=true;button.classList.add("is-loading");
     label.textContent="Проверяем подписку и включаем VPN";status.textContent="";
     try{
-      var response=await fetch("/api/portal/channel-offer/claim",{
+      var response=await fetch("/api/portal/channel-access/verify",{
         method:"POST",credentials:"same-origin",headers:{"Accept":"application/json"}
       });
       var body={};try{body=await response.json();}catch(e){}
@@ -660,8 +685,6 @@
         var code=detail&&typeof detail==="object"?detail.code:"";
         if(code==="channel_membership_required"){
           status.textContent="Подписка пока не видна. Откройте канал, подпишитесь и нажмите ещё раз.";
-        }else if(code==="already_claimed"){
-          status.textContent="Этот подарок уже был использован. Обычную подписку можно продлить в боте.";
         }else{
           status.textContent=(detail&&detail.message)||"Не получилось выдать профиль. Попробуйте ещё раз через минуту.";
         }
@@ -671,7 +694,7 @@
       location.reload();
     }catch(e){
       button.disabled=false;button.classList.remove("is-loading");
-      label.textContent="Я подписался — получить 7 дней";
+      label.textContent="Я подписался — проверить";
     }
   });
 
@@ -881,7 +904,7 @@
     var invites=(data&&data.invites)||[];
     summary.textContent=invites.length
       ? "Не активировано: "+invites.length+" из "+data.max_outstanding
-        +". Пробный доступ по коду — "+data.trial_days+" дней."
+        +". Временный доступ по коду — "+data.grace_hours+" часов."
       : "Пока нет неиспользованных кодов. Можно создать до "+data.max_outstanding+".";
     list.textContent="";
     invites.forEach(function(invite){

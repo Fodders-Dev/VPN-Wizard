@@ -21,7 +21,7 @@
 - [x] Replace the vague two-column "Партнёрка" entry with an explicit full-width sharing action
 - [x] Add a private family web link with one independent AWG slot and no Telegram requirement
 - [x] Apply owner entitlement, expiry and renewal to the family slot on every AWG server
-- [x] Replace the stale 14-day tariff label and duplicate production trial settings with a 7-day trial
+- [x] Retire the Bedolaga trial; replace it with permanent one-device NL access for channel members and a 12-hour web bridge
 - [x] Replace old `/miniapp` buttons with one unified managed-VPN portal
 - [x] Preserve the complete Fodders VPN 1 self-hosted flow at `/wizard` and `/vpn1`
 - [x] Add bidirectional portal/Wizard navigation and Telegram native BackButton support

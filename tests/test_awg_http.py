@@ -17,6 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import vpn_wizard.server as server_module
+from vpn_wizard.account import AccountStore
 from vpn_wizard.awg_fallback import (
     device_peer_id,
     family_guest_id,
@@ -40,6 +41,11 @@ _AWG_ENV = (
     "VPNW_AWG_FALLBACK_FLAG",
     "VPNW_AWG_FALLBACK_SSH_PASSWORD",
     "VPNW_AWG_LINK_SECRET",
+    "VPNW_CHANNEL_ACCESS_ENABLED",
+    "VPNW_CHANNEL_ACCESS_CHANNEL_ID",
+    "VPNW_CHANNEL_ACCESS_SERVER_ID",
+    "VPNW_CHANNEL_ACCESS_WEB_GRACE_HOURS",
+    "VPNW_BOT_TOKEN",
 )
 
 
@@ -60,6 +66,14 @@ def _configure_single_server(monkeypatch: pytest.MonkeyPatch, secret: str = "lin
     monkeypatch.setenv("VPNW_AWG_FALLBACK_HOST", "212.69.84.167")
     monkeypatch.setenv("VPNW_AWG_FALLBACK_SSH_PASSWORD", "hunter2")
     monkeypatch.setenv("VPNW_AWG_LINK_SECRET", secret)
+
+
+def _configure_channel_access(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VPNW_CHANNEL_ACCESS_ENABLED", "true")
+    monkeypatch.setenv("VPNW_CHANNEL_ACCESS_CHANNEL_ID", "-1002358992995")
+    monkeypatch.setenv("VPNW_CHANNEL_ACCESS_SERVER_ID", "nl")
+    monkeypatch.setenv("VPNW_CHANNEL_ACCESS_WEB_GRACE_HOURS", "12")
+    monkeypatch.setenv("VPNW_BOT_TOKEN", "123:test-token")
 
 
 # --- tunnel name (the live import bug) ----------------------------------------
@@ -334,6 +348,47 @@ def test_webhook_applies_expiry_and_renewal_to_owner_and_family(
     ]
 
 
+def test_paid_expiry_keeps_only_the_free_netherlands_owner_peer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner_id = 449066726
+    calls: list[tuple[str, str, int]] = []
+
+    class Service:
+        def __init__(self, server_id: str) -> None:
+            self.server_id = server_id
+
+        def suspend(self, peer_id: int) -> None:
+            calls.append(("suspend", self.server_id, peer_id))
+
+        def resume(self, peer_id: int) -> None:
+            calls.append(("resume", self.server_id, peer_id))
+
+    _configure_channel_access(monkeypatch)
+    server_module.build_account_store().channel_access_grant_member(owner_id)
+    monkeypatch.setattr(
+        server_module,
+        "_awg_entitlement",
+        lambda _tid: server_module._AwgEntitlement(
+            paid_user=None,
+            free=server_module.ChannelAccessStatus(configured=True, active=True, kind="member"),
+        ),
+    )
+    monkeypatch.setattr(
+        server_module, "_awg_all_services", lambda: [Service("nl"), Service("fi")]
+    )
+
+    server_module._awg_webhook_apply("policy", owner_id)
+
+    guest_id = family_guest_id(owner_id)
+    assert calls == [
+        ("resume", "nl", owner_id),
+        ("suspend", "nl", guest_id),
+        ("suspend", "fi", owner_id),
+        ("suspend", "fi", guest_id),
+    ]
+
+
 # --- server picker -------------------------------------------------------------
 
 def test_servers_endpoint_lists_choices_without_leaking_secrets(
@@ -512,31 +567,31 @@ def test_issuing_a_country_does_not_disturb_the_others(
     assert suspended == []  # nothing revoked behind the user's back
 
 
-def test_trial_can_issue_only_the_configured_free_server(
+def test_channel_member_can_issue_only_the_free_netherlands_server(
     monkeypatch: pytest.MonkeyPatch, client: TestClient
 ) -> None:
     secret = "link-secret"
     owner = 449066726
     monkeypatch.setenv("VPNW_AWG_LINK_SECRET", secret)
-    monkeypatch.setenv("VPNW_AWG_TRIAL_SERVER_ID", "fr")
+    _configure_channel_access(monkeypatch)
     monkeypatch.setenv(
         "VPNW_AWG_SERVERS",
         json.dumps([
             {"id": "nl", "label": "Нидерланды", "host": "127.0.0.1", "password": "p"},
-            {"id": "fr", "label": "Франция", "host": "2.2.2.2", "password": "p"},
+            {"id": "us", "label": "США", "host": "2.2.2.2", "password": "p"},
         ]),
     )
 
-    class ActiveRemnawave:
+    class InactiveRemnawave:
         def __init__(self, config) -> None:
             self.config = config
 
         @staticmethod
         def active_user(_telegram_id: int):
-            return {"uuid": "u", "hwidDeviceLimit": 1}
+            return None
 
-    monkeypatch.setattr(server_module, "RemnawaveClient", ActiveRemnawave)
-    monkeypatch.setattr(server_module, "_billing_trial_state", lambda _tid: True)
+    monkeypatch.setattr(server_module, "RemnawaveClient", InactiveRemnawave)
+    server_module.build_account_store().channel_access_grant_member(owner)
     monkeypatch.setattr(
         server_module.AwgFallbackService,
         "issue",
@@ -549,13 +604,13 @@ def test_trial_can_issue_only_the_configured_free_server(
     token = issue_token(secret, owner)
 
     denied = client.get(
-        f"/api/awg/{owner}/config", params={"token": token, "server": "nl"}
+        f"/api/awg/{owner}/config", params={"token": token, "server": "us"}
     )
     allowed = client.get(
-        f"/api/awg/{owner}/config", params={"token": token, "server": "fr"}
+        f"/api/awg/{owner}/config", params={"token": token, "server": "nl"}
     )
     assert denied.status_code == 403
-    assert "France server only" in denied.text
+    assert "Нидерланды" in denied.text
     assert allowed.status_code == 200
 
 
@@ -787,6 +842,7 @@ def test_owner_can_mint_and_withdraw_invites(
     secret = "link-secret"
     owner = 449066726
     _configure_single_server(monkeypatch, secret)
+    _configure_channel_access(monkeypatch)
     monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(1))
     token = issue_token(secret, owner)
 
@@ -808,6 +864,7 @@ def test_a_visitor_can_check_a_code_before_committing(
     secret = "link-secret"
     owner = 449066726
     _configure_single_server(monkeypatch, secret)
+    _configure_channel_access(monkeypatch)
     monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(1))
     code = client.post(
         f"/api/awg/{owner}/invites", params={"token": issue_token(secret, owner)}
@@ -827,26 +884,21 @@ def test_redeeming_creates_an_account_and_hands_back_a_working_link(
     secret = "link-secret"
     owner = 449066726
     _configure_single_server(monkeypatch, secret)
-    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(1))
+    _configure_channel_access(monkeypatch)
+
+    class OwnerOnlyRemnawave:
+        def __init__(self, config) -> None:
+            self.config = config
+
+        @staticmethod
+        def active_user(telegram_id: int):
+            return {"uuid": "owner", "hwidDeviceLimit": 1} if telegram_id == owner else None
+
+    monkeypatch.setattr(server_module, "RemnawaveClient", OwnerOnlyRemnawave)
     code = client.post(
         f"/api/awg/{owner}/invites", params={"token": issue_token(secret, owner)}
     ).json()["code"]
 
-    created: list[int] = []
-    trials: list[tuple[int, int]] = []
-
-    class FakeBot:
-        config = type("C", (), {"configured": True})()
-
-        def create_user(self, telegram_id, **kwargs):
-            created.append(telegram_id)
-            return {"id": 4242, "telegram_id": telegram_id}
-
-        def grant_trial(self, user_id, *, days, **kwargs):
-            trials.append((user_id, days))
-            return {"id": user_id}
-
-    monkeypatch.setattr(server_module, "BotApiClient", lambda *a, **k: FakeBot())
     response = client.post(f"/api/web/invite/{code}/redeem")
     assert response.status_code == 200
     body = response.json()
@@ -857,8 +909,13 @@ def test_redeeming_creates_an_account_and_hands_back_a_working_link(
 
     assert is_web_account(body["telegram_id"])
     assert body["token"] == issue_token(secret, body["telegram_id"])
-    assert created == [body["telegram_id"]]
-    assert trials == [(4242, body["trial_days"])]
+    assert body["grace_hours"] == 12
+    assert body["server_id"] == "nl"
+    assert body["bind_url"].endswith(f"?start=web_{code}")
+    assert body["grace_expires_at"] > 0
+    assert client.get(
+        f"/api/awg/{body['telegram_id']}/access", params={"token": body["token"]}
+    ).status_code == 200
 
     # Single use: the same SMS cannot onboard two people.
     assert client.post(f"/api/web/invite/{code}/redeem").status_code == 400
@@ -870,22 +927,19 @@ def test_redeem_does_not_burn_the_code_when_signup_fails(
     secret = "link-secret"
     owner = 449066726
     _configure_single_server(monkeypatch, secret)
+    _configure_channel_access(monkeypatch)
     monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(1))
     code = client.post(
         f"/api/awg/{owner}/invites", params={"token": issue_token(secret, owner)}
     ).json()["code"]
 
-    class BrokenBot:
-        config = type("C", (), {"configured": True})()
-
-        def create_user(self, telegram_id, **kwargs):
-            return None
-
-        def grant_trial(self, user_id, **kwargs):
-            raise AssertionError("must not be reached")
-
-    monkeypatch.setattr(server_module, "BotApiClient", lambda *a, **k: BrokenBot())
-    assert client.post(f"/api/web/invite/{code}/redeem").status_code == 502
+    monkeypatch.setattr(
+        AccountStore,
+        "channel_access_grant_grace",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("disk full")),
+    )
+    with pytest.raises(RuntimeError, match="disk full"):
+        client.post(f"/api/web/invite/{code}/redeem")
     # The invite survives, so the person can retry instead of losing their only code.
     assert client.get(f"/api/web/invite/{code}").json()["valid"] is True
 
@@ -932,6 +986,7 @@ def test_a_website_trial_cannot_mint_its_own_invites(
     secret = "link-secret"
     guest = web_account_id(11)
     _configure_single_server(monkeypatch, secret)
+    _configure_channel_access(monkeypatch)
     monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(1))
     token = issue_token(secret, guest)
 
@@ -942,30 +997,70 @@ def test_a_website_trial_cannot_mint_its_own_invites(
     assert client.post("/api/awg/449066726/invites", params={"token": owner_token}).status_code == 200
 
 
-def test_a_failed_signup_releases_the_code_it_claimed(
+def test_website_profile_links_to_verified_telegram_member(
     monkeypatch: pytest.MonkeyPatch, client: TestClient
 ) -> None:
     secret = "link-secret"
     owner = 449066726
     _configure_single_server(monkeypatch, secret)
+    _configure_channel_access(monkeypatch)
+
+    class OwnerOnlyRemnawave:
+        def __init__(self, config) -> None:
+            self.config = config
+
+        @staticmethod
+        def active_user(telegram_id: int):
+            return {"uuid": "owner", "hwidDeviceLimit": 1} if telegram_id == owner else None
+
+    monkeypatch.setattr(server_module, "RemnawaveClient", OwnerOnlyRemnawave)
+    code = client.post(
+        f"/api/awg/{owner}/invites", params={"token": issue_token(secret, owner)}
+    ).json()["code"]
+
+    redeemed = client.post(f"/api/web/invite/{code}/redeem").json()
+    real_id = 777001
+    monkeypatch.setattr(server_module, "telegram_channel_member", lambda *_args: True)
+    applied: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        server_module, "_awg_webhook_apply", lambda action, tid: applied.append((action, tid))
+    )
+
+    linked = client.post(
+        f"/api/web/invite/{code}/link",
+        params={"telegram_id": real_id, "token": issue_token(secret, real_id)},
+    )
+
+    assert linked.status_code == 200
+    assert linked.json()["linked"] is True
+    assert server_module.build_account_store().channel_access_get(redeemed["telegram_id"]) is None
+    assert server_module.build_account_store().channel_access_by_telegram(real_id) is not None
+    assert applied == [("policy", real_id)]
+
+
+def test_website_profile_cannot_be_linked_after_12_hour_window(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    secret = "link-secret"
+    owner = 449066726
+    _configure_single_server(monkeypatch, secret)
+    _configure_channel_access(monkeypatch)
     monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(1))
     code = client.post(
         f"/api/awg/{owner}/invites", params={"token": issue_token(secret, owner)}
     ).json()["code"]
 
-    class HalfBrokenBot:
-        config = type("C", (), {"configured": True})()
+    monkeypatch.setattr(server_module.time, "time", lambda: 1_000)
+    client.post(f"/api/web/invite/{code}/redeem").raise_for_status()
+    monkeypatch.setattr(server_module.time, "time", lambda: 44_201)
+    monkeypatch.setattr(server_module, "telegram_channel_member", lambda *_args: True)
 
-        def create_user(self, telegram_id, **kwargs):
-            return {"id": 99, "telegram_id": telegram_id}
-
-        def grant_trial(self, user_id, **kwargs):
-            return None          # account made, trial refused
-
-    monkeypatch.setattr(server_module, "BotApiClient", lambda *a, **k: HalfBrokenBot())
-    assert client.post(f"/api/web/invite/{code}/redeem").status_code == 502
-    # The code is usable again rather than silently spent.
-    assert client.get(f"/api/web/invite/{code}").json()["valid"] is True
+    linked = client.post(
+        f"/api/web/invite/{code}/link",
+        params={"telegram_id": 777001, "token": issue_token(secret, 777001)},
+    )
+    assert linked.status_code == 410
+    assert "12 часов" in linked.json()["detail"]
 
 
 def test_revoking_the_family_slot_kills_the_link_already_handed_out(

@@ -1,11 +1,10 @@
 # RUNBOOK — Fodder VPN 2 (managed subscription)
 
-Managed VPN-by-subscription on **your** servers: users are profiles with an expiry
-date, auto-disabled when unpaid, sold through a Telegram bot with a 7-day trial for
-subscribing to `@fodders_dev`. Stack: **Remnawave** panel + nodes, **Bedolaga**
-shop-bot, and **AmneziaWG** as the production RF protocol on selectable
-NL/FI/TR/US exits. Reality/Happ is retired from the active onboarding because it
-did not work reliably from the target RF networks.
+Managed VPN on **your** servers: one NL profile is free while a user subscribes to
+`@fodders_dev`; other exits, extra devices and console proxy setup are paid and
+auto-disabled when unpaid. Stack: **Remnawave** panel + nodes, **Bedolaga** shop-bot,
+and **AmneziaWG** as the production RF protocol. Reality/Happ is retired from the
+active onboarding because it did not work reliably from the target RF networks.
 
 > This is a different product from the old `vpn_wizard` self-host hub (which
 > provisions a whole server per user over SSH). That tool stays useful as the
@@ -119,7 +118,7 @@ open — it deep-links into Happ / v2RayTun / Hiddify.
 
 ---
 
-## 5. Bedolaga shop-bot (billing + trial)
+## 5. Bedolaga shop-bot (paid billing)
 
 Follow [`deploy/bedolaga/README.md`](deploy/bedolaga/README.md). Short version:
 
@@ -129,8 +128,8 @@ git clone https://github.com/BEDOLAGA-DEV/remnawave-bedolaga-telegram-bot bedola
 cd bedolaga && cp .env.example .env
 # set the keys from deploy/bedolaga/bedolaga.env.example into .env:
 #   BOT_TOKEN, ADMIN_IDS, REMNAWAVE_API_URL, REMNAWAVE_API_KEY,
-#   SIMPLE_SUBSCRIPTION_SQUAD_UUID, TRIAL_DURATION_DAYS=7,
-#   CHANNEL_IS_REQUIRED_SUB=true, TELEGRAM_STARS_ENABLED=true, PRICE_*
+#   SIMPLE_SUBSCRIPTION_SQUAD_UUID, CHANNEL_IS_REQUIRED_SUB=false,
+#   TELEGRAM_STARS_ENABLED=true, PRICE_*
 nano .env
 docker compose up -d && docker compose logs -f
 ```
@@ -138,17 +137,17 @@ docker compose up -d && docker compose logs -f
 Then, in Telegram:
 
 1. Open the bot, `/start` (you're admin via `ADMIN_IDS`).
-2. Admin panel → **channels** → add `@fodders_dev`. Make the bot an **admin of that
-   channel** so it can check membership.
-3. Confirm the trial flow: a fresh account should be offered 7 days after it
-   subscribes to the channel.
+2. Make the bot an admin of `@fodders_dev`, then configure the numeric channel id
+   in VPN Wizard. Do not make the channel mandatory for paid Bedolaga users.
+3. Run `disable_trial_tariffs.py`; a fresh account must not be offered a Bedolaga trial.
 
 ---
 
 ## 6. Smoke test (do this before inviting anyone)
 
-- [ ] Fresh Telegram account → `/start` → prompted to subscribe to `@fodders_dev`.
-- [ ] After subscribing → 7-day trial issued and `/awg` opens the AWG installer.
+- [ ] Before the NL cutover: free access is disabled and no Bedolaga trial is offered.
+- [ ] After the NL cutover: fresh Telegram account → subscribe to `@fodders_dev`
+      → one NL device is issued without a Remnawave trial.
 - [ ] Telegram menu button / `/miniapp` → versioned `/portal/` entry; “Подключить мой VPN”
       opens the personal AWG installer and “Свой сервер” opens `/wizard/`.
 - [ ] On **Android**, send `/awg`, install the official AmneziaWG app, import the

@@ -1,8 +1,9 @@
 # Bedolaga shop-bot (billing / storefront)
 
-Bedolaga is the Telegram shop-bot that sits in front of Remnawave: it sells
-subscriptions, grants the 7-day trial for channel subscription, reminds users
-before expiry, and disables them when unpaid. It talks to the panel over the API.
+Bedolaga is the Telegram shop-bot that sits in front of Remnawave: it sells paid
+subscriptions, reminds users before expiry, and disables paid exits when unpaid.
+Free Netherlands access is enforced separately by VPN Wizard from channel
+membership, never by a temporary Bedolaga tariff. It talks to the panel over the API.
 License: MIT.
 
 We run a pinned upstream commit and supply a tuned `.env`. The only source-tree
@@ -50,16 +51,15 @@ after taking a database backup.
    `fodders-vpn1-compat.patch` before building the image. This preserves
    the unified `/portal` entry (with `/miniapp` compatibility), the original `/vpn1` + `/wizard` self-hosted
    flow, and `/help` in the combined bot.
-5. Add `@fodders_dev` to `required_channels` using its numeric Telegram channel
-   id. The bot must be an administrator of the channel to check membership.
-6. Run `scripts/configure_trial_tariff.py` in the bot container. It creates the
-   hidden 7-day / 100 GB / 1-device tariff, assigns the paid squad, and repairs
-   active trials idempotently.
+5. Make `@foddervpnbot` an administrator of `@fodders_dev`, then put the numeric
+   channel id in VPN Wizard's `VPNW_CHANNEL_ACCESS_CHANNEL_ID`.
+6. Run `scripts/disable_trial_tariffs.py` once in the bot container. It disables
+   new Bedolaga trials but preserves already active trials until their original expiry.
 7. Run `scripts/configure_paid_tariffs.py` in the bot container. It creates the
    fixed 1 / 3 / 5-device plans with 30 / 90 / 180 / 360-day prices. The second
    device is the no-Telegram family link; it is not an extra unbilled slot.
-8. Send yourself a test trial, connect on a phone, then buy a plan with Stars to
-   confirm the full loop.
+8. With channel access still disabled, buy a plan with Stars and confirm the paid
+   loop. Enable free access only after the replacement NL IP passes the smoke test.
 
 ## Operations
 
@@ -83,5 +83,3 @@ after taking a database backup.
 - **Prices are kopeks.** Double-check every `PRICE_*` before going live.
 - **Referral rewards are balance (kopeks), not bonus days** in Bedolaga. If you
   want "+7 days for a friend", configure it in the admin UI or adjust expectations.
-- Keep the bot **invite-only** — do not list it in bot catalogs or advertise it
-  (see the legal note in the strategy doc / runbook).

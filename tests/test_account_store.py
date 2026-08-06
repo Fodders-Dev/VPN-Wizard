@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from vpn_wizard.account import AccountStore
+from vpn_wizard.web_signup import web_account_id
 
 
 def test_rename_server_keeps_credentials_and_allows_reset(tmp_path) -> None:
@@ -108,3 +109,56 @@ def test_stale_channel_promo_reservation_can_be_retried(tmp_path) -> None:
     assert store.promo_claim_reserve("fodders-dev", 7, now=1_000) is True
     assert store.promo_claim_reserve("fodders-dev", 7, now=1_299) is False
     assert store.promo_claim_reserve("fodders-dev", 7, now=1_300) is True
+
+
+def test_web_grace_profile_is_rebound_without_changing_its_config(tmp_path) -> None:
+    store = AccountStore(tmp_path / "state.db", "secret-key")
+    web_id = web_account_id(41)
+    store.channel_access_grant_grace(
+        web_id, "ABCD-2345", expires_at=50_000, now=1_000
+    )
+    store.awg_save_server_peer(
+        web_id,
+        "nl",
+        client_name="sub-temporary-nl",
+        remnawave_uuid=None,
+        config="[Interface]\nPrivateKey = retained\n",
+        status="active",
+    )
+
+    assert store.channel_access_link_owner(
+        web_id, 10101, invite_code="ABCD-2345", now=2_000
+    ) is True
+
+    assert store.awg_get_server_peer(web_id, "nl") is None
+    retained = store.awg_get_server_peer(10101, "nl")
+    assert retained is not None
+    assert retained["client_name"] == "sub-temporary-nl"
+    assert retained["config"] == "[Interface]\nPrivateKey = retained\n"
+    access = store.channel_access_by_telegram(10101)
+    assert access is not None
+    assert access["access_id"] == 10101
+    assert access["grace_expires_at"] is None
+    assert access["membership_active"] is True
+
+
+def test_web_profile_is_not_merged_over_an_existing_real_profile(tmp_path) -> None:
+    store = AccountStore(tmp_path / "state.db", "secret-key")
+    web_id = web_account_id(42)
+    store.channel_access_grant_grace(
+        web_id, "BCDE-3456", expires_at=50_000, now=1_000
+    )
+    store.awg_save_server_peer(
+        10101,
+        "nl",
+        client_name="sub-real-nl",
+        remnawave_uuid=None,
+        config="real",
+        status="active",
+    )
+
+    assert store.channel_access_link_owner(
+        web_id, 10101, invite_code="BCDE-3456", now=2_000
+    ) is False
+    assert store.channel_access_get(web_id) is not None
+    assert store.awg_get_server_peer(10101, "nl")["config"] == "real"

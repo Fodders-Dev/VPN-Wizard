@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
 from typing import Any, Callable
 
@@ -14,10 +13,12 @@ from vpn_wizard.awg_fallback import (
     family_owner_id,
 )
 from vpn_wizard.awg_devices import collect_usage
-from vpn_wizard.bot_api import BotApiClient, subscription_facts_of
+from vpn_wizard.bot_api import BotApiClient
+from vpn_wizard.channel_access import ChannelAccessConfig, access_status as channel_access_status
 from vpn_wizard.metrics import collect as collect_metrics, daily_snapshot, day_key
 from vpn_wizard.awg_servers import AwgRegistry
 from vpn_wizard.remnawave import RemnawaveClient, RemnawaveConfig, device_limit_of
+from vpn_wizard.web_signup import is_web_account
 
 
 def reconcile_awg_peers(
@@ -28,8 +29,8 @@ def reconcile_awg_peers(
     server_services: dict[str, Any] | None = None,
     max_suspend_ratio: float = 0.5,
     legacy_server_id: str | None = None,
-    trial_server_id: str | None = None,
-    trial_lookup: Callable[[int], bool | None] | None = None,
+    free_server_id: str | None = None,
+    free_access_lookup: Callable[[int], bool | None] | None = None,
 ) -> dict[str, Any]:
     """Bring retained AWG peers in line with Remnawave entitlements.
 
@@ -58,7 +59,7 @@ def reconcile_awg_peers(
         for peer in account.awg_list_server_peers()
     )
     entitlement_cache: dict[int, dict[str, Any] | None | Exception] = {}
-    trial_cache: dict[int, bool | None] = {}
+    free_cache: dict[int, bool | None] = {}
 
     for peer, service, server_id in peers:
         telegram_id = int(peer["telegram_id"])
@@ -78,38 +79,58 @@ def reconcile_awg_peers(
             )
             continue
         if entitlement_id not in entitlement_cache:
-            try:
-                entitlement_cache[entitlement_id] = remnawave.active_user(entitlement_id)
-            except Exception as exc:
-                entitlement_cache[entitlement_id] = exc
+            if is_web_account(entitlement_id):
+                entitlement_cache[entitlement_id] = None
+            else:
+                try:
+                    entitlement_cache[entitlement_id] = remnawave.active_user(entitlement_id)
+                except Exception as exc:
+                    entitlement_cache[entitlement_id] = exc
         entitlement = entitlement_cache[entitlement_id]
-        if isinstance(entitlement, Exception):
-            # A per-peer lookup failure (network/5xx/decrypt) must never be read as
-            # "not entitled" — leave the peer as-is and record it.
-            error = {"telegram_id": telegram_id, "error": f"{type(entitlement).__name__}: {entitlement}"}
-            if server_id is not None:
-                error["server_id"] = server_id
-            result["errors"].append(error)
-            continue
-        owner_active = entitlement is not None
-        if owner_active and trial_lookup is not None and entitlement_id not in trial_cache:
+        if entitlement_id not in free_cache:
             try:
-                trial_cache[entitlement_id] = trial_lookup(entitlement_id)
+                free_cache[entitlement_id] = (
+                    free_access_lookup(entitlement_id) if free_access_lookup else False
+                )
             except Exception:
-                # Billing ambiguity follows the same fail-open rule as other
-                # policy lookups: never disconnect a payer during an API outage.
-                trial_cache[entitlement_id] = None
-        owner_trial = trial_cache.get(entitlement_id)
-        location_allowed = not (
-            owner_trial is True
-            and trial_server_id
-            and server_id != trial_server_id
+                # Telegram outages must not disconnect otherwise valid free users.
+                free_cache[entitlement_id] = None
+        free_active = free_cache[entitlement_id]
+        free_allowed = bool(
+            free_active is True
+            and required_slot == 1
+            and free_server_id
+            and server_id == free_server_id
         )
-        peer_entitled = owner_active and (
-            required_slot is None or required_slot <= device_limit_of(entitlement)
-        ) and location_allowed
-        if owner_active:
-            active_seen += 1
+        if isinstance(entitlement, Exception):
+            if free_allowed:
+                peer_entitled = True
+                active_seen += 1
+            else:
+                # A per-peer lookup failure (network/5xx/decrypt) must never be
+                # read as "not entitled" — leave the peer as-is and record it.
+                error = {"telegram_id": telegram_id, "error": f"{type(entitlement).__name__}: {entitlement}"}
+                if server_id is not None:
+                    error["server_id"] = server_id
+                result["errors"].append(error)
+                continue
+        else:
+            owner_active = entitlement is not None
+            paid_allowed = owner_active and (
+                required_slot is None or required_slot <= device_limit_of(entitlement)
+            )
+            if not paid_allowed and free_active is None:
+                result["errors"].append(
+                    {
+                        "telegram_id": telegram_id,
+                        "server_id": server_id,
+                        "error": "channel_membership_check_failed",
+                    }
+                )
+                continue
+            peer_entitled = bool(paid_allowed or free_allowed)
+            if owner_active or free_active is True:
+                active_seen += 1
         if peer_entitled:
             if status == "suspended":
                 to_resume.append((telegram_id, service, server_id))
@@ -222,6 +243,7 @@ def main() -> int:
     registry = AwgRegistry.from_env()
     default = registry.default_server
     bot = BotApiClient()
+    channel = ChannelAccessConfig.from_env()
     for server in registry.servers:
         if default is not None and server.id == default.id:
             continue
@@ -236,13 +258,21 @@ def main() -> int:
         legacy_service,
         server_services=server_services,
         legacy_server_id=getattr(default, "id", None),
-        trial_server_id=(os.getenv("VPNW_AWG_TRIAL_SERVER_ID") or "").strip() or None,
-        trial_lookup=(
+        free_server_id=channel.free_server_id if channel.configured else None,
+        free_access_lookup=(
             lambda telegram_id: (
-                bool(facts["is_trial"]) if facts["known"] else None
+                channel_access_status(
+                    account,
+                    telegram_id,
+                    channel,
+                    refresh_membership=True,
+                ).active
+                if (
+                    account.channel_access_get(telegram_id)
+                    or account.channel_access_by_telegram(telegram_id)
+                )
+                else False
             )
-            if (facts := subscription_facts_of(bot.user_by_telegram_id(telegram_id)))
-            else None
         ),
     )
     # Refresh "last seen" while we already hold SSH access to every exit. Doing it

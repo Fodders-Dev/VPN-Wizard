@@ -3,14 +3,13 @@
 Telegram is unreachable in Russia without a VPN, so requiring it to obtain one is
 circular — the people who need the product most cannot reach the place that hands
 it out. This module lets an existing subscriber mint an invite code, pass it along
-by any channel (SMS, WhatsApp, in person), and lets the recipient start a trial
-straight from the website.
+by any channel (SMS, WhatsApp, in person), and lets the recipient obtain one
+Netherlands profile for 12 hours straight from the website.
 
-The redeemer is registered in the billing bot with a **synthetic Telegram id** from
-a reserved range. That one decision keeps everything downstream unchanged:
-entitlement lookups, AWG peer ids, device slots, suspend/resume and the reconcile
-pass all key on a Telegram id and neither know nor care that this one was minted
-by us. When the user later reaches Telegram for real, the accounts are merged.
+The redeemer gets a **synthetic Telegram id** from a reserved range. AWG peer ids,
+device slots, suspend/resume and the reconcile pass all key on that id. After the
+VPN makes Telegram reachable, verified Fodder's Dev membership rebinds the same
+retained peer row and key to the real Telegram id.
 """
 from __future__ import annotations
 
@@ -38,7 +37,6 @@ _CODE_RE = re.compile(r"^[A-Z2-9]{4}-[A-Z2-9]{4}$")
 
 DEFAULT_MAX_OUTSTANDING = 3
 DEFAULT_INVITE_TTL_DAYS = 14
-DEFAULT_TRIAL_DAYS = 7
 
 
 class InviteError(RuntimeError):
@@ -74,7 +72,6 @@ def web_account_id(seed: Optional[int] = None) -> int:
 class InviteConfig:
     max_outstanding: int = DEFAULT_MAX_OUTSTANDING
     ttl_days: int = DEFAULT_INVITE_TTL_DAYS
-    trial_days: int = DEFAULT_TRIAL_DAYS
 
     @classmethod
     def from_env(cls) -> "InviteConfig":
@@ -85,7 +82,6 @@ class InviteConfig:
         return cls(
             max_outstanding=_int("VPNW_INVITE_MAX_OUTSTANDING", DEFAULT_MAX_OUTSTANDING),
             ttl_days=_int("VPNW_INVITE_TTL_DAYS", DEFAULT_INVITE_TTL_DAYS),
-            trial_days=_int("VPNW_WEB_TRIAL_DAYS", DEFAULT_TRIAL_DAYS),
         )
 
 
@@ -107,7 +103,7 @@ def create_invite(
     note: Optional[str] = None,
     now: Optional[int] = None,
 ) -> dict[str, Any]:
-    """Mint one invite, capped so a subscription cannot become a trial factory."""
+    """Mint one invite, capped so free website grace cannot become a key factory."""
     config = config or InviteConfig()
     stamp = int(now if now is not None else time.time())
     live = outstanding_invites(account, issuer_telegram_id, now=stamp)

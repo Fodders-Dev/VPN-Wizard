@@ -62,21 +62,19 @@ VPNW_AWG_DEFAULT_SERVER="nl"
 VPNW_AWG_SERVERS='[
   {"id":"nl","label":"Нидерланды","flag":"🇳🇱","host":"127.0.0.1","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":443},
   {"id":"fi","label":"Финляндия","flag":"🇫🇮","host":"203.0.113.20","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":3478},
-  {"id":"fr","label":"Франция","flag":"🇫🇷","host":"203.0.113.25","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":3478},
   {"id":"tr","label":"Турция","flag":"🇹🇷","host":"203.0.113.30","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":3478},
   {"id":"us","label":"США","flag":"🇺🇸","host":"203.0.113.40","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":3478}
 ]'
 
-# Optional one-time gift for members of a Telegram channel. Membership is
-# verified with getChatMember; the local state DB prevents a second claim.
-# Trials can issue only the configured exit and only device slot 1.
-VPNW_CHANNEL_OFFER_ENABLED=true
-VPNW_CHANNEL_OFFER_KEY="fodders-dev-2026-08"
-VPNW_CHANNEL_OFFER_CHANNEL_ID="-1000000000000"
-VPNW_CHANNEL_OFFER_CHANNEL_URL="https://t.me/example_channel"
-VPNW_CHANNEL_OFFER_DAYS=7
-VPNW_CHANNEL_OFFER_TRAFFIC_GB=100
-VPNW_AWG_TRIAL_SERVER_ID="fr"
+# Permanent one-device Netherlands access while Telegram membership is active.
+# Website invite codes issue the same NL-only entitlement for 12 hours, then the
+# bot rebinds the retained profile to a verified Telegram member.
+VPNW_CHANNEL_ACCESS_ENABLED=false  # enable only after the replacement NL IP passes smoke tests
+VPNW_CHANNEL_ACCESS_CHANNEL_ID="-1000000000000"
+VPNW_CHANNEL_ACCESS_CHANNEL_URL="https://t.me/fodders_dev"
+VPNW_CHANNEL_ACCESS_SERVER_ID="nl"
+VPNW_CHANNEL_ACCESS_WEB_GRACE_HOURS=12
+VPNW_CHANNEL_ACCESS_CACHE_SECONDS=300
 ```
 
 ## Turn on the Remnawave webhook (panel `.env`)
@@ -100,7 +98,9 @@ button for users with an active subscription. Give the Bedolaga container the sa
 ```
 VPNW_AWG_LINK_SECRET=<same secret as vpn-wizard>
 VPNW_AWG_PUBLIC_URL=https://<vpn-wizard-domain>
-VPNW_AWG_PUBLIC_SERVERS='[{"id":"nl","display":"🇳🇱 Нидерланды"},{"id":"fi","display":"🇫🇮 Финляндия"},{"id":"fr","display":"🇫🇷 Франция"},{"id":"tr","display":"🇹🇷 Турция"},{"id":"us","display":"🇺🇸 США"}]'
+VPNW_AWG_PUBLIC_SERVERS='[{"id":"nl","display":"🇳🇱 Нидерланды"},{"id":"fi","display":"🇫🇮 Финляндия"},{"id":"tr","display":"🇹🇷 Турция"},{"id":"us","display":"🇺🇸 США"}]'
+VPNW_CHANNEL_ACCESS_CHANNEL_URL="https://t.me/fodders_dev"
+VPNW_CHANNEL_ACCESS_SERVER_ID="nl"
 ```
 
 The handler links to:
@@ -120,7 +120,9 @@ offers `/qr` and the official AmneziaWG downloads page.
 | `GET`  | `/api/awg/{telegram_id}/config` | link token + active sub | issue/reuse `.conf` |
 | `GET`  | `/api/awg/{telegram_id}/qr` | link token + active sub | same config as PNG QR |
 | `GET`  | `/api/awg/servers` | public labels only | list exit choices without IPs/SSH secrets |
-| `POST` | `/api/portal/channel-offer/claim` | Telegram cabinet session + channel membership | claim the one-time channel gift |
+| `POST` | `/api/portal/channel-access/verify` | Telegram cabinet session + channel membership | enable permanent one-device NL access |
+| `POST` | `/api/web/invite/{code}/redeem` | one-time invite code | enable NL for 12 hours without Telegram |
+| `POST` | `/api/web/invite/{code}/link` | signed bot request + channel membership | keep the same peer under the real Telegram id |
 
 ## Behaviour notes
 
@@ -134,8 +136,9 @@ offers `/qr` and the official AmneziaWG downloads page.
   `user.deleted`, its public key is removed from the live interface but its keys and
   encrypted config are retained. A renewal restores the same peer, so the user's
   already-imported `.conf` works again.
-- **Trial isolation:** when `VPNW_AWG_TRIAL_SERVER_ID` is set, both live webhooks
-  and the reconciliation timer keep trial peers suspended on every other exit.
+- **Channel isolation:** channel membership and website grace permit only slot 1
+  on `VPNW_CHANNEL_ACCESS_SERVER_ID`. Remnawave remains the authority for paid
+  exits, extra devices, family access, and managed proxy features.
 - If the AWG fallback env is not set, the endpoints return `503` and the rest of the
   product is unaffected.
 

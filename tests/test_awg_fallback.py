@@ -545,10 +545,10 @@ def test_reconcile_applies_entitlement_to_every_installed_server(tmp_path: Path)
     assert fi_suspended == ["sub-1-fi"]
 
 
-def test_reconcile_keeps_trial_only_on_its_free_server(tmp_path: Path) -> None:
+def test_reconcile_keeps_channel_member_only_on_free_netherlands(tmp_path: Path) -> None:
     store = _store(tmp_path)
     nl_suspended: list[str] = []
-    fr_suspended: list[str] = []
+    us_suspended: list[str] = []
     nl = AwgFallbackService(
         store,
         provision=lambda name: f"NL-{name}",
@@ -556,33 +556,67 @@ def test_reconcile_keeps_trial_only_on_its_free_server(tmp_path: Path) -> None:
         suspend=lambda name: nl_suspended.append(name) or True,
         resume=lambda name: True,
     )
-    fr = AwgFallbackService(
+    us = AwgFallbackService(
         store,
-        server_id="fr",
-        provision=lambda name: f"FR-{name}",
+        server_id="us",
+        provision=lambda name: f"US-{name}",
         deprovision=lambda name: True,
-        suspend=lambda name: fr_suspended.append(name) or True,
+        suspend=lambda name: us_suspended.append(name) or True,
         resume=lambda name: True,
     )
     nl.issue(77)
-    fr.issue(77)
+    us.issue(77)
 
-    class Active:
+    class Inactive:
         @staticmethod
         def active_user(_telegram_id: int):
-            return {"uuid": "active", "hwidDeviceLimit": 1}
+            return None
 
     result = reconcile_awg_peers(
         store,
-        Active(),
+        Inactive(),
         nl,
-        server_services={"fr": fr},
+        server_services={"us": us},
         legacy_server_id="nl",
-        trial_server_id="fr",
-        trial_lookup=lambda _telegram_id: True,
+        free_server_id="nl",
+        free_access_lookup=lambda _telegram_id: True,
     )
 
     assert result["suspended"] == 1
     assert result["unchanged"] == 1
-    assert nl_suspended == ["sub-77"]
-    assert fr_suspended == []
+    assert nl_suspended == []
+    assert us_suspended == ["sub-77-us"]
+
+
+def test_expired_web_bridge_suspends_without_querying_billing(tmp_path: Path) -> None:
+    from vpn_wizard.web_signup import web_account_id
+
+    store = _store(tmp_path)
+    suspended: list[str] = []
+    service = AwgFallbackService(
+        store,
+        provision=lambda name: f"NL-{name}",
+        deprovision=lambda name: True,
+        suspend=lambda name: suspended.append(name) or True,
+        resume=lambda name: True,
+    )
+    guest = web_account_id(42)
+    service.issue(guest)
+
+    class BillingMustNotSeeWebIds:
+        @staticmethod
+        def active_user(_telegram_id: int):
+            raise AssertionError("synthetic web id leaked to billing")
+
+    result = reconcile_awg_peers(
+        store,
+        BillingMustNotSeeWebIds(),
+        service,
+        legacy_server_id="nl",
+        free_server_id="nl",
+        free_access_lookup=lambda _telegram_id: False,
+    )
+
+    assert result["suspended"] == 1
+    assert result["errors"] == []
+    assert suspended == [peer_name(guest)]

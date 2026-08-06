@@ -61,23 +61,24 @@ def test_connect_page_is_a_private_unified_portal() -> None:
     assert "Поделиться VPN с близким" in html
     assert "Открыть» и «Скопировать» — это одна и та же семейная ссылка" in html
     assert "Делиться выгодно" in html
-    assert "Подарок подписчикам Fodder’s Dev" in html
+    assert "Бесплатно подписчикам Fodder’s Dev" in html
     assert 'id="claim-offer"' in html
     assert 'request("/api/portal/links")' in html
-    assert 'fetch("/api/portal/channel-offer/claim"' in html
+    assert 'fetch("/api/portal/channel-access/verify"' in html
     assert 'id="trial-countdown"' in html
     assert 'id="wizard-link-main"' in html
     assert "Подключение займёт около двух минут" in html
 
 
-def test_free_profile_is_visibly_and_technically_scoped_to_france() -> None:
+def test_free_profile_is_visibly_and_technically_scoped_to_netherlands() -> None:
     portal = (ROOT / "web" / "connect" / "index.html").read_text(encoding="utf-8")
     installer = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
     server = (ROOT / "src" / "vpn_wizard" / "server.py").read_text(encoding="utf-8")
-    assert "Один профиль на новом сервере во Франции" in portal
-    assert 'trial:p.get("trial")==="1"' in installer
+    assert "Нидерланды без срока окончания" in portal
+    assert 'free:p.get("free")==="1"' in installer
     assert "servers.filter(function(item){return item.id===u.server;})" in installer
-    assert "The free profile is available on the France server only." in server
+    assert "Бесплатный профиль работает только на сервере Нидерланды." in server
+    assert 'VPNW_CHANNEL_ACCESS_SERVER_ID' in server or 'ChannelAccessConfig' in server
 
 
 def test_portal_prices_match_the_bot() -> None:
@@ -101,8 +102,7 @@ def test_portal_prices_match_the_bot() -> None:
         assert invented not in html, invented
     # Stars is the only method actually switched on in the bot.
     assert "Telegram Stars" in html
-    # The trial is the hook, and it costs the visitor nothing to check.
-    assert "7 дней бесплатно, карта не нужна" in html
+    assert "Нидерланды остаются бесплатными" in html
 
 
 def test_help_does_not_advertise_a_competitor() -> None:
@@ -425,6 +425,23 @@ def test_bot_can_mint_an_invite() -> None:
     assert "Command('invite'" in handler
     assert "INVITE_CALLBACK" in handler
     assert "/invites" in handler
+
+
+def test_website_grace_hands_the_same_profile_to_telegram() -> None:
+    join = (ROOT / "web" / "connect" / "join.html").read_text(encoding="utf-8")
+    installer = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    handler = (
+        ROOT / "deploy" / "bedolaga" / "overrides" / "app" / "handlers" / "fodders_vpn1.py"
+    ).read_text(encoding="utf-8")
+    server = (ROOT / "src" / "vpn_wizard" / "server.py").read_text(encoding="utf-8")
+
+    assert 'body.grace_expires_at' in join
+    assert 'body.bind_url' in join
+    assert 'id="grace-countdown" role="timer" aria-live="off"' in installer
+    assert 'id="grace-actions" hidden' in installer
+    assert "payload.lower().startswith('web_')" in handler
+    assert "/api/web/invite/{code}/link" in server
+    assert "channel_access_link_owner" in server
 
 
 def test_metrics_dashboard_is_owner_scoped_and_private() -> None:

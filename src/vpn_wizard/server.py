@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 import base64
 from collections import OrderedDict
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from io import BytesIO
 import importlib.metadata
 import json
@@ -15,7 +15,6 @@ import socket
 import subprocess
 import time
 from urllib.parse import urlencode, urlparse
-from urllib import error as urllib_error, request as urllib_request
 import tempfile
 from typing import Any, Callable, Optional
 import threading
@@ -60,6 +59,13 @@ from vpn_wizard.awg_devices import (
 )
 from vpn_wizard.awg_servers import AwgRegistry, AwgRegistryError, apply_preset
 from vpn_wizard.bot_api import BotApiClient, referral_link, subscription_facts_of
+from vpn_wizard.channel_access import (
+    ChannelAccessConfig,
+    ChannelAccessError,
+    ChannelAccessStatus,
+    access_status as channel_access_status,
+    telegram_channel_member,
+)
 from vpn_wizard.metrics import collect as collect_metrics, owner_ids
 from vpn_wizard.web_signup import (
     InviteConfig,
@@ -559,18 +565,18 @@ class PortalLinksResponse(BaseModel):
     expires_at: Optional[str] = None
     traffic_limit_gb: Optional[float] = None
     traffic_used_gb: Optional[float] = None
-    channel_offer_available: bool = False
-    channel_offer_claimed: bool = False
-    channel_offer_days: int = 7
-    channel_offer_channel_url: Optional[str] = None
-    channel_offer_server_id: Optional[str] = None
+    channel_access_enabled: bool = False
+    channel_access_active: bool = False
+    channel_access_available: bool = False
+    channel_access_kind: Optional[str] = None
+    channel_access_channel_url: Optional[str] = None
+    channel_access_server_id: Optional[str] = None
+    channel_access_grace_expires_at: Optional[int] = None
 
 
-class ChannelOfferClaimResponse(BaseModel):
+class ChannelAccessVerifyResponse(BaseModel):
     ok: bool
     active: bool
-    days: int
-    expires_at: Optional[str] = None
     personal_vpn_url: str
     server_id: str
 
@@ -593,14 +599,14 @@ class InviteCreateResponse(BaseModel):
 class InviteListResponse(BaseModel):
     ok: bool
     max_outstanding: int
-    trial_days: int
+    grace_hours: int
     invites: list[dict[str, Any]]
 
 
 class InviteCheckResponse(BaseModel):
     ok: bool
     valid: bool
-    trial_days: int = 0
+    grace_hours: int = 0
     detail: Optional[str] = None
 
 
@@ -608,7 +614,17 @@ class InviteRedeemResponse(BaseModel):
     ok: bool
     telegram_id: int
     token: str
-    trial_days: int
+    grace_hours: int
+    grace_expires_at: int
+    server_id: str
+    bind_url: str
+
+
+class InviteLinkResponse(BaseModel):
+    ok: bool
+    linked: bool
+    personal_vpn_url: str
+    server_id: str
 
 
 class AwgDeviceListResponse(BaseModel):
@@ -1253,77 +1269,16 @@ def auth_logout(request: Request, response: Response) -> CurrentUserResponse:
     return CurrentUserResponse(ok=True, authenticated=False)
 
 
-@dataclass(frozen=True)
-class ChannelOfferConfig:
-    enabled: bool
-    key: str
-    channel_id: str
-    channel_url: str
-    days: int
-    traffic_limit_gb: int
-    server_id: str
-
-    @classmethod
-    def from_env(cls) -> "ChannelOfferConfig":
-        enabled = (os.getenv("VPNW_CHANNEL_OFFER_ENABLED") or "").strip().lower() in {
-            "1", "true", "yes", "on"
-        }
-        return cls(
-            enabled=enabled,
-            key=(os.getenv("VPNW_CHANNEL_OFFER_KEY") or "fodders-dev-2026-08").strip(),
-            channel_id=(os.getenv("VPNW_CHANNEL_OFFER_CHANNEL_ID") or "").strip(),
-            channel_url=(
-                os.getenv("VPNW_CHANNEL_OFFER_CHANNEL_URL") or "https://t.me/fodders_dev"
-            ).strip(),
-            days=max(1, int((os.getenv("VPNW_CHANNEL_OFFER_DAYS") or "7").strip())),
-            traffic_limit_gb=max(
-                1, int((os.getenv("VPNW_CHANNEL_OFFER_TRAFFIC_GB") or "100").strip())
-            ),
-            server_id=(os.getenv("VPNW_AWG_TRIAL_SERVER_ID") or "fr").strip(),
-        )
-
-    @property
-    def configured(self) -> bool:
-        return bool(
-            self.enabled
-            and self.key
-            and self.channel_id
-            and self.channel_url
-            and self.server_id
-        )
-
-
-def _channel_offer_member(config: ChannelOfferConfig, telegram_id: int) -> bool:
-    """Ask Telegram directly; the bot is already an admin of the channel."""
-    query = urlencode({"chat_id": config.channel_id, "user_id": int(telegram_id)})
-    url = f"https://api.telegram.org/bot{_telegram_bot_token()}/getChatMember?{query}"
-    try:
-        with urllib_request.urlopen(url, timeout=5) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except (urllib_error.URLError, TimeoutError, OSError, ValueError) as exc:
-        raise HTTPException(
-            status_code=502,
-            detail={"code": "membership_check_failed", "message": "Не удалось проверить канал."},
-        ) from exc
-    result = payload.get("result") if isinstance(payload, dict) else None
-    if not payload.get("ok") or not isinstance(result, dict):
-        raise HTTPException(
-            status_code=502,
-            detail={"code": "membership_check_failed", "message": "Не удалось проверить канал."},
-        )
-    status = str(result.get("status") or "")
-    return status in {"creator", "administrator", "member"} or (
-        status == "restricted" and bool(result.get("is_member"))
-    )
-
-
-def _channel_offer_personal_url(base: str, telegram_id: int, secret: str, server_id: str) -> str:
+def _channel_access_personal_url(
+    base: str, telegram_id: int, secret: str, server_id: str, *, web: bool = False
+) -> str:
     query = urlencode(
         {
             "tid": int(telegram_id),
             "token": issue_token(secret, telegram_id),
             "server": server_id,
-            "trial": 1,
+            "free": 1,
+            **({"web": 1} if web else {}),
         }
     )
     return f"{base}/connect/awg.html?{query}"
@@ -1358,15 +1313,15 @@ def portal_links(request: Request) -> Response:
             ),
         }
     )
-    offer = ChannelOfferConfig.from_env()
+    channel = ChannelAccessConfig.from_env()
     payload = PortalLinksResponse(
         ok=True,
         personal_vpn_url=f"{base}/connect/awg.html?{personal_query}",
         family_vpn_url=f"{base}/connect/awg.html?{family_query}",
         server_wizard_url=f"{base}/wizard/",
-        channel_offer_days=offer.days,
-        channel_offer_channel_url=offer.channel_url if offer.configured else None,
-        channel_offer_server_id=offer.server_id if offer.configured else None,
+        channel_access_enabled=channel.configured,
+        channel_access_channel_url=channel.channel_url if channel.configured else None,
+        channel_access_server_id=channel.free_server_id if channel.configured else None,
     )
     try:
         active_user = RemnawaveClient(RemnawaveConfig.from_env()).active_user(telegram_id)
@@ -1375,6 +1330,21 @@ def portal_links(request: Request) -> Response:
     if active_user:
         payload.subscription_active = True
         payload.device_limit = device_limit_of(active_user)
+    try:
+        free_access = channel_access_status(
+            _account_store(), telegram_id, channel, refresh_membership=False
+        )
+    except ChannelAccessError:
+        free_access = ChannelAccessStatus(configured=channel.configured, active=False)
+    payload.channel_access_active = free_access.active
+    payload.channel_access_available = bool(channel.configured and not free_access.active)
+    payload.channel_access_kind = free_access.kind
+    payload.channel_access_grace_expires_at = free_access.grace_expires_at
+    if free_access.active and not active_user:
+        payload.device_limit = 1
+        payload.personal_vpn_url = _channel_access_personal_url(
+            base, telegram_id, config.link_secret, channel.free_server_id
+        )
     # The invite link must be personal, or nobody is credited for bringing
     # anyone in. The code lives in the bot's database; if it is unreachable the
     # portal simply shows no invite rather than a shared link that rewards no one.
@@ -1390,130 +1360,52 @@ def portal_links(request: Request) -> Response:
     payload.expires_at = facts["expires_at"]
     payload.traffic_limit_gb = facts["traffic_limit_gb"]
     payload.traffic_used_gb = facts["traffic_used_gb"]
-    claim = (
-        _account_store().promo_claim_get(offer.key, telegram_id)
-        if offer.configured
-        else None
-    )
-    payload.channel_offer_claimed = bool(claim and claim.get("status") == "claimed")
-    payload.channel_offer_available = bool(
-        offer.configured and not payload.subscription_active and not payload.channel_offer_claimed
-    )
-    if payload.subscription_active and payload.is_trial and offer.configured:
-        payload.personal_vpn_url = _channel_offer_personal_url(
-            base, telegram_id, config.link_secret, offer.server_id
-        )
     return JSONResponse(
         payload.model_dump(),
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
     )
 
 
-@app.post("/api/portal/channel-offer/claim", response_model=ChannelOfferClaimResponse)
-def claim_channel_offer(request: Request) -> ChannelOfferClaimResponse:
-    """Grant one real, backend-enforced week to a verified channel member."""
+@app.post("/api/portal/channel-access/verify", response_model=ChannelAccessVerifyResponse)
+def verify_channel_access(request: Request) -> ChannelAccessVerifyResponse:
+    """Turn verified Fodder's Dev membership into permanent one-device NL access."""
     account = _require_account(request)
     telegram_id = int(account["user"]["telegram_id"])
-    offer = ChannelOfferConfig.from_env()
-    if not offer.configured:
-        raise HTTPException(status_code=404, detail="Channel offer is not available.")
-
+    channel = ChannelAccessConfig.from_env()
+    if not channel.configured:
+        raise HTTPException(status_code=404, detail="Бесплатный доступ пока не включён.")
     awg = AwgFallbackConfig.from_env()
     base = _public_base_url_from_request(request)
     if not awg.link_secret or not base:
         raise HTTPException(status_code=503, detail="VPN links are not configured.")
-
     try:
-        active_user = RemnawaveClient(RemnawaveConfig.from_env()).active_user(telegram_id)
-    except RemnawaveError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    if active_user:
+        status = channel_access_status(
+            _account_store(),
+            telegram_id,
+            channel,
+            refresh_membership=True,
+            create_member=True,
+        )
+    except ChannelAccessError as exc:
+        raise HTTPException(status_code=502, detail="Не удалось проверить подписку. Попробуйте ещё раз.") from exc
+    if not status.active:
         raise HTTPException(
-            status_code=409,
-            detail={"code": "subscription_active", "message": "Доступ уже активен."},
+            status_code=403,
+            detail={
+                "code": "channel_membership_required",
+                "message": "Сначала подпишитесь на Fodder’s Dev.",
+                "channel_url": channel.channel_url,
+            },
         )
-
-    store = _account_store()
-    existing_claim = store.promo_claim_get(offer.key, telegram_id)
-    if existing_claim and existing_claim.get("status") == "claimed":
-        raise HTTPException(
-            status_code=409,
-            detail={"code": "already_claimed", "message": "Подарок уже был получен."},
-        )
-    if not store.promo_claim_reserve(offer.key, telegram_id):
-        raise HTTPException(
-            status_code=409,
-            detail={"code": "claim_in_progress", "message": "Выдача уже идёт. Обновите страницу."},
-        )
-
-    try:
-        if not _channel_offer_member(offer, telegram_id):
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "code": "channel_membership_required",
-                    "message": "Сначала подпишитесь на Fodder’s Dev.",
-                    "channel_url": offer.channel_url,
-                },
-            )
-
-        bot = BotApiClient()
-        bot_user = bot.user_by_telegram_id(telegram_id)
-        if not bot_user:
-            local_user = account["user"]
-            bot_user = bot.create_user(
-                telegram_id,
-                first_name=str(local_user.get("first_name") or "Подписчик Fodder’s Dev"),
-            )
-        bot_user_id = int((bot_user or {}).get("id") or 0)
-        if bot_user_id <= 0:
-            raise HTTPException(status_code=502, detail="Не удалось создать профиль в боте.")
-        granted = bot.grant_trial(
-            bot_user_id,
-            days=offer.days,
-            device_limit=1,
-            traffic_limit_gb=offer.traffic_limit_gb,
-            replace_existing=True,
-        )
-        facts = subscription_facts_of(granted)
-        if not granted or not facts.get("known") or not facts.get("is_trial"):
-            raise HTTPException(status_code=502, detail="Не удалось включить бесплатный профиль.")
-
-        expires_raw = str(facts.get("expires_at") or "") or None
-        expires_stamp: Optional[int] = None
-        if expires_raw:
-            try:
-                expires_stamp = int(
-                    datetime.fromisoformat(expires_raw.replace("Z", "+00:00")).timestamp()
-                )
-            except ValueError:
-                expires_stamp = None
-        if expires_stamp is None:
-            expires_stamp = int((datetime.now(timezone.utc) + timedelta(days=offer.days)).timestamp())
-        if not store.promo_claim_complete(
-            offer.key, telegram_id, expires_at=expires_stamp
-        ):
-            raise HTTPException(status_code=500, detail="Не удалось сохранить выдачу подарка.")
-
-        # The Remnawave webhook may arrive before or after this request. Applying
-        # the same policy here makes the result immediate and idempotent.
-        _awg_webhook_apply("enable", telegram_id)
-        return ChannelOfferClaimResponse(
-            ok=True,
-            active=True,
-            days=offer.days,
-            expires_at=expires_raw,
-            personal_vpn_url=_channel_offer_personal_url(
-                base, telegram_id, awg.link_secret, offer.server_id
-            ),
-            server_id=offer.server_id,
-        )
-    except HTTPException:
-        store.promo_claim_release(offer.key, telegram_id)
-        raise
-    except Exception as exc:
-        store.promo_claim_release(offer.key, telegram_id)
-        raise HTTPException(status_code=502, detail=_error_message(exc)) from exc
+    _awg_webhook_apply("policy", telegram_id)
+    return ChannelAccessVerifyResponse(
+        ok=True,
+        active=True,
+        personal_vpn_url=_channel_access_personal_url(
+            base, telegram_id, awg.link_secret, channel.free_server_id
+        ),
+        server_id=channel.free_server_id,
+    )
 
 
 @app.get("/api/account/servers", response_model=SavedServerListResponse)
@@ -3079,16 +2971,76 @@ def _awg_registry() -> AwgRegistry:
         raise HTTPException(status_code=500, detail=f"AWG registry is invalid: {exc}") from exc
 
 
-def _awg_trial_server_id() -> Optional[str]:
-    return (os.getenv("VPNW_AWG_TRIAL_SERVER_ID") or "").strip() or None
+@dataclass(frozen=True)
+class _AwgEntitlement:
+    paid_user: Optional[dict[str, Any]]
+    free: ChannelAccessStatus
+    billing_error: Optional[Exception] = None
+    free_error: Optional[Exception] = None
 
 
-def _billing_trial_state(telegram_id: int) -> Optional[bool]:
-    """True/False when billing answered, None when policy cannot be determined."""
-    facts = subscription_facts_of(BotApiClient().user_by_telegram_id(telegram_id))
-    if not facts.get("known"):
-        return None
-    return bool(facts.get("is_trial"))
+def _awg_entitlement(telegram_id: int) -> _AwgEntitlement:
+    """Resolve paid and channel access independently so either can keep NL alive."""
+    paid_user: Optional[dict[str, Any]] = None
+    billing_error: Optional[Exception] = None
+    # Website bridge ids are deliberately outside Telegram's id range and can
+    # never own a paid subscription. Some panel versions reject such a lookup;
+    # treating that rejection as an outage would fail open after the 12h grace.
+    if not is_web_account(telegram_id):
+        try:
+            paid_user = RemnawaveClient(RemnawaveConfig.from_env()).active_user(telegram_id)
+        except RemnawaveError as exc:
+            billing_error = exc
+    free_error: Optional[Exception] = None
+    try:
+        free = channel_access_status(build_account_store(), telegram_id)
+    except ChannelAccessError as exc:
+        free_error = exc
+        free = ChannelAccessStatus(configured=True, active=False)
+    return _AwgEntitlement(
+        paid_user=paid_user,
+        free=free,
+        billing_error=billing_error,
+        free_error=free_error,
+    )
+
+
+def _awg_authorise_entitlement(
+    entitlement: _AwgEntitlement,
+    *,
+    server_id: Optional[str],
+    required_device_slot: Optional[int],
+) -> tuple[int, str]:
+    """Return (device limit, access kind) or explain why this request is denied."""
+    if entitlement.paid_user:
+        limit = device_limit_of(entitlement.paid_user)
+        if required_device_slot is None or required_device_slot <= limit:
+            return limit, "paid"
+
+    channel = ChannelAccessConfig.from_env()
+    free_slot = required_device_slot == 1
+    free_location = server_id is None or server_id == channel.free_server_id
+    if entitlement.free.active and free_slot and free_location:
+        return 1, entitlement.free.kind or "member"
+
+    if entitlement.billing_error is not None:
+        raise HTTPException(status_code=502, detail=str(entitlement.billing_error))
+    if entitlement.free_error is not None:
+        raise HTTPException(
+            status_code=502,
+            detail="Не удалось проверить подписку на канал. Попробуйте ещё раз.",
+        )
+    if entitlement.free.active and not free_location:
+        raise HTTPException(
+            status_code=403,
+            detail="Бесплатный профиль работает только на сервере Нидерланды.",
+        )
+    if entitlement.free.active and not free_slot:
+        raise HTTPException(
+            status_code=403,
+            detail="Бесплатный профиль доступен только для одного устройства.",
+        )
+    raise HTTPException(status_code=403, detail="Нет активного доступа к VPN.")
 
 
 def _awg_issue_config(
@@ -3151,7 +3103,25 @@ def _awg_issue_entitled_config(
 ) -> tuple[str, Optional[object]]:
     """Provision ``peer_id`` using another Telegram account's entitlement."""
     registry = _awg_registry()
-    server = registry.get_server(server_id)
+    requested_server = registry.get_server(server_id) if server_id else None
+    if server_id and requested_server is None:
+        raise HTTPException(status_code=404, detail="Unknown AWG server.")
+    if requested_server is not None and not requested_server.enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="This location is temporarily unavailable. Please pick another one.",
+        )
+    entitlement = _awg_entitlement(entitlement_telegram_id)
+    channel = ChannelAccessConfig.from_env()
+    effective_server_id = server_id
+    if not entitlement.paid_user and entitlement.free.active and not effective_server_id:
+        effective_server_id = channel.free_server_id
+    _limit, access_kind = _awg_authorise_entitlement(
+        entitlement,
+        server_id=effective_server_id,
+        required_device_slot=required_device_slot,
+    )
+    server = requested_server or registry.get_server(effective_server_id)
     if server_id and server is None:
         raise HTTPException(status_code=404, detail="Unknown AWG server.")
     if server is None or not server.usable:
@@ -3165,30 +3135,9 @@ def _awg_issue_entitled_config(
             detail="This location is temporarily unavailable. Please pick another one.",
         )
     try:
-        user = RemnawaveClient(RemnawaveConfig.from_env()).active_user(
-            entitlement_telegram_id
-        )
-    except RemnawaveError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    if not user:
-        raise HTTPException(status_code=403, detail="No active subscription.")
-    trial_server_id = _awg_trial_server_id()
-    if trial_server_id and server.id != trial_server_id:
-        is_trial = _billing_trial_state(entitlement_telegram_id)
-        if is_trial is True:
-            raise HTTPException(
-                status_code=403,
-                detail="The free profile is available on the France server only.",
-            )
-    if required_device_slot is not None and required_device_slot > device_limit_of(user):
-        raise HTTPException(
-            status_code=403,
-            detail="This device is not included in the active subscription.",
-        )
-    try:
         result = _awg_service_for(server, registry).issue(
             peer_id,
-            remnawave_uuid=user.get("uuid"),
+            remnawave_uuid=(entitlement.paid_user or {}).get("uuid"),
         )
     except Exception as exc:  # provisioning/SSH failure
         raise HTTPException(status_code=502, detail=f"AWG provisioning failed: {_error_message(exc)}") from exc
@@ -3197,6 +3146,13 @@ def _awg_issue_entitled_config(
     preset = registry.get_preset(preset_id) if preset_id else None
     if preset_id and preset is None:
         raise HTTPException(status_code=404, detail="Unknown profile.")
+    logger.info(
+        "awg.issue tid=%s peer=%s server=%s access=%s",
+        entitlement_telegram_id,
+        peer_id,
+        server.id,
+        access_kind,
+    )
     return _awg_label_config(apply_preset(result["config"], preset), server), server
 
 
@@ -3222,24 +3178,28 @@ def _awg_access(
     )
     if not valid:
         raise HTTPException(status_code=403, detail="Invalid or missing token.")
-    try:
-        user = RemnawaveClient(RemnawaveConfig.from_env()).active_user(telegram_id)
-    except RemnawaveError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    if not user:
-        raise HTTPException(status_code=403, detail="No active subscription.")
-    paid_limit = device_limit_of(user)
-    if family and paid_limit < 2:
-        raise HTTPException(
-            status_code=403,
-            detail="Family access requires a subscription with at least two devices.",
-        )
+    entitlement = _awg_entitlement(telegram_id)
+    paid_limit, access_kind = _awg_authorise_entitlement(
+        entitlement,
+        server_id=None,
+        required_device_slot=2 if family else 1,
+    )
     return AwgAccessResponse(
         ok=True,
         active=True,
         device_limit=1 if family else paid_limit,
         family=family,
-        expires_at=str(user.get("expireAt") or "") or None,
+        expires_at=(
+            str((entitlement.paid_user or {}).get("expireAt") or "") or None
+            if access_kind == "paid"
+            else (
+                datetime.fromtimestamp(
+                    int(entitlement.free.grace_expires_at), timezone.utc
+                ).isoformat()
+                if entitlement.free.grace_expires_at
+                else None
+            )
+        ),
     )
 
 
@@ -3296,8 +3256,16 @@ def _awg_webhook_apply(action: str, telegram_id: int) -> None:
             _error_message(exc),
         )
         return
-    is_trial = _billing_trial_state(telegram_id) if action == "enable" else None
-    trial_server_id = _awg_trial_server_id()
+    entitlement = _awg_entitlement(telegram_id) if action == "policy" else None
+    paid_active = action == "enable" or bool(entitlement and entitlement.paid_user)
+    billing_unknown = bool(entitlement and entitlement.billing_error)
+    free_unknown = False
+    try:
+        free = channel_access_status(build_account_store(), telegram_id)
+    except ChannelAccessError:
+        free_unknown = True
+        free = ChannelAccessStatus(configured=True, active=False)
+    free_server_id = ChannelAccessConfig.from_env().free_server_id
     for logical_server_id, service in services:
         try:
             peer_ids = _awg_peer_ids_for_owner(service, telegram_id)
@@ -3306,12 +3274,22 @@ def _awg_webhook_apply(action: str, telegram_id: int) -> None:
             logger.warning("awg.webhook.invalid_telegram_id tid=%s", telegram_id)
         for peer_id in peer_ids:
             try:
-                if action == "disable":
-                    service.suspend(peer_id)
-                elif is_trial is True and trial_server_id and logical_server_id != trial_server_id:
-                    service.suspend(peer_id)
-                else:
+                free_allowed = bool(
+                    free.active
+                    and peer_id == int(telegram_id)
+                    and logical_server_id == free_server_id
+                )
+                if paid_active or free_allowed:
                     service.resume(peer_id)
+                elif billing_unknown or (
+                    free_unknown
+                    and peer_id == int(telegram_id)
+                    and logical_server_id == free_server_id
+                ):
+                    # A failed policy lookup is not evidence that access expired.
+                    continue
+                else:
+                    service.suspend(peer_id)
             except Exception as exc:
                 logger.warning(
                     "awg.webhook.sync_failed action=%s tid=%s peer=%s server=%s err=%s",
@@ -3449,13 +3427,11 @@ def _awg_owner_access(telegram_id: int, token: str) -> tuple[int, AwgRegistry]:
         raise HTTPException(status_code=503, detail="AWG fallback is not configured.")
     if not verify_issue_token(awg_cfg.link_secret, telegram_id, token):
         raise HTTPException(status_code=403, detail="Invalid or missing token.")
-    try:
-        user = RemnawaveClient(RemnawaveConfig.from_env()).active_user(telegram_id)
-    except RemnawaveError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    if not user:
-        raise HTTPException(status_code=403, detail="No active subscription.")
-    return device_limit_of(user), _awg_registry()
+    entitlement = _awg_entitlement(telegram_id)
+    limit, _kind = _awg_authorise_entitlement(
+        entitlement, server_id=None, required_device_slot=1
+    )
+    return limit, _awg_registry()
 
 
 def _awg_legacy_server_id() -> Optional[str]:
@@ -3565,10 +3541,13 @@ def awg_family_link(telegram_id: int, token: str) -> JSONResponse:
 @app.get("/api/awg/{telegram_id}/invites", response_model=InviteListResponse)
 def awg_invites(telegram_id: int, token: str) -> InviteListResponse:
     _limit, _registry = _awg_owner_access(telegram_id, token)
+    channel = ChannelAccessConfig.from_env()
+    if not channel.configured:
+        raise HTTPException(status_code=503, detail="Приглашения пока не включены.")
     if is_web_account(telegram_id):
         raise HTTPException(
             status_code=403,
-            detail="Приглашения доступны по платной подписке из Telegram.",
+            detail="Приглашения доступны после привязки Telegram.",
         )
 
     store = build_account_store()
@@ -3578,7 +3557,7 @@ def awg_invites(telegram_id: int, token: str) -> InviteListResponse:
     return InviteListResponse(
         ok=True,
         max_outstanding=config.max_outstanding,
-        trial_days=config.trial_days,
+        grace_hours=channel.web_grace_hours,
         invites=[
             {
                 "code": invite["code"],
@@ -3594,15 +3573,17 @@ def awg_invites(telegram_id: int, token: str) -> InviteListResponse:
 def awg_invite_create(telegram_id: int, token: str) -> InviteCreateResponse:
     """Mint an invite an existing subscriber can pass on outside Telegram.
 
-    A website signup must never reach here: its own trial passes the same
-    active-subscription check, so one leaked code would let free access
+    A website signup must never reach here: its own grace passes the same
+    access check, so one leaked code would let temporary access
     replicate itself without limit.
     """
     _limit, _registry = _awg_owner_access(telegram_id, token)
+    if not ChannelAccessConfig.from_env().configured:
+        raise HTTPException(status_code=503, detail="Приглашения пока не включены.")
     if is_web_account(telegram_id):
         raise HTTPException(
             status_code=403,
-            detail="Приглашения доступны по платной подписке из Telegram.",
+            detail="Приглашения доступны после привязки Telegram.",
         )
 
     try:
@@ -3630,58 +3611,144 @@ def awg_invite_delete(telegram_id: int, code: str, token: str) -> InviteCreateRe
 @app.get("/api/web/invite/{code}", response_model=InviteCheckResponse)
 def web_invite_check(code: str) -> InviteCheckResponse:
     """Tell a visitor whether their code will work, before they commit."""
+    channel = ChannelAccessConfig.from_env()
+    if not channel.configured:
+        return InviteCheckResponse(
+            ok=False,
+            valid=False,
+            detail="Бесплатная выдача пока не включена.",
+        )
     try:
         check_invite(build_account_store(), code)
     except InviteError as exc:
         return InviteCheckResponse(ok=False, valid=False, detail=str(exc))
     return InviteCheckResponse(
-        ok=True, valid=True, trial_days=InviteConfig.from_env().trial_days
+        ok=True, valid=True, grace_hours=channel.web_grace_hours
     )
 
 
 @app.post("/api/web/invite/{code}/redeem", response_model=InviteRedeemResponse)
 def web_invite_redeem(code: str) -> InviteRedeemResponse:
-    """Turn an invite into a working trial, with no Telegram anywhere in the flow."""
+    """Issue one NL profile for 12 hours so Telegram can become reachable."""
     store = build_account_store()
-    config = InviteConfig.from_env()
+    channel = ChannelAccessConfig.from_env()
     awg_cfg = AwgFallbackConfig.from_env()
-    if not awg_cfg.link_secret:
+    if not channel.configured or not awg_cfg.link_secret:
         raise HTTPException(status_code=503, detail="Сервис временно недоступен.")
     try:
         invite = check_invite(store, code)
     except InviteError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    bot = BotApiClient()
-    if not bot.config.configured:
-        raise HTTPException(status_code=503, detail="Регистрация временно недоступна.")
-
     # Claim first: this endpoint is public and unthrottled, so provisioning before
-    # claiming let N parallel requests each create a billing account and a trial
-    # while only one won the code — and the losers were unreachable afterwards,
-    # since nothing recorded them. Reserving the code makes the race harmless, and
-    # a failed signup releases it so nobody loses their only way in.
+    # claiming let N parallel requests each create a working grace row while only
+    # one won the code. Reserving the code makes the race harmless, and a failed
+    # local grant releases it so nobody loses their only way in.
     account_id = web_account_id()
     if not store.invite_redeem(invite["code"], account_id):
         raise HTTPException(status_code=409, detail="Это приглашение только что активировал кто-то другой.")
+    stamp = int(time.time())
+    expires_at = stamp + channel.web_grace_hours * 3600
     try:
-        created = bot.create_user(account_id)
-        if not created or not created.get("id"):
-            raise HTTPException(status_code=502, detail="Не удалось создать аккаунт. Попробуйте позже.")
-        if not bot.grant_trial(int(created["id"]), days=config.trial_days):
-            raise HTTPException(
-                status_code=502,
-                detail="Не удалось выдать пробный доступ. Напишите тому, кто дал код.",
-            )
+        store.channel_access_grant_grace(
+            account_id,
+            invite["code"],
+            expires_at=expires_at,
+            now=stamp,
+        )
     except Exception:
         store.invite_release(invite["code"], account_id)
+        store.channel_access_delete(account_id)
         raise
-
+    bot_username = (os.getenv("VPNW_BOT_USERNAME") or "foddervpnbot").strip().lstrip("@")
     return InviteRedeemResponse(
         ok=True,
         telegram_id=account_id,
         token=issue_token(awg_cfg.link_secret, account_id),
-        trial_days=config.trial_days,
+        grace_hours=channel.web_grace_hours,
+        grace_expires_at=expires_at,
+        server_id=channel.free_server_id,
+        bind_url=f"https://t.me/{bot_username}?start=web_{invite['code']}",
+    )
+
+
+@app.post("/api/web/invite/{code}/link", response_model=InviteLinkResponse)
+def web_invite_link(
+    code: str,
+    telegram_id: int,
+    token: str,
+    request: Request,
+) -> InviteLinkResponse:
+    """Bind a temporary website peer to its verified Telegram channel member."""
+    channel = ChannelAccessConfig.from_env()
+    awg_cfg = AwgFallbackConfig.from_env()
+    if not channel.configured or not awg_cfg.link_secret:
+        raise HTTPException(status_code=503, detail="Сервис временно недоступен.")
+    if not verify_issue_token(awg_cfg.link_secret, telegram_id, token):
+        raise HTTPException(status_code=403, detail="Invalid or missing token.")
+    normalized = normalize_code(code)
+    store = build_account_store()
+    invite = store.invite_get(normalized or "")
+    grace = store.channel_access_by_invite(normalized or "")
+    if (
+        not normalized
+        or not invite
+        or not grace
+        or int(invite.get("used_by") or 0) != int(grace["access_id"])
+    ):
+        raise HTTPException(status_code=404, detail="Временный профиль не найден.")
+    if (
+        grace.get("status") != "active"
+        or int(grace.get("grace_expires_at") or 0) <= int(time.time())
+    ):
+        raise HTTPException(
+            status_code=410,
+            detail="12 часов уже прошли. Попросите новый код.",
+        )
+    try:
+        member = telegram_channel_member(channel, telegram_id)
+    except ChannelAccessError as exc:
+        raise HTTPException(status_code=502, detail="Не удалось проверить подписку.") from exc
+    if not member:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "channel_membership_required",
+                "message": "Сначала подпишитесь на Fodder’s Dev.",
+                "channel_url": channel.channel_url,
+            },
+        )
+
+    web_id = int(grace["access_id"])
+    migrated = store.channel_access_link_owner(
+        web_id, telegram_id, invite_code=normalized
+    )
+    if not migrated:
+        failures: list[str] = []
+        for service in _awg_all_services():
+            try:
+                service.revoke(web_id)
+            except Exception as exc:
+                failures.append(_error_message(exc))
+        if failures:
+            raise HTTPException(
+                status_code=502,
+                detail="Не удалось безопасно удалить временный дубликат.",
+            )
+        store.channel_access_delete(web_id)
+        store.channel_access_grant_member(telegram_id)
+
+    _awg_webhook_apply("policy", telegram_id)
+    base = _public_base_url_from_request(request)
+    if not base:
+        raise HTTPException(status_code=503, detail="Public URL is not configured.")
+    return InviteLinkResponse(
+        ok=True,
+        linked=migrated,
+        personal_vpn_url=_channel_access_personal_url(
+            base, telegram_id, awg_cfg.link_secret, channel.free_server_id
+        ),
+        server_id=channel.free_server_id,
     )
 
 

@@ -24,16 +24,16 @@
 <body>
 <script src="atlas.js"></script>
 
-<div class="app app--plain" style="max-width:420px">
+<main class="app app--plain" style="max-width:420px">
 
   <header style="text-align:center;padding:calc(24px + env(safe-area-inset-top,0px)) 0 0">
-    <img class="head__crest head__crest--lg" src="assets/mascot-empty.png" alt="" onerror="this.onerror=null;this.src='assets/crest.svg'"
+    <img class="head__crest head__crest--lg" src="assets/crest.svg" alt=""
          style="margin:0 auto 14px;display:block">
     <h1 class="h1">Получить Fodder VPN</h1>
-    <p class="t dim" id="lead" style="margin-top:8px">Введите код приглашения —
-      и получите доступ на пробный период. Telegram не нужен.</p>
+    <p class="t dim" id="lead" style="margin-top:8px">Введите код и получите
+      Нидерланды на 12 часов — этого хватит, чтобы открыть Telegram.</p>
     <div class="facts">
-      <span id="fact-days">7 дней бесплатно</span><span>1 устройство</span><span>4 страны</span>
+      <span id="fact-hours">12 часов</span><span>1 устройство</span><span>Нидерланды</span>
     </div>
   </header>
 
@@ -54,14 +54,16 @@
 
   <div class="card stack" style="margin-top:28px">
     <h2 class="h3">Как это работает</h2>
-    <p class="t-sm dim">Код даёт вам <b>собственный профиль</b> на пробный период.
-      Дальше вы установите приложение AmneziaWG и подключитесь — всё на этом сайте,
-      без Telegram.</p>
+    <ol class="t-sm dim" style="margin:0;padding-left:22px">
+      <li>Сайт выдаст ваш собственный профиль AmneziaWG на 12 часов.</li>
+      <li>Подключите его и откройте Telegram через VPN.</li>
+      <li>Подпишитесь на Fodder’s Dev и сохраните этот же профиль без срока.</li>
+    </ol>
     <p class="t-sm mute">Код одноразовый. Если он не подошёл — ничего не изменилось,
       попросите новый у того, кто его прислал.</p>
   </div>
 
-</div>
+</main>
 
 <script>
 (function(){
@@ -93,8 +95,8 @@
     fetch("/api/web/invite/"+encodeURIComponent(preset))
       .then(function(r){return r.json();})
       .then(function(d){
-        if(d&&d.trial_days)$("fact-days").textContent=d.trial_days+" "+
-          Atlas.plural(d.trial_days,"день","дня","дней")+" бесплатно";
+        if(d&&d.grace_hours)$("fact-hours").textContent=d.grace_hours+" "+
+          Atlas.plural(d.grace_hours,"час","часа","часов");
         if(d&&d.valid)show("Код принят. Нажмите «Получить доступ» — это займёт несколько секунд.","ok");
         else if(d&&d.detail)show(d.detail);
       })
@@ -118,14 +120,20 @@
       if(!response.ok||!body||!body.ok){
         // Неудачная попытка ничего не потратила — говорим об этом прямо, иначе
         // человек решит, что сжёг код.
-        show((body&&body.detail)?String(body.detail):"Не удалось активировать. Ничего не изменилось, попробуйте ещё раз.");
+        var detail=body&&body.detail;
+        show(detail?(typeof detail==="object"?(detail.message||"Не удалось активировать."):String(detail)):
+          "Не удалось активировать. Ничего не изменилось, попробуйте ещё раз.");
         stop();
         return;
       }
       show("Доступ готов. Открываем страницу подключения…","ok");
       // Страница подключения и есть кабинет: страна, профиль, QR.
       location.href="/connect/awg.html?tid="+encodeURIComponent(body.telegram_id)
-        +"&token="+encodeURIComponent(body.token);
+        +"&token="+encodeURIComponent(body.token)
+        +"&server="+encodeURIComponent(body.server_id)
+        +"&free=1&web=1"
+        +"&grace_until="+encodeURIComponent(body.grace_expires_at)
+        +"&bind="+encodeURIComponent(body.bind_url);
     }catch(e){
       show("Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.");
       stop();

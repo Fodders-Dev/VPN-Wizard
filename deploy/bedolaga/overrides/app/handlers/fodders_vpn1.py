@@ -171,6 +171,20 @@ def _awg_picker_url(telegram_id: int) -> str | None:
     return f'{base}/connect/awg.html?{query}'
 
 
+def _free_server_id() -> str:
+    return (os.getenv('VPNW_CHANNEL_ACCESS_SERVER_ID') or 'nl').strip().lower()
+
+
+def _channel_access_enabled() -> bool:
+    return (os.getenv('VPNW_CHANNEL_ACCESS_ENABLED') or '').strip().lower() in {
+        '1', 'true', 'yes', 'on',
+    }
+
+
+def _channel_url() -> str:
+    return (os.getenv('VPNW_CHANNEL_ACCESS_CHANNEL_URL') or 'https://t.me/fodders_dev').strip()
+
+
 class FamilyUnavailable(Exception):
     """The family link cannot be issued, with the API's own reason attached."""
 
@@ -249,16 +263,19 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
         return
     servers = _public_servers()
     if _user_is_russian(user):
+        free_copy = (
+            '🎁 <b>Нидерланды бесплатны, пока вы подписаны на Fodder’s Dev.</b> '
+            'Один профиль — без срока окончания.\n\n'
+            if _channel_access_enabled()
+            else '🎁 Бесплатные Нидерланды готовятся к запуску.\n\n'
+        )
         text = (
             '🛡 <b>AmneziaWG — основной режим для РФ</b>\n\n'
             'Этот профиль работает через обфусцированный AmneziaWG и предназначен '
             'для сетей, где Happ/Reality не подключается.\n\n'
-            '🌍 <b>Нажмите страну — конфиг придёт сюда же, файлом.</b> '
-            'Можно взять несколько стран: каждая станет отдельным туннелем '
-            'и все они работают одновременно.\n\n'
-            'Доступ работает только при активной подписке. Если срок закончится, '
-            'сервер приостановит ключ; после продления уже установленный профиль '
-            'заработает снова.\n\n'
+            + free_copy +
+            '🌍 Остальные страны и дополнительные устройства доступны по платной '
+            'подписке. После продления уже установленный профиль заработает снова.\n\n'
             '1. Установите официальное приложение для Android, iPhone, Windows или Mac.\n'
             '2. Нажмите страну и откройте присланный файл в AmneziaWG.\n'
             '3. Включите туннель нужной страны.'
@@ -272,14 +289,17 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
         devices_text = '📱 Мои устройства'
         invite_text = '🎟 Пригласить без Telegram'
     else:
+        free_copy = (
+            '🎁 <b>Netherlands is free while you follow Fodder’s Dev.</b> One profile, '
+            'with no expiry date. '
+            if _channel_access_enabled()
+            else '🎁 Free Netherlands access is being prepared. '
+        )
         text = (
             '🛡 <b>AmneziaWG — primary mode for restricted networks</b>\n\n'
             'This profile uses obfuscated AmneziaWG for networks where Happ/Reality '
             'does not connect.\n\n'
-            '🌍 <b>Tap a country and the config arrives here as a file.</b> '
-            'You may take several countries; each becomes its own tunnel.\n\n'
-            'Access follows your subscription. When it expires the server suspends '
-            'the key; renewing restores the already imported profile.\n\n'
+            + free_copy + 'Other countries and devices require a paid plan.\n\n'
             'Install the official AmneziaWG app, tap a country, open the downloaded '
             '.conf file, and enable that tunnel.'
         )
@@ -298,7 +318,11 @@ async def _send_awg(message: types.Message, user: types.User | None) -> None:
             # sending the user out to a download the WebView will swallow.
             server_rows.append([
                 types.InlineKeyboardButton(
-                    text=f'📥 {label}',
+                    text=(
+                        f'🎁 {label} · бесплатно'
+                        if _channel_access_enabled() and server_id == _free_server_id()
+                        else f'🔒 {label} · по подписке'
+                    ),
                     callback_data=f'{CONFIG_CALLBACK_PREFIX}{server_id}',
                 )
             ])
@@ -418,10 +442,12 @@ async def _fetch(session: aiohttp.ClientSession, url: str) -> tuple[int, bytes]:
 def _download_failure_text(status: int) -> str:
     """Say what actually went wrong, in Russian, with a way forward."""
     if status == 403:
+        if not _channel_access_enabled():
+            return '🔒 Для этой страны нужен активный тариф.'
         return (
-            '🔒 Подписка неактивна или закончилась.\n\n'
-            'Продлите её — уже установленный профиль заработает снова, '
-            'заново импортировать ничего не нужно.'
+            '🔒 Для этой страны нет активного доступа.\n\n'
+            'Нидерланды бесплатны подписчикам Fodder’s Dev; остальные страны '
+            'открываются по платной подписке.'
         )
     if status == 503:
         return (
@@ -759,8 +785,9 @@ async def _send_invite(message: types.Message, user: types.User | None) -> None:
         '🎟 <b>Приглашение готово</b>\n\n'
         f'Код: <code>{html_escape(code)}</code>\n'
         + (f'Ссылка: {html_escape(link)}\n' if link else '')
-        + '\nОтправьте это тому, у кого <b>нет VPN и не открывается Telegram</b> — '
-        'по коду он получит доступ прямо на сайте, без Telegram и без регистрации.\n\n'
+        + '\nОтправьте это тому, у кого <b>нет VPN и не открывается Telegram</b>. '
+        'Сайт выдаст Нидерланды на 12 часов. За это время человек откроет Telegram, '
+        'подпишется на Fodder’s Dev и сохранит тот же профиль навсегда.\n\n'
         'Код одноразовый и действует 14 дней.',
         parse_mode='HTML',
     )
@@ -822,16 +849,27 @@ async def open_family_callback(callback: types.CallbackQuery) -> None:
 
 async def open_portal(message: types.Message) -> None:
     if _is_russian(message):
+        offer = (
+            'Нидерланды бесплатно подписчикам Fodder’s Dev. '
+            if _channel_access_enabled()
+            else 'Бесплатные Нидерланды готовятся к запуску. '
+        )
         text = (
             '🛡 <b>Fodder VPN</b>\n\n'
-            'В одном портале: подключение готового VPN, пять стран, '
-            'семейный доступ и прежний мастер для собственного VPS.'
+            + offer + 'Другие страны, '
+            'дополнительные устройства и прокси для приставок — по подписке. '
+            'Мастер для собственного VPS тоже находится здесь.'
         )
     else:
+        offer = (
+            'Netherlands is free for Fodder’s Dev followers. '
+            if _channel_access_enabled()
+            else 'Free Netherlands access is being prepared. '
+        )
         text = (
             '🛡 <b>Fodder VPN</b>\n\n'
-            'One portal for managed VPN access, five countries, family access, '
-            'and the original bring-your-own-server wizard.'
+            + offer + 'Other countries, '
+            'additional devices, and console proxy setup are paid.'
         )
     await message.answer(text, reply_markup=_keyboard(message), parse_mode='HTML')
 
@@ -842,23 +880,31 @@ async def open_legacy_miniapp(message: types.Message) -> None:
             'Fodders VPN 1 сохранён и продолжает работать.\n\n'
             'В старом мастере доступны подключение собственного VPS, выпуск '
             'профилей AmneziaWG/Xray и диагностика сервера.\n'
-            'Готовая подписка Fodder VPN, пробный период и оплата находятся в /start.'
+            + ('Бесплатные Нидерланды, ' if _channel_access_enabled() else '')
+            + 'Платные страны и оплата находятся в /start.'
         )
     else:
         text = (
             'Fodders VPN 1 is preserved and remains available.\n\n'
             'The original wizard still provides bring-your-own-VPS setup, '
             'AmneziaWG/Xray profiles, and server diagnostics.\n'
-            'Use /start for the managed Fodder VPN subscription, trial, and payments.'
+            'Use /start for '
+            + ('free Netherlands access, ' if _channel_access_enabled() else '')
+            + 'paid locations, and payments.'
         )
     await message.answer(text, reply_markup=_legacy_keyboard(message))
 
 
 async def show_help(message: types.Message) -> None:
     if _is_russian(message):
+        start_label = (
+            'бесплатные Нидерланды, подписка, оплата и подключение'
+            if _channel_access_enabled()
+            else 'подписка, оплата и подключение'
+        )
         text = (
             'Fodder VPN:\n'
-            '• /start — подписка, пробный период, оплата и подключение\n'
+            f'• /start — {start_label}\n'
             '• /awg — стабильное подключение через AmneziaWG\n'
             '• /miniapp — единый портал Fodder VPN\n'
             '• /vpn1 или /wizard — прежний мастер своего сервера\n\n'
@@ -869,9 +915,14 @@ async def show_help(message: types.Message) -> None:
             'Установка приложения и конфиг — в разделе «Подключить VPN».'
         )
     else:
+        start_label = (
+            'free Netherlands, paid plans, payments, and connection'
+            if _channel_access_enabled()
+            else 'paid plans, payments, and connection'
+        )
         text = (
             'Fodder VPN:\n'
-            '• /start — subscription, free trial, payments, and connection\n'
+            f'• /start — {start_label}\n'
             '• /awg — stable connection through AmneziaWG\n'
             '• /miniapp — unified Fodder VPN portal\n'
             '• /vpn1 or /wizard — original server wizard\n\n'
@@ -949,6 +1000,67 @@ def _start_followup_text(payload: str, russian: bool) -> str:
     )
 
 
+async def _link_web_profile(message: types.Message, payload: str) -> None:
+    """Make the 12-hour website key permanent after Telegram membership exists."""
+    if message.from_user is None:
+        return
+    code = payload[len('web_'):].strip().upper()
+    context = _awg_link_context(message.from_user.id)
+    if not code or context is None:
+        await message.answer('⚠️ Ссылка неполная. Вернитесь на сайт и откройте её ещё раз.')
+        return
+    base, token = context
+    url = f'{base}/api/web/invite/{code}/link'
+    timeout = aiohttp.ClientTimeout(total=FETCH_TIMEOUT_SECONDS)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(
+                url,
+                params={'telegram_id': message.from_user.id, 'token': token},
+            ) as response:
+                status = response.status
+                try:
+                    body = await response.json()
+                except Exception:  # noqa: BLE001 - error bodies may be plain text
+                    body = {}
+    except (aiohttp.ClientError, asyncio.TimeoutError):
+        status, body = 0, {}
+
+    if status == 200 and body.get('personal_vpn_url'):
+        text = (
+            '✅ <b>Профиль сохранён навсегда</b>\n\n'
+            'Подписка на Fodder’s Dev подтверждена. Ваши бесплатные Нидерланды '
+            'продолжат работать без переустановки, пока вы остаётесь в канале.\n\n'
+            'Другие страны и прокси для приставок доступны по платной подписке.'
+        )
+        markup = types.InlineKeyboardMarkup(inline_keyboard=[[
+            types.InlineKeyboardButton(
+                text='🛡 Открыть мой VPN', url=str(body['personal_vpn_url'])
+            )
+        ]])
+        await message.answer(text, reply_markup=markup, parse_mode='HTML')
+        return
+
+    if status == 403:
+        bot_username = (os.getenv('VPNW_BOT_USERNAME') or 'foddervpnbot').strip().lstrip('@')
+        retry_url = f'https://t.me/{bot_username}?start=web_{code}'
+        markup = types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(text='➕ Подписаться на Fodder’s Dev', url=_channel_url())],
+            [types.InlineKeyboardButton(text='✅ Я подписался — проверить', url=retry_url)],
+        ])
+        await message.answer(
+            'Сначала подпишитесь на <b>Fodder’s Dev</b>, затем нажмите '
+            '«Я подписался — проверить». Временный профиль пока продолжает работать.',
+            reply_markup=markup,
+            parse_mode='HTML',
+        )
+        return
+    await message.answer(
+        '⚠️ Не удалось сохранить профиль. Попробуйте открыть эту же ссылку ещё раз. '
+        'Если 12 часов уже прошли — попросите новый код.'
+    )
+
+
 async def start_followup_middleware(handler, event, data):
     """Never let a deep link land in a silent chat.
 
@@ -976,6 +1088,10 @@ async def start_followup_middleware(handler, event, data):
         if state is not None and await state.get_state():
             return result
         payload = _start_payload(text)
+        if payload.lower().startswith('web_'):
+            await _link_web_profile(event, payload)
+            await _ensure_keyboard(event)
+            return result
         await event.answer(
             _start_followup_text(payload, _is_russian(event)),
             reply_markup=main_keyboard(),
