@@ -406,7 +406,8 @@
     if(cfg && !qr){ qr=cfg.replace("/config?","/qr?"); }
     var device=parseInt(p.get("device")||"1",10);
     return {cfg:cfg,qr:qr,access:access,devices:devices,server:(p.get("server")||"").trim(),
-            preset:(p.get("preset")||"").trim(),family:!!family,device:device>0?device:1};
+            preset:(p.get("preset")||"").trim(),family:!!family,trial:p.get("trial")==="1",
+            device:device>0?device:1};
   }
   function profileUrl(url,server,device){
     if(!isHttp(url))return url;
@@ -570,7 +571,10 @@
   $("to-3").addEventListener("click",function(){go(3);});
   $("back-to-2").addEventListener("click",function(){go(2);});
   $("to-4").addEventListener("click",function(){go(4);runCheck();});
-  $("row-country").addEventListener("click",function(){returnTo=step;go("country");});
+  $("row-country").addEventListener("click",function(){
+    if(u.trial)return;
+    returnTo=step;go("country");
+  });
   $("row-device").addEventListener("click",function(){returnTo=step;go("device");});
   $("use-country").addEventListener("click",function(){go(returnTo);});
 
@@ -581,6 +585,8 @@
       return {msg:"Семейная ссылка доступна на тарифах от 3 устройств. На текущем тарифе оплачен один профиль.",cta:"Сменить тариф в боте"};
     if(/temporarily unavailable|pick another/i.test(text))
       return {msg:"Эта страна сейчас недоступна. Выберите другую — остальные работают.",cta:""};
+    if(/France server only|free profile/i.test(text))
+      return {msg:"Бесплатный профиль работает на сервере во Франции. Вернитесь в кабинет и откройте его заново.",cta:""};
     if(/No active subscription/i.test(text))
       return {msg:"Подписка неактивна или закончилась. Продлите её — уже импортированный профиль заработает снова.",cta:"Продлить в боте"};
     if(/Invalid or missing/i.test(text)||status===403)
@@ -672,9 +678,17 @@
       .then(function(r){return r.ok?r.json():null;})
       .then(function(d){
         if(!d||!d.servers||!d.servers.length){$("server-buttons").innerHTML="";return;}
-        var pick=d.servers[0];
+        var servers=d.servers;
+        if(u.trial&&u.server){
+          servers=servers.filter(function(item){return item.id===u.server;});
+          if(!servers.length){$("server-buttons").innerHTML="";return;}
+          $("row-country").disabled=true;
+          $("row-country").querySelector(".row__sub").textContent="Бесплатный сервер";
+          $("row-country").querySelector(".row__chev").hidden=true;
+        }
+        var pick=servers[0];
         var wanted=u.server||d.default_server;
-        for(var i=0;i<d.servers.length;i++){ if(d.servers[i].id===wanted){ pick=d.servers[i]; break; } }
+        for(var i=0;i<servers.length;i++){ if(servers[i].id===wanted){ pick=servers[i]; break; } }
         var box=$("server-buttons");box.textContent="";
         function mark(){
           var items=box.querySelectorAll(".pick");
@@ -690,7 +704,7 @@
           try{var page=new URL(location.href);page.searchParams.set("server",item.id);
               history.replaceState(null,"",page.toString());}catch(e){}
         }
-        for(var k=0;k<d.servers.length;k++){
+        for(var k=0;k<servers.length;k++){
           (function(item,index){
             var flag=(item.display||"").trim().split(" ")[0];
             var name=item.label||item.id;
@@ -706,7 +720,7 @@
               '<span class="pick__radio">'+Atlas.icon("check","i--sm")+'</span>';
             node.addEventListener("click",function(){select(item);});
             box.appendChild(node);
-          })(d.servers[k],k);
+          })(servers[k],k);
         }
         select(pick);
 

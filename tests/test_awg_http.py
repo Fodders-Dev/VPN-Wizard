@@ -512,6 +512,53 @@ def test_issuing_a_country_does_not_disturb_the_others(
     assert suspended == []  # nothing revoked behind the user's back
 
 
+def test_trial_can_issue_only_the_configured_free_server(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    secret = "link-secret"
+    owner = 449066726
+    monkeypatch.setenv("VPNW_AWG_LINK_SECRET", secret)
+    monkeypatch.setenv("VPNW_AWG_TRIAL_SERVER_ID", "fr")
+    monkeypatch.setenv(
+        "VPNW_AWG_SERVERS",
+        json.dumps([
+            {"id": "nl", "label": "Нидерланды", "host": "127.0.0.1", "password": "p"},
+            {"id": "fr", "label": "Франция", "host": "2.2.2.2", "password": "p"},
+        ]),
+    )
+
+    class ActiveRemnawave:
+        def __init__(self, config) -> None:
+            self.config = config
+
+        @staticmethod
+        def active_user(_telegram_id: int):
+            return {"uuid": "u", "hwidDeviceLimit": 1}
+
+    monkeypatch.setattr(server_module, "RemnawaveClient", ActiveRemnawave)
+    monkeypatch.setattr(server_module, "_billing_trial_state", lambda _tid: True)
+    monkeypatch.setattr(
+        server_module.AwgFallbackService,
+        "issue",
+        lambda self, telegram_id, **kwargs: {
+            "config": "[Interface]\nPrivateKey = k\n",
+            "client_name": "x",
+            "reused": False,
+        },
+    )
+    token = issue_token(secret, owner)
+
+    denied = client.get(
+        f"/api/awg/{owner}/config", params={"token": token, "server": "nl"}
+    )
+    allowed = client.get(
+        f"/api/awg/{owner}/config", params={"token": token, "server": "fr"}
+    )
+    assert denied.status_code == 403
+    assert "France server only" in denied.text
+    assert allowed.status_code == 200
+
+
 # --- disabled exits: hidden from choice, still managed -------------------------
 
 def test_disabled_server_is_hidden_and_refuses_new_configs(

@@ -61,6 +61,23 @@ def test_connect_page_is_a_private_unified_portal() -> None:
     assert "Поделиться VPN с близким" in html
     assert "Открыть» и «Скопировать» — это одна и та же семейная ссылка" in html
     assert "Делиться выгодно" in html
+    assert "Подарок подписчикам Fodder’s Dev" in html
+    assert 'id="claim-offer"' in html
+    assert 'request("/api/portal/links")' in html
+    assert 'fetch("/api/portal/channel-offer/claim"' in html
+    assert 'id="trial-countdown"' in html
+    assert 'id="wizard-link-main"' in html
+    assert "Подключение займёт около двух минут" in html
+
+
+def test_free_profile_is_visibly_and_technically_scoped_to_france() -> None:
+    portal = (ROOT / "web" / "connect" / "index.html").read_text(encoding="utf-8")
+    installer = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    server = (ROOT / "src" / "vpn_wizard" / "server.py").read_text(encoding="utf-8")
+    assert "Один профиль на новом сервере во Франции" in portal
+    assert 'trial:p.get("trial")==="1"' in installer
+    assert "servers.filter(function(item){return item.id===u.server;})" in installer
+    assert "The free profile is available on the France server only." in server
 
 
 def test_portal_prices_match_the_bot() -> None:

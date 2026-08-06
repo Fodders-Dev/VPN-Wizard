@@ -13,7 +13,7 @@ subscription Bedolaga sells:
         │                                                      (/api/users/by-telegram-id)
         │  yes → add/reuse AWG peer "sub-<tid>-<server>" over SSH, return .conf + QR
         ▼
-   selected AWG VPS  (NL / FI / TR / US)
+   selected AWG VPS  (NL / FI / FR / TR / US)
 
    Remnawave ──(2) push: user.disabled / user.expired / user.revoked──►  vpn_wizard
                      POST /api/integrations/remnawave/webhook (HMAC-signed)
@@ -62,9 +62,21 @@ VPNW_AWG_DEFAULT_SERVER="nl"
 VPNW_AWG_SERVERS='[
   {"id":"nl","label":"Нидерланды","flag":"🇳🇱","host":"127.0.0.1","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":443},
   {"id":"fi","label":"Финляндия","flag":"🇫🇮","host":"203.0.113.20","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":3478},
+  {"id":"fr","label":"Франция","flag":"🇫🇷","host":"203.0.113.25","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":3478},
   {"id":"tr","label":"Турция","flag":"🇹🇷","host":"203.0.113.30","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":3478},
   {"id":"us","label":"США","flag":"🇺🇸","host":"203.0.113.40","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":3478}
 ]'
+
+# Optional one-time gift for members of a Telegram channel. Membership is
+# verified with getChatMember; the local state DB prevents a second claim.
+# Trials can issue only the configured exit and only device slot 1.
+VPNW_CHANNEL_OFFER_ENABLED=true
+VPNW_CHANNEL_OFFER_KEY="fodders-dev-2026-08"
+VPNW_CHANNEL_OFFER_CHANNEL_ID="-1000000000000"
+VPNW_CHANNEL_OFFER_CHANNEL_URL="https://t.me/example_channel"
+VPNW_CHANNEL_OFFER_DAYS=7
+VPNW_CHANNEL_OFFER_TRAFFIC_GB=100
+VPNW_AWG_TRIAL_SERVER_ID="fr"
 ```
 
 ## Turn on the Remnawave webhook (panel `.env`)
@@ -108,6 +120,7 @@ offers `/qr` and the official AmneziaWG downloads page.
 | `GET`  | `/api/awg/{telegram_id}/config` | link token + active sub | issue/reuse `.conf` |
 | `GET`  | `/api/awg/{telegram_id}/qr` | link token + active sub | same config as PNG QR |
 | `GET`  | `/api/awg/servers` | public labels only | list exit choices without IPs/SSH secrets |
+| `POST` | `/api/portal/channel-offer/claim` | Telegram cabinet session + channel membership | claim the one-time channel gift |
 
 ## Behaviour notes
 
@@ -121,6 +134,8 @@ offers `/qr` and the official AmneziaWG downloads page.
   `user.deleted`, its public key is removed from the live interface but its keys and
   encrypted config are retained. A renewal restores the same peer, so the user's
   already-imported `.conf` works again.
+- **Trial isolation:** when `VPNW_AWG_TRIAL_SERVER_ID` is set, both live webhooks
+  and the reconciliation timer keep trial peers suspended on every other exit.
 - If the AWG fallback env is not set, the endpoints return `503` and the rest of the
   product is unaffected.
 

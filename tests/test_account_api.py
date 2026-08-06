@@ -133,6 +133,118 @@ def test_portal_links_require_telegram_session_and_keep_tokens_separate(
     assert body["device_limit"] == 3
 
 
+def test_channel_member_can_claim_one_real_week_even_after_an_old_trial(
+    monkeypatch, tmp_path
+) -> None:
+    _configure_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("VPNW_AWG_LINK_SECRET", "offer-link-secret")
+    monkeypatch.setenv("VPNW_PUBLIC_BASE_URL", "https://vpn.example.test")
+    monkeypatch.setenv("VPNW_CHANNEL_OFFER_ENABLED", "true")
+    monkeypatch.setenv("VPNW_CHANNEL_OFFER_CHANNEL_ID", "-1002358992995")
+    monkeypatch.setenv("VPNW_AWG_TRIAL_SERVER_ID", "fr")
+
+    class InactiveRemnawave:
+        def __init__(self, config) -> None:
+            self.config = config
+
+        @staticmethod
+        def active_user(telegram_id: int):
+            assert telegram_id == 10101
+            return None
+
+    grants: list[dict[str, object]] = []
+
+    class FakeBot:
+        @staticmethod
+        def user_by_telegram_id(telegram_id: int):
+            assert telegram_id == 10101
+            return {"id": 55, "subscription": {"is_trial": True, "status": "expired"}}
+
+        @staticmethod
+        def create_user(*args, **kwargs):
+            raise AssertionError("existing billing user must be reused")
+
+        @staticmethod
+        def grant_trial(user_id: int, **kwargs):
+            grants.append({"user_id": user_id, **kwargs})
+            return {
+                "id": user_id,
+                "subscription": {
+                    "is_trial": True,
+                    "status": "active",
+                    "end_date": "2026-08-13T12:00:00Z",
+                    "traffic_limit_gb": 100,
+                },
+            }
+
+    monkeypatch.setattr(server, "RemnawaveClient", InactiveRemnawave)
+    monkeypatch.setattr(server, "BotApiClient", FakeBot)
+    monkeypatch.setattr(server, "_channel_offer_member", lambda config, telegram_id: True)
+    applied: list[tuple[str, int]] = []
+    monkeypatch.setattr(server, "_awg_webhook_apply", lambda action, tid: applied.append((action, tid)))
+
+    client = TestClient(server.app)
+    client.post(
+        "/api/auth/telegram/miniapp",
+        json={"init_data": _miniapp_init_data("123456:telegram-test-token")},
+    )
+    before = client.get("/api/portal/links").json()
+    assert before["channel_offer_available"] is True
+    assert before["channel_offer_days"] == 7
+
+    response = client.post("/api/portal/channel-offer/claim")
+    assert response.status_code == 200
+    body = response.json()
+    personal = parse_qs(urlparse(body["personal_vpn_url"]).query)
+    assert personal["server"] == ["fr"]
+    assert personal["trial"] == ["1"]
+    assert grants == [{
+        "user_id": 55,
+        "days": 7,
+        "device_limit": 1,
+        "traffic_limit_gb": 100,
+        "replace_existing": True,
+    }]
+    assert applied == [("enable", 10101)]
+
+    again = client.post("/api/portal/channel-offer/claim")
+    assert again.status_code == 409
+    after = client.get("/api/portal/links").json()
+    assert after["channel_offer_available"] is False
+    assert after["channel_offer_claimed"] is True
+
+
+def test_channel_offer_does_not_burn_the_claim_before_membership_is_verified(
+    monkeypatch, tmp_path
+) -> None:
+    _configure_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("VPNW_AWG_LINK_SECRET", "offer-link-secret")
+    monkeypatch.setenv("VPNW_PUBLIC_BASE_URL", "https://vpn.example.test")
+    monkeypatch.setenv("VPNW_CHANNEL_OFFER_ENABLED", "true")
+    monkeypatch.setenv("VPNW_CHANNEL_OFFER_CHANNEL_ID", "-1002358992995")
+
+    class InactiveRemnawave:
+        def __init__(self, config) -> None:
+            self.config = config
+
+        @staticmethod
+        def active_user(_telegram_id: int):
+            return None
+
+    monkeypatch.setattr(server, "RemnawaveClient", InactiveRemnawave)
+    monkeypatch.setattr(server, "_channel_offer_member", lambda config, telegram_id: False)
+    client = TestClient(server.app)
+    client.post(
+        "/api/auth/telegram/miniapp",
+        json={"init_data": _miniapp_init_data("123456:telegram-test-token")},
+    )
+
+    refused = client.post("/api/portal/channel-offer/claim")
+    assert refused.status_code == 403
+    assert refused.json()["detail"]["code"] == "channel_membership_required"
+    assert client.get("/api/portal/links").json()["channel_offer_available"] is True
+
+
 def test_legacy_miniapp_entry_redirects_to_uncached_portal() -> None:
     client = TestClient(server.app, follow_redirects=False)
 

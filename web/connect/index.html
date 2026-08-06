@@ -79,6 +79,7 @@
 
   <!-- ------------------------------------------------ вкладка VPN -->
   <section id="view-vpn" class="stack">
+    <h1 class="sr-only">Fodder VPN</h1>
     <div class="card" id="status-card">
       <div class="hero">
         <img class="hero__mascot" src="assets/mascot-calm.png" alt="" id="status-mascot" onerror="this.onerror=null;this.src='assets/crest.svg'">
@@ -111,11 +112,34 @@
       </a>
     </div>
 
+    <div class="card stack offer" id="channel-offer" hidden>
+      <div class="offer__badge">Подарок подписчикам Fodder’s Dev</div>
+      <div>
+        <h2 class="h2">Бесплатный VPN на 7 дней</h2>
+        <p class="t dim">Один профиль на новом сервере во Франции. Карта и оплата не нужны.</p>
+      </div>
+      <ol class="quick-steps" aria-label="Как получить бесплатный VPN">
+        <li><span>1</span><div><b>Подпишитесь на канал</b><small>Бот проверит подписку сам</small></div></li>
+        <li><span>2</span><div><b>Получите подарок</b><small>Нажмите кнопку — включатся настоящие 7 дней</small></div></li>
+        <li><span>3</span><div><b>Подключитесь</b><small>Мы проведём по установке шаг за шагом</small></div></li>
+      </ol>
+      <a class="btn btn--secondary" id="offer-channel-link" href="https://t.me/fodders_dev" target="_blank" rel="noopener noreferrer">
+        <svg class="i" aria-hidden="true"><use href="#i-user"/></svg>
+        <span class="btn__label">Открыть Fodder’s Dev</span>
+      </a>
+      <button class="btn btn--primary" id="claim-offer" type="button">
+        <svg class="i" aria-hidden="true"><use href="#i-gift"/></svg>
+        <span class="btn__label">Я подписался — получить 7 дней</span>
+      </button>
+      <p class="t-sm mute" id="claim-offer-status" role="status" aria-live="polite"></p>
+    </div>
+
     <div class="note note--warn" id="trial-note" hidden>
       <svg class="i" aria-hidden="true"><use href="#i-star-line"/></svg>
       <div>
         <div class="note__title" id="trial-title">Пробный период</div>
         <p class="note__body" id="trial-body"></p>
+        <div class="offer__timer" id="trial-countdown" role="timer" aria-live="off"></div>
       </div>
     </div>
 
@@ -128,6 +152,18 @@
       <svg class="i" aria-hidden="true"><use href="#i-phone-plus"/></svg>
       <span class="btn__label">Подключить новое устройство</span>
     </a>
+
+    <div class="card stack" id="quick-start" hidden>
+      <div>
+        <h2 class="h3">Подключение займёт около двух минут</h2>
+        <p class="t-sm dim">Ничего настраивать вручную не придётся.</p>
+      </div>
+      <ol class="quick-steps quick-steps--compact">
+        <li><span>1</span><div><b>Установите AmneziaWG</b></div></li>
+        <li><span>2</span><div><b>Скачайте профиль Франции</b></div></li>
+        <li><span>3</span><div><b>Откройте файл и включите переключатель</b></div></li>
+      </ol>
+    </div>
 
     <button class="row" type="button" data-goto="plan">
       <svg class="i i--badge is-gold" aria-hidden="true"><use href="#i-star"/></svg>
@@ -144,6 +180,16 @@
       </span>
       <svg class="i row__chev" aria-hidden="true"><use href="#i-chevron"/></svg>
     </button>
+
+    <h2 class="section-title">Уже арендуете VPS?</h2>
+    <a class="row" id="wizard-link-main" href="/wizard/">
+      <svg class="i i--badge" aria-hidden="true"><use href="#i-server"/></svg>
+      <span class="row__body">
+        <span class="row__title">Настроить свой сервер</span>
+        <span class="row__sub">VPN Wizard · сервер, профили и управление в одном месте</span>
+      </span>
+      <svg class="i row__chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+    </a>
   </section>
 
   <!-- ------------------------------------------ вкладка Устройства -->
@@ -421,7 +467,8 @@
   // Один источник правды о подписке: заполняется при входе, дочитывается
   // после загрузки устройств (подключался ли человек хоть раз).
   var state={active:false,trial:false,expiresAt:null,deviceLimit:1,
-             everConnected:false,personalUrl:"#"};
+             everConnected:false,personalUrl:"#",offerAvailable:false};
+  var trialTicker=null;
   function readCreds(personalUrl){
     try{
       var q=new URL(personalUrl,location.href).searchParams;
@@ -470,12 +517,17 @@
     $("plan-row-title").textContent="Тариф: "+deviceLimit+" "+deviceWord;
     $("family-link").href=links.family_vpn_url;
     $("wizard-link").href=links.server_wizard_url;
+    $("wizard-link-main").href=links.server_wizard_url;
     familyUrl=links.family_vpn_url;
 
     state.active=!!links.subscription_active;
     state.trial=!!links.is_trial;
     state.expiresAt=links.expires_at||null;
     state.deviceLimit=deviceLimit;
+    state.offerAvailable=!!links.channel_offer_available;
+    if(links.channel_offer_channel_url){
+      $("offer-channel-link").href=links.channel_offer_channel_url;
+    }
 
     var personal=$("personal-link");
     var addDevice=$("add-device-link");
@@ -484,23 +536,31 @@
       personal.href=links.personal_vpn_url;
       addDevice.href=links.personal_vpn_url;
       addDevice.hidden=deviceLimit<2;
+      $("quick-start").hidden=false;
       renderSubscription(links);
       loadServerNames();
       loadDevices();
       loadInvites();
     }else{
-      personal.href="https://t.me/foddervpnbot?start=plan";
-      personal.target="_blank";personal.rel="noopener noreferrer";
-      personal.className="btn btn--danger";
-      personal.querySelector(".btn__label").textContent="Продлить подписку";
       addDevice.hidden=true;
-      $("status-card").classList.add("note--bad");
-      $("fact-sub").innerHTML='<span class="fact__value">Подписка закончилась</span><br>'+
-        'Профили сохранены и заработают после продления';
-      $("fact-sub").parentNode.className="fact fact--bad";
-      $("fact-devices").textContent="Тариф: "+deviceLimit+" "+deviceWord;
-      $("fact-seen").parentNode.hidden=true;
-      $("country-row").hidden=true;
+      $("quick-start").hidden=true;
+      if(links.channel_offer_available){
+        $("channel-offer").hidden=false;
+        $("status-card").hidden=true;
+        personal.hidden=true;
+      }else{
+        personal.href="https://t.me/foddervpnbot?start=plan";
+        personal.target="_blank";personal.rel="noopener noreferrer";
+        personal.className="btn btn--danger";
+        personal.querySelector(".btn__label").textContent="Продлить подписку";
+        $("status-card").classList.add("note--bad");
+        $("fact-sub").innerHTML='<span class="fact__value">Подписка закончилась</span><br>'+
+          'Профили сохранены и заработают после продления';
+        $("fact-sub").parentNode.className="fact fact--bad";
+        $("fact-devices").textContent="Тариф: "+deviceLimit+" "+deviceWord;
+        $("fact-seen").parentNode.hidden=true;
+        $("country-row").hidden=true;
+      }
     }
 
     var familyHowto=$("family-howto");
@@ -526,6 +586,25 @@
     var when=new Date(raw);
     if(isNaN(when.getTime()))return null;
     return Math.max(0,Math.ceil((when.getTime()-Date.now())/86400000));
+  }
+
+  function countdownText(raw){
+    var end=new Date(raw).getTime();
+    if(!isFinite(end))return "";
+    var total=Math.max(0,Math.floor((end-Date.now())/1000));
+    var days=Math.floor(total/86400);total-=days*86400;
+    var hours=Math.floor(total/3600);total-=hours*3600;
+    var minutes=Math.floor(total/60),seconds=total-minutes*60;
+    var clock=[hours,minutes,seconds].map(function(n){return String(n).padStart(2,"0");}).join(":");
+    return "Осталось: "+(days?days+" дн ":"")+clock;
+  }
+
+  function startTrialCountdown(raw){
+    if(trialTicker){clearInterval(trialTicker);trialTicker=null;}
+    var node=$("trial-countdown");
+    var tick=function(){node.textContent=countdownText(raw);};
+    tick();
+    trialTicker=setInterval(tick,1000);
   }
 
   // Пробный период — это не «подписка активна». Человеку, у которого бесплатная
@@ -563,8 +642,38 @@
       $("trial-body").textContent="Когда он закончится, профили приостановятся. "+
         "После оплаты те же ключи включатся снова — переподключать устройства не нужно.";
       $("trial-note").hidden=false;
+      startTrialCountdown(links.expires_at);
     }
   }
+
+  $("claim-offer").addEventListener("click",async function(){
+    var button=this,label=button.querySelector(".btn__label"),status=$("claim-offer-status");
+    button.disabled=true;button.classList.add("is-loading");
+    label.textContent="Проверяем подписку и включаем VPN";status.textContent="";
+    try{
+      var response=await fetch("/api/portal/channel-offer/claim",{
+        method:"POST",credentials:"same-origin",headers:{"Accept":"application/json"}
+      });
+      var body={};try{body=await response.json();}catch(e){}
+      if(!response.ok){
+        var detail=body&&body.detail;
+        var code=detail&&typeof detail==="object"?detail.code:"";
+        if(code==="channel_membership_required"){
+          status.textContent="Подписка пока не видна. Откройте канал, подпишитесь и нажмите ещё раз.";
+        }else if(code==="already_claimed"){
+          status.textContent="Этот подарок уже был использован. Обычную подписку можно продлить в боте.";
+        }else{
+          status.textContent=(detail&&detail.message)||"Не получилось выдать профиль. Попробуйте ещё раз через минуту.";
+        }
+        throw new Error("claim");
+      }
+      status.textContent="Готово! Открываем подключение…";
+      location.reload();
+    }catch(e){
+      button.disabled=false;button.classList.remove("is-loading");
+      label.textContent="Я подписался — получить 7 дней";
+    }
+  });
 
   // Деньги показываем только тому, у кого проблема уже решена: пока человек ни
   // разу не подключился, главное действие — подключиться, а не заплатить.
@@ -652,12 +761,14 @@
       if(d.last_seen_at&&(!newest||d.last_seen_at>newest.last_seen_at))newest=d;
     });
     if(newest){
+      $("quick-start").hidden=true;
       $("fact-seen").innerHTML='Последнее подключение —<br><span class="fact__value"></span>';
       $("fact-seen").querySelector(".fact__value").textContent=Atlas.ago(newest.last_seen_at);
       $("fact-seen").parentNode.className="fact";
       var where=(newest.servers||[])[0];
       if(where){$("country-name").textContent=countryName(where);$("country-row").hidden=false;}
     }else{
+      $("quick-start").hidden=!state.active;
       $("fact-seen").textContent="Это устройство ещё не подключено";
       $("fact-seen").parentNode.className="fact fact--muted";
     }

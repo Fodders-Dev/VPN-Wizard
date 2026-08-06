@@ -543,3 +543,46 @@ def test_reconcile_applies_entitlement_to_every_installed_server(tmp_path: Path)
     }
     assert default_suspended == ["sub-1"]
     assert fi_suspended == ["sub-1-fi"]
+
+
+def test_reconcile_keeps_trial_only_on_its_free_server(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    nl_suspended: list[str] = []
+    fr_suspended: list[str] = []
+    nl = AwgFallbackService(
+        store,
+        provision=lambda name: f"NL-{name}",
+        deprovision=lambda name: True,
+        suspend=lambda name: nl_suspended.append(name) or True,
+        resume=lambda name: True,
+    )
+    fr = AwgFallbackService(
+        store,
+        server_id="fr",
+        provision=lambda name: f"FR-{name}",
+        deprovision=lambda name: True,
+        suspend=lambda name: fr_suspended.append(name) or True,
+        resume=lambda name: True,
+    )
+    nl.issue(77)
+    fr.issue(77)
+
+    class Active:
+        @staticmethod
+        def active_user(_telegram_id: int):
+            return {"uuid": "active", "hwidDeviceLimit": 1}
+
+    result = reconcile_awg_peers(
+        store,
+        Active(),
+        nl,
+        server_services={"fr": fr},
+        legacy_server_id="nl",
+        trial_server_id="fr",
+        trial_lookup=lambda _telegram_id: True,
+    )
+
+    assert result["suspended"] == 1
+    assert result["unchanged"] == 1
+    assert nl_suspended == ["sub-77"]
+    assert fr_suspended == []

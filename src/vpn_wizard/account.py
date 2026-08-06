@@ -181,6 +181,20 @@ class AccountStore:
                 CREATE INDEX IF NOT EXISTS idx_web_invites_issuer
                     ON web_invites(issuer_telegram_id);
 
+                -- One claim per Telegram account for named channel campaigns.
+                -- A short-lived "pending" row closes the double-click/race window;
+                -- failed remote activation releases it, while an interrupted request
+                -- can be retried after the reservation becomes stale.
+                CREATE TABLE IF NOT EXISTS channel_promo_claims (
+                    promo_key TEXT NOT NULL,
+                    telegram_id INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    reserved_at INTEGER NOT NULL,
+                    claimed_at INTEGER,
+                    expires_at INTEGER,
+                    PRIMARY KEY (promo_key, telegram_id)
+                );
+
                 -- Bumped when the owner revokes the family slot. It goes into the
                 -- family link's signature, so a revoked link stops re-provisioning
                 -- the guest instead of quietly handing the key back.
@@ -932,6 +946,82 @@ class AccountStore:
                 WHERE code = ? AND issuer_telegram_id = ? AND used_at IS NULL
                 """,
                 (str(code), int(issuer_telegram_id)),
+            )
+            return cursor.rowcount > 0
+
+    # --- channel promotions ------------------------------------------------
+    def promo_claim_get(self, promo_key: str, telegram_id: int) -> Optional[dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM channel_promo_claims
+                WHERE promo_key = ? AND telegram_id = ?
+                """,
+                (str(promo_key), int(telegram_id)),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def promo_claim_reserve(
+        self,
+        promo_key: str,
+        telegram_id: int,
+        *,
+        now: Optional[int] = None,
+        stale_after: int = 300,
+    ) -> bool:
+        """Atomically reserve a one-time claim, allowing only stale retries."""
+        stamp = int(now if now is not None else _now())
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO channel_promo_claims
+                    (promo_key, telegram_id, status, reserved_at)
+                VALUES (?, ?, 'pending', ?)
+                ON CONFLICT(promo_key, telegram_id) DO UPDATE SET
+                    status = 'pending',
+                    reserved_at = excluded.reserved_at,
+                    claimed_at = NULL,
+                    expires_at = NULL
+                WHERE channel_promo_claims.status = 'pending'
+                  AND channel_promo_claims.reserved_at <= ?
+                """,
+                (
+                    str(promo_key),
+                    int(telegram_id),
+                    stamp,
+                    stamp - max(1, int(stale_after)),
+                ),
+            )
+            return cursor.rowcount > 0
+
+    def promo_claim_complete(
+        self,
+        promo_key: str,
+        telegram_id: int,
+        *,
+        expires_at: Optional[int] = None,
+        now: Optional[int] = None,
+    ) -> bool:
+        stamp = int(now if now is not None else _now())
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE channel_promo_claims
+                SET status = 'claimed', claimed_at = ?, expires_at = ?
+                WHERE promo_key = ? AND telegram_id = ? AND status = 'pending'
+                """,
+                (stamp, expires_at, str(promo_key), int(telegram_id)),
+            )
+            return cursor.rowcount > 0
+
+    def promo_claim_release(self, promo_key: str, telegram_id: int) -> bool:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                DELETE FROM channel_promo_claims
+                WHERE promo_key = ? AND telegram_id = ? AND status = 'pending'
+                """,
+                (str(promo_key), int(telegram_id)),
             )
             return cursor.rowcount > 0
 

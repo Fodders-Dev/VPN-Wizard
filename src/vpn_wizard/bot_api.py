@@ -113,11 +113,13 @@ class BotApiClient:
         days: int,
         device_limit: int = 1,
         traffic_limit_gb: Optional[int] = None,
+        replace_existing: bool = False,
     ) -> Optional[dict[str, Any]]:
         payload: dict[str, Any] = {
             "is_trial": True,
             "duration_days": int(days),
             "device_limit": int(device_limit),
+            "replace_existing": bool(replace_existing),
         }
         if traffic_limit_gb is not None:
             payload["traffic_limit_gb"] = int(traffic_limit_gb)
@@ -150,6 +152,7 @@ def subscription_facts_of(user: Optional[dict[str, Any]]) -> dict[str, Any]:
     bot must degrade to "we don't know", never to a confident wrong answer.
     """
     facts: dict[str, Any] = {
+        "known": False,
         "is_trial": False,
         "expires_at": None,
         "traffic_limit_gb": None,
@@ -165,6 +168,7 @@ def subscription_facts_of(user: Optional[dict[str, Any]]) -> dict[str, Any]:
     if not isinstance(subscription, dict):
         return facts
 
+    facts["known"] = True
     facts["is_trial"] = bool(subscription.get("is_trial"))
     end = subscription.get("end_date") or subscription.get("expire_at")
     facts["expires_at"] = str(end) if end else None

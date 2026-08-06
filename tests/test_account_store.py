@@ -78,3 +78,33 @@ def test_save_server_persists_optional_relay_credentials(tmp_path) -> None:
         "public_host": "relay.example.com",
         "listen_port": 7443,
     }
+
+
+def test_channel_promo_claim_is_atomic_and_retryable(tmp_path) -> None:
+    store = AccountStore(tmp_path / "state.db", "secret-key")
+
+    assert store.promo_claim_reserve("fodders-dev", 42, now=1_000) is True
+    assert store.promo_claim_reserve("fodders-dev", 42, now=1_001) is False
+    assert store.promo_claim_release("fodders-dev", 42) is True
+
+    assert store.promo_claim_reserve("fodders-dev", 42, now=1_002) is True
+    assert store.promo_claim_complete(
+        "fodders-dev", 42, now=1_003, expires_at=2_003
+    ) is True
+    claim = store.promo_claim_get("fodders-dev", 42)
+    assert claim == {
+        "promo_key": "fodders-dev",
+        "telegram_id": 42,
+        "status": "claimed",
+        "reserved_at": 1_002,
+        "claimed_at": 1_003,
+        "expires_at": 2_003,
+    }
+    assert store.promo_claim_reserve("fodders-dev", 42, now=5_000) is False
+
+
+def test_stale_channel_promo_reservation_can_be_retried(tmp_path) -> None:
+    store = AccountStore(tmp_path / "state.db", "secret-key")
+    assert store.promo_claim_reserve("fodders-dev", 7, now=1_000) is True
+    assert store.promo_claim_reserve("fodders-dev", 7, now=1_299) is False
+    assert store.promo_claim_reserve("fodders-dev", 7, now=1_300) is True

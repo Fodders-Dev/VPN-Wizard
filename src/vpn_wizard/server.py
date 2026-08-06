@@ -4,9 +4,10 @@ from dataclasses import dataclass, field
 import base64
 from collections import OrderedDict
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 import importlib.metadata
+import json
 import logging
 import os
 from pathlib import Path
@@ -14,6 +15,7 @@ import socket
 import subprocess
 import time
 from urllib.parse import urlencode, urlparse
+from urllib import error as urllib_error, request as urllib_request
 import tempfile
 from typing import Any, Callable, Optional
 import threading
@@ -557,6 +559,20 @@ class PortalLinksResponse(BaseModel):
     expires_at: Optional[str] = None
     traffic_limit_gb: Optional[float] = None
     traffic_used_gb: Optional[float] = None
+    channel_offer_available: bool = False
+    channel_offer_claimed: bool = False
+    channel_offer_days: int = 7
+    channel_offer_channel_url: Optional[str] = None
+    channel_offer_server_id: Optional[str] = None
+
+
+class ChannelOfferClaimResponse(BaseModel):
+    ok: bool
+    active: bool
+    days: int
+    expires_at: Optional[str] = None
+    personal_vpn_url: str
+    server_id: str
 
 
 class AwgAccessResponse(BaseModel):
@@ -1237,6 +1253,82 @@ def auth_logout(request: Request, response: Response) -> CurrentUserResponse:
     return CurrentUserResponse(ok=True, authenticated=False)
 
 
+@dataclass(frozen=True)
+class ChannelOfferConfig:
+    enabled: bool
+    key: str
+    channel_id: str
+    channel_url: str
+    days: int
+    traffic_limit_gb: int
+    server_id: str
+
+    @classmethod
+    def from_env(cls) -> "ChannelOfferConfig":
+        enabled = (os.getenv("VPNW_CHANNEL_OFFER_ENABLED") or "").strip().lower() in {
+            "1", "true", "yes", "on"
+        }
+        return cls(
+            enabled=enabled,
+            key=(os.getenv("VPNW_CHANNEL_OFFER_KEY") or "fodders-dev-2026-08").strip(),
+            channel_id=(os.getenv("VPNW_CHANNEL_OFFER_CHANNEL_ID") or "").strip(),
+            channel_url=(
+                os.getenv("VPNW_CHANNEL_OFFER_CHANNEL_URL") or "https://t.me/fodders_dev"
+            ).strip(),
+            days=max(1, int((os.getenv("VPNW_CHANNEL_OFFER_DAYS") or "7").strip())),
+            traffic_limit_gb=max(
+                1, int((os.getenv("VPNW_CHANNEL_OFFER_TRAFFIC_GB") or "100").strip())
+            ),
+            server_id=(os.getenv("VPNW_AWG_TRIAL_SERVER_ID") or "fr").strip(),
+        )
+
+    @property
+    def configured(self) -> bool:
+        return bool(
+            self.enabled
+            and self.key
+            and self.channel_id
+            and self.channel_url
+            and self.server_id
+        )
+
+
+def _channel_offer_member(config: ChannelOfferConfig, telegram_id: int) -> bool:
+    """Ask Telegram directly; the bot is already an admin of the channel."""
+    query = urlencode({"chat_id": config.channel_id, "user_id": int(telegram_id)})
+    url = f"https://api.telegram.org/bot{_telegram_bot_token()}/getChatMember?{query}"
+    try:
+        with urllib_request.urlopen(url, timeout=5) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (urllib_error.URLError, TimeoutError, OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "membership_check_failed", "message": "Не удалось проверить канал."},
+        ) from exc
+    result = payload.get("result") if isinstance(payload, dict) else None
+    if not payload.get("ok") or not isinstance(result, dict):
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "membership_check_failed", "message": "Не удалось проверить канал."},
+        )
+    status = str(result.get("status") or "")
+    return status in {"creator", "administrator", "member"} or (
+        status == "restricted" and bool(result.get("is_member"))
+    )
+
+
+def _channel_offer_personal_url(base: str, telegram_id: int, secret: str, server_id: str) -> str:
+    query = urlencode(
+        {
+            "tid": int(telegram_id),
+            "token": issue_token(secret, telegram_id),
+            "server": server_id,
+            "trial": 1,
+        }
+    )
+    return f"{base}/connect/awg.html?{query}"
+
+
 @app.get("/api/portal/links", response_model=PortalLinksResponse)
 def portal_links(request: Request) -> Response:
     """Return private navigation for the authenticated Telegram user.
@@ -1266,11 +1358,15 @@ def portal_links(request: Request) -> Response:
             ),
         }
     )
+    offer = ChannelOfferConfig.from_env()
     payload = PortalLinksResponse(
         ok=True,
         personal_vpn_url=f"{base}/connect/awg.html?{personal_query}",
         family_vpn_url=f"{base}/connect/awg.html?{family_query}",
         server_wizard_url=f"{base}/wizard/",
+        channel_offer_days=offer.days,
+        channel_offer_channel_url=offer.channel_url if offer.configured else None,
+        channel_offer_server_id=offer.server_id if offer.configured else None,
     )
     try:
         active_user = RemnawaveClient(RemnawaveConfig.from_env()).active_user(telegram_id)
@@ -1294,10 +1390,130 @@ def portal_links(request: Request) -> Response:
     payload.expires_at = facts["expires_at"]
     payload.traffic_limit_gb = facts["traffic_limit_gb"]
     payload.traffic_used_gb = facts["traffic_used_gb"]
+    claim = (
+        _account_store().promo_claim_get(offer.key, telegram_id)
+        if offer.configured
+        else None
+    )
+    payload.channel_offer_claimed = bool(claim and claim.get("status") == "claimed")
+    payload.channel_offer_available = bool(
+        offer.configured and not payload.subscription_active and not payload.channel_offer_claimed
+    )
+    if payload.subscription_active and payload.is_trial and offer.configured:
+        payload.personal_vpn_url = _channel_offer_personal_url(
+            base, telegram_id, config.link_secret, offer.server_id
+        )
     return JSONResponse(
         payload.model_dump(),
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
     )
+
+
+@app.post("/api/portal/channel-offer/claim", response_model=ChannelOfferClaimResponse)
+def claim_channel_offer(request: Request) -> ChannelOfferClaimResponse:
+    """Grant one real, backend-enforced week to a verified channel member."""
+    account = _require_account(request)
+    telegram_id = int(account["user"]["telegram_id"])
+    offer = ChannelOfferConfig.from_env()
+    if not offer.configured:
+        raise HTTPException(status_code=404, detail="Channel offer is not available.")
+
+    awg = AwgFallbackConfig.from_env()
+    base = _public_base_url_from_request(request)
+    if not awg.link_secret or not base:
+        raise HTTPException(status_code=503, detail="VPN links are not configured.")
+
+    try:
+        active_user = RemnawaveClient(RemnawaveConfig.from_env()).active_user(telegram_id)
+    except RemnawaveError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    if active_user:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "subscription_active", "message": "Доступ уже активен."},
+        )
+
+    store = _account_store()
+    existing_claim = store.promo_claim_get(offer.key, telegram_id)
+    if existing_claim and existing_claim.get("status") == "claimed":
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "already_claimed", "message": "Подарок уже был получен."},
+        )
+    if not store.promo_claim_reserve(offer.key, telegram_id):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "claim_in_progress", "message": "Выдача уже идёт. Обновите страницу."},
+        )
+
+    try:
+        if not _channel_offer_member(offer, telegram_id):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "channel_membership_required",
+                    "message": "Сначала подпишитесь на Fodder’s Dev.",
+                    "channel_url": offer.channel_url,
+                },
+            )
+
+        bot = BotApiClient()
+        bot_user = bot.user_by_telegram_id(telegram_id)
+        if not bot_user:
+            local_user = account["user"]
+            bot_user = bot.create_user(
+                telegram_id,
+                first_name=str(local_user.get("first_name") or "Подписчик Fodder’s Dev"),
+            )
+        bot_user_id = int((bot_user or {}).get("id") or 0)
+        if bot_user_id <= 0:
+            raise HTTPException(status_code=502, detail="Не удалось создать профиль в боте.")
+        granted = bot.grant_trial(
+            bot_user_id,
+            days=offer.days,
+            device_limit=1,
+            traffic_limit_gb=offer.traffic_limit_gb,
+            replace_existing=True,
+        )
+        facts = subscription_facts_of(granted)
+        if not granted or not facts.get("known") or not facts.get("is_trial"):
+            raise HTTPException(status_code=502, detail="Не удалось включить бесплатный профиль.")
+
+        expires_raw = str(facts.get("expires_at") or "") or None
+        expires_stamp: Optional[int] = None
+        if expires_raw:
+            try:
+                expires_stamp = int(
+                    datetime.fromisoformat(expires_raw.replace("Z", "+00:00")).timestamp()
+                )
+            except ValueError:
+                expires_stamp = None
+        if expires_stamp is None:
+            expires_stamp = int((datetime.now(timezone.utc) + timedelta(days=offer.days)).timestamp())
+        if not store.promo_claim_complete(
+            offer.key, telegram_id, expires_at=expires_stamp
+        ):
+            raise HTTPException(status_code=500, detail="Не удалось сохранить выдачу подарка.")
+
+        # The Remnawave webhook may arrive before or after this request. Applying
+        # the same policy here makes the result immediate and idempotent.
+        _awg_webhook_apply("enable", telegram_id)
+        return ChannelOfferClaimResponse(
+            ok=True,
+            active=True,
+            days=offer.days,
+            expires_at=expires_raw,
+            personal_vpn_url=_channel_offer_personal_url(
+                base, telegram_id, awg.link_secret, offer.server_id
+            ),
+            server_id=offer.server_id,
+        )
+    except HTTPException:
+        store.promo_claim_release(offer.key, telegram_id)
+        raise
+    except Exception as exc:
+        store.promo_claim_release(offer.key, telegram_id)
+        raise HTTPException(status_code=502, detail=_error_message(exc)) from exc
 
 
 @app.get("/api/account/servers", response_model=SavedServerListResponse)
@@ -2863,6 +3079,18 @@ def _awg_registry() -> AwgRegistry:
         raise HTTPException(status_code=500, detail=f"AWG registry is invalid: {exc}") from exc
 
 
+def _awg_trial_server_id() -> Optional[str]:
+    return (os.getenv("VPNW_AWG_TRIAL_SERVER_ID") or "").strip() or None
+
+
+def _billing_trial_state(telegram_id: int) -> Optional[bool]:
+    """True/False when billing answered, None when policy cannot be determined."""
+    facts = subscription_facts_of(BotApiClient().user_by_telegram_id(telegram_id))
+    if not facts.get("known"):
+        return None
+    return bool(facts.get("is_trial"))
+
+
 def _awg_issue_config(
     telegram_id: int,
     token: str,
@@ -2944,6 +3172,14 @@ def _awg_issue_entitled_config(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     if not user:
         raise HTTPException(status_code=403, detail="No active subscription.")
+    trial_server_id = _awg_trial_server_id()
+    if trial_server_id and server.id != trial_server_id:
+        is_trial = _billing_trial_state(entitlement_telegram_id)
+        if is_trial is True:
+            raise HTTPException(
+                status_code=403,
+                detail="The free profile is available on the France server only.",
+            )
     if required_device_slot is not None and required_device_slot > device_limit_of(user):
         raise HTTPException(
             status_code=403,
@@ -3043,7 +3279,15 @@ def _awg_webhook_apply(action: str, telegram_id: int) -> None:
     exit does not stall the event loop while Remnawave waits on the webhook.
     """
     try:
-        services = _awg_all_services()
+        raw_services = _awg_all_services()
+        default_id = None
+        if any(service.server_id is None for service in raw_services):
+            registry = _awg_registry()
+            default_id = getattr(registry.default_server, "id", None)
+        services = [
+            (service.server_id or default_id or "default", service)
+            for service in raw_services
+        ]
     except Exception as exc:
         logger.warning(
             "awg.webhook.registry_failed action=%s tid=%s err=%s",
@@ -3052,7 +3296,9 @@ def _awg_webhook_apply(action: str, telegram_id: int) -> None:
             _error_message(exc),
         )
         return
-    for service in services:
+    is_trial = _billing_trial_state(telegram_id) if action == "enable" else None
+    trial_server_id = _awg_trial_server_id()
+    for logical_server_id, service in services:
         try:
             peer_ids = _awg_peer_ids_for_owner(service, telegram_id)
         except ValueError:
@@ -3062,6 +3308,8 @@ def _awg_webhook_apply(action: str, telegram_id: int) -> None:
             try:
                 if action == "disable":
                     service.suspend(peer_id)
+                elif is_trial is True and trial_server_id and logical_server_id != trial_server_id:
+                    service.suspend(peer_id)
                 else:
                     service.resume(peer_id)
             except Exception as exc:
@@ -3070,7 +3318,7 @@ def _awg_webhook_apply(action: str, telegram_id: int) -> None:
                     action,
                     telegram_id,
                     peer_id,
-                    service.server_id or "default",
+                    logical_server_id,
                     _error_message(exc),
                 )
 

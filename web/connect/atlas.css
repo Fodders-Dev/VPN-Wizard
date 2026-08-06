@@ -1265,6 +1265,86 @@ details.disclosure > .disclosure__body {
   word-break: break-all;
 }
 
+/* ----------------------------------------------- промо и быстрый старт */
+.offer {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background:
+    radial-gradient(circle at 100% 0, var(--accent-soft), transparent 48%),
+    var(--surface);
+}
+.offer__badge {
+  width: fit-content;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.offer__timer {
+  margin-top: 8px;
+  color: var(--warn-text);
+  font-variant-numeric: tabular-nums;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 700;
+}
+.quick-steps {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.quick-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.quick-steps li > span {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 14px;
+  font-weight: 700;
+}
+.quick-steps b,
+.quick-steps small {
+  display: block;
+}
+.quick-steps b {
+  font-size: 15px;
+  line-height: 20px;
+}
+.quick-steps small {
+  margin-top: 2px;
+  color: var(--text-mute);
+  font-size: 13px;
+  line-height: 18px;
+}
+.quick-steps--compact {
+  gap: 10px;
+}
+.quick-steps--compact li > span {
+  width: 26px;
+  height: 26px;
+  font-size: 13px;
+}
+
+@supports not (color: color-mix(in srgb, red 50%, transparent)) {
+  .offer {
+    border-color: var(--accent);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
