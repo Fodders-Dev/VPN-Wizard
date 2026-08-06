@@ -824,13 +824,13 @@ async def open_portal(message: types.Message) -> None:
     if _is_russian(message):
         text = (
             '🛡 <b>Fodder VPN</b>\n\n'
-            'В одном портале: подключение готового VPN, четыре страны, '
+            'В одном портале: подключение готового VPN, пять стран, '
             'семейный доступ и прежний мастер для собственного VPS.'
         )
     else:
         text = (
             '🛡 <b>Fodder VPN</b>\n\n'
-            'One portal for managed VPN access, four countries, family access, '
+            'One portal for managed VPN access, five countries, family access, '
             'and the original bring-your-own-server wizard.'
         )
     await message.answer(text, reply_markup=_keyboard(message), parse_mode='HTML')

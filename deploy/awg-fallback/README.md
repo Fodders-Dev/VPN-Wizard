@@ -100,7 +100,7 @@ button for users with an active subscription. Give the Bedolaga container the sa
 ```
 VPNW_AWG_LINK_SECRET=<same secret as vpn-wizard>
 VPNW_AWG_PUBLIC_URL=https://<vpn-wizard-domain>
-VPNW_AWG_PUBLIC_SERVERS='[{"id":"nl","display":"🇳🇱 Нидерланды"},{"id":"fi","display":"🇫🇮 Финляндия"},{"id":"tr","display":"🇹🇷 Турция"},{"id":"us","display":"🇺🇸 США"}]'
+VPNW_AWG_PUBLIC_SERVERS='[{"id":"nl","display":"🇳🇱 Нидерланды"},{"id":"fi","display":"🇫🇮 Финляндия"},{"id":"fr","display":"🇫🇷 Франция"},{"id":"tr","display":"🇹🇷 Турция"},{"id":"us","display":"🇺🇸 США"}]'
 ```
 
 The handler links to:

@@ -31,7 +31,7 @@ from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
 
 _SERVER_ID_RE = re.compile(r"[^a-z0-9-]")
 # An HTTP caller waits on this SSH, the service runs a single uvicorn worker, and a
-# Russia-facing exit can be blackholed at any moment (that is why there are four of
+# Russia-facing exit can be blackholed at any moment (that is why there are several
 # them). Fail fast instead of tying up a worker thread for ~2 minutes on a dead box.
 FALLBACK_SSH_TIMEOUT = 6
 DEVICE_PEER_ID_OFFSET = 3_000_000_000_000_000
