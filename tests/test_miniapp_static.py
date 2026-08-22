@@ -77,7 +77,7 @@ def test_free_profile_is_visibly_and_technically_scoped_to_netherlands() -> None
     assert "Нидерланды без срока окончания" in portal
     assert 'free:p.get("free")==="1"' in installer
     assert "servers.filter(function(item){return item.id===u.server;})" in installer
-    assert "Бесплатный профиль работает только на сервере Нидерланды." in server
+    assert "Бесплатный профиль работает только на закреплённой за вами стране." in server
     assert 'VPNW_CHANNEL_ACCESS_SERVER_ID' in server or 'ChannelAccessConfig' in server
 
 

@@ -95,12 +95,16 @@ def reconcile_awg_peers(
             except Exception:
                 # Telegram outages must not disconnect otherwise valid free users.
                 free_cache[entitlement_id] = None
-        free_active = free_cache[entitlement_id]
+        # The lookup may hand back a plain bool (legacy) or a ChannelAccessStatus,
+        # whose server_id pins the account to the exit assigned at signup.
+        free_status = free_cache[entitlement_id]
+        free_active = getattr(free_status, "active", free_status)
+        free_assigned = getattr(free_status, "server_id", None) or free_server_id
         free_allowed = bool(
             free_active is True
             and required_slot == 1
-            and free_server_id
-            and server_id == free_server_id
+            and free_assigned
+            and server_id == free_assigned
         )
         if isinstance(entitlement, Exception):
             if free_allowed:
@@ -266,7 +270,7 @@ def main() -> int:
                     telegram_id,
                     channel,
                     refresh_membership=True,
-                ).active
+                )
                 if (
                     account.channel_access_get(telegram_id)
                     or account.channel_access_by_telegram(telegram_id)

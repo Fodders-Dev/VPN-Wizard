@@ -371,6 +371,14 @@
       </div>
     </details>
 
+    <div class="stack" style="gap:8px">
+      <a class="btn btn--secondary" href="https://t.me/foddervpnbot?start=promo" target="_blank" rel="noopener noreferrer">
+        <span class="btn__label">Промокод на ещё один профиль</span>
+      </a>
+      <a class="btn btn--secondary" href="https://t.me/fodders_dev" target="_blank" rel="noopener noreferrer">
+        <span class="btn__label">Канал Fodder’s Dev — новости и ссылки</span>
+      </a>
+    </div>
     <p class="t-sm mute" style="text-align:center">Не получается? Напишите тому, кто дал ссылку.</p>
   </section>
 
@@ -656,8 +664,10 @@
       return {msg:"Семейная ссылка доступна на тарифах от 3 устройств. На текущем тарифе оплачен один профиль.",cta:"Сменить тариф в боте"};
     if(/temporarily unavailable|pick another/i.test(text))
       return {msg:"Эта страна сейчас недоступна. Выберите другую — остальные работают.",cta:""};
+    if(/закреплённой/i.test(text))
+      return {msg:"Эта страна не входит в ваш бесплатный профиль. Откройте свою ссылку заново — ваша страна выбрана в ней автоматически.",cta:""};
     if(/Нидерланды|Netherlands|free profile/i.test(text))
-      return {msg:"Бесплатный профиль работает только через Нидерланды. Другие страны доступны по подписке.",cta:""};
+      return {msg:"Бесплатный профиль работает только через закреплённую страну. Другие — по подписке.",cta:""};
     if(/Нет активного|No active subscription/i.test(text))
       return {msg:"Профиль не найден или отключён. Откройте бота — он поможет восстановить доступ.",cta:"Открыть бота"};
     if(/Invalid or missing/i.test(text)||status===403)

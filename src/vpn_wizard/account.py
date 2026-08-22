@@ -223,6 +223,9 @@ class AccountStore:
                     linked_at INTEGER,
                     membership_active INTEGER,
                     membership_checked_at INTEGER,
+                    -- Exit assigned at signup so free load spreads across
+                    -- servers; NULL means the legacy default (nl).
+                    server_id TEXT,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
                 );
@@ -259,6 +262,14 @@ class AccountStore:
                 """
             )
             self._ensure_saved_server_columns(conn)
+            self._ensure_channel_access_columns(conn)
+
+    @staticmethod
+    def _ensure_channel_access_columns(conn: sqlite3.Connection) -> None:
+        rows = conn.execute("PRAGMA table_info(channel_access)").fetchall()
+        existing = {str(row["name"]) for row in rows}
+        if "server_id" not in existing:
+            conn.execute("ALTER TABLE channel_access ADD COLUMN server_id TEXT")
 
     def _ensure_saved_server_columns(self, conn: sqlite3.Connection) -> None:
         rows = conn.execute("PRAGMA table_info(saved_servers)").fetchall()
@@ -1187,6 +1198,7 @@ class AccountStore:
         invite_code: str,
         *,
         expires_at: int,
+        server_id: Optional[str] = None,
         now: Optional[int] = None,
     ) -> dict[str, Any]:
         stamp = int(now if now is not None else _now())
@@ -1195,14 +1207,31 @@ class AccountStore:
                 """
                 INSERT INTO channel_access (
                     access_id, invite_code, status, grace_expires_at,
-                    created_at, updated_at
-                ) VALUES (?, ?, 'active', ?, ?, ?)
+                    server_id, created_at, updated_at
+                ) VALUES (?, ?, 'active', ?, ?, ?, ?)
                 """,
-                (int(access_id), str(invite_code), int(expires_at), stamp, stamp),
+                (
+                    int(access_id), str(invite_code), int(expires_at),
+                    (server_id or "").strip() or None, stamp, stamp,
+                ),
             )
         item = self.channel_access_get(access_id)
         assert item is not None
         return item
+
+    def channel_access_counts_by_server(self, default_server_id: str) -> dict[str, int]:
+        """How many active free accounts each exit carries; NULL rows are the
+        legacy default. Feeds the least-loaded pick at signup."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT COALESCE(server_id, ?) AS sid, COUNT(*) AS n
+                FROM channel_access WHERE status = 'active'
+                GROUP BY COALESCE(server_id, ?)
+                """,
+                (str(default_server_id), str(default_server_id)),
+            ).fetchall()
+        return {str(row["sid"]): int(row["n"]) for row in rows}
 
     def channel_access_grant_member(
         self,

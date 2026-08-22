@@ -39,11 +39,14 @@
 
   <div class="card stack" id="resume" hidden style="margin-top:24px">
     <h2 class="h3">Вы уже получали профиль</h2>
-    <p class="t-sm dim" style="margin:0">На этом устройстве доступ уже выдавался —
-      продолжайте с того же места, второй раз тратить код не нужно.</p>
+    <p class="t-sm dim" style="margin:0">Профиль выдаётся один на человека. На этом
+      устройстве он уже есть — продолжайте с того же места.</p>
     <a class="btn btn--primary" id="resume-link" href="#">
       <span class="btn__label">Продолжить подключение</span>
     </a>
+    <button class="btn btn--secondary" id="other-code" type="button">
+      <span class="btn__label">У меня новый код</span>
+    </button>
   </div>
 
   <form id="form" novalidate class="stack" style="margin-top:28px">
@@ -73,6 +76,20 @@
       у того, кто его прислал.</p>
   </div>
 
+  <div class="card stack" style="margin-top:16px">
+    <h2 class="h3">Нужен ещё профиль или помощь?</h2>
+    <p class="t-sm dim" style="margin:0">Профиль выдаётся один на человека. Второй —
+      на планшет или для близкого — дают по промокоду: напишите нам, и его пришлют.</p>
+    <a class="btn btn--secondary" href="https://t.me/foddervpnbot?start=promo" target="_blank" rel="noopener noreferrer">
+      <span class="btn__label">Попросить промокод</span>
+    </a>
+    <a class="btn btn--secondary" href="https://t.me/fodders_dev" target="_blank" rel="noopener noreferrer">
+      <span class="btn__label">Канал Fodder’s Dev — новости и ссылки</span>
+    </a>
+    <p class="t-sm mute" style="margin:0">Кнопки открываются в Telegram. Если он не
+      открывается — напишите тому, кто прислал ссылку.</p>
+  </div>
+
 </main>
 
 <script>
@@ -93,6 +110,14 @@
       if(parsed.origin===location.origin){
         $("resume-link").href=parsed.toString();
         $("resume").hidden=false;
+        // Один профиль в руки: форма прячется, чтобы повторный клик не
+        // тратил общий код. Новый (промо)код вводится по явной кнопке.
+        form.hidden=true;
+        $("other-code").addEventListener("click",function(){
+          form.hidden=false;
+          this.hidden=true;
+          input.focus();
+        });
       }
     }catch(e){}
   }

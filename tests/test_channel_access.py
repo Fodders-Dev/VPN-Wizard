@@ -10,7 +10,7 @@ def _config() -> ChannelAccessConfig:
         enabled=True,
         channel_id="-1002358992995",
         channel_url="https://t.me/fodders_dev",
-        free_server_id="nl",
+        free_server_ids=("nl",),
         web_grace_hours=12,
         membership_cache_seconds=300,
         bot_token="123:test",

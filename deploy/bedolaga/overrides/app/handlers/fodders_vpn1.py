@@ -952,6 +952,13 @@ START_TOPICS = {
         'Опишите, что не получается — отвечу здесь же. '
         'Быстрые действия — на кнопках под полем ввода.'
     ),
+    'promo': (
+        '🎁 <b>Промокод на ещё один профиль</b>\n\n'
+        'Бесплатный профиль — один на человека. Нужен второй, на планшет или '
+        'для близкого? Ваш запрос уже отправлен — ответим здесь же. Можно '
+        'добавить пару слов, для какого устройства нужен профиль.\n\n'
+        'Код вводится на той же странице, где вы получали первый профиль.'
+    ),
     'portal': (
         '🛡 <b>Личный кабинет открыт.</b>\n\n'
         'Подписка, устройства и приглашения — на кнопках ниже.'
@@ -998,6 +1005,32 @@ def _start_followup_text(payload: str, russian: bool) -> str:
         + f'{BTN_INVITE} — код для того, у кого не открывается Telegram\n'
         + f'{BTN_HELP} — все команды и ссылки'
     )
+
+
+def _owner_chat_id() -> int | None:
+    raw = (os.getenv('VPNW_OWNER_IDS') or os.getenv('ADMIN_IDS') or '').replace(';', ',')
+    for part in raw.split(','):
+        part = part.strip()
+        if part.lstrip('-').isdigit():
+            return int(part)
+    return None
+
+
+async def _notify_owner_request(message: types.Message, topic: str) -> None:
+    """Только просьбы — промокод и помощь. Остальной трафик бота владельца не дёргает."""
+    owner = _owner_chat_id()
+    user = message.from_user
+    if owner is None or user is None or user.id == owner:
+        return
+    label = 'промокод' if topic == 'promo' else 'помощь'
+    who = f'@{user.username}' if user.username else 'юзернейма нет — ответить можно только из этого чата бота'
+    try:
+        await message.bot.send_message(
+            owner,
+            f'🙋 Запрос с сайта: {label} — {user.full_name} ({who}, id {user.id}).',
+        )
+    except Exception:  # уведомление — не повод ронять ответ человеку
+        logger.exception('Owner request notify failed')
 
 
 async def _link_web_profile(message: types.Message, payload: str) -> None:
@@ -1099,9 +1132,12 @@ async def start_followup_middleware(handler, event, data):
         )
         # A reply keyboard and an inline keyboard cannot ride on the same
         # message, so the shortcut into payment goes in a second, short one.
-        markup = _start_followup_markup(_start_topic(payload))
+        topic = _start_topic(payload)
+        markup = _start_followup_markup(topic)
         if markup is not None:
             await event.answer('Открыть экран оплаты:', reply_markup=markup)
+        if topic in ('promo', 'help'):
+            await _notify_owner_request(event, topic)
     except Exception:  # a follow-up must never break the real /start
         logger.exception('Failed to send /start follow-up')
     return result

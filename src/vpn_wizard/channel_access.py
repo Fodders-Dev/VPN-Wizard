@@ -21,7 +21,7 @@ class ChannelAccessConfig:
     enabled: bool
     channel_id: str
     channel_url: str
-    free_server_id: str
+    free_server_ids: tuple[str, ...]
     web_grace_hours: int
     membership_cache_seconds: int
     bot_token: str
@@ -40,13 +40,26 @@ class ChannelAccessConfig:
                 value = fallback
             return max(minimum, value)
 
+        # Plural VPNW_CHANNEL_ACCESS_SERVER_IDS=nl,fi spreads new signups over
+        # several exits; the singular legacy var keeps working as one entry.
+        raw_servers = (
+            os.getenv("VPNW_CHANNEL_ACCESS_SERVER_IDS")
+            or os.getenv("VPNW_CHANNEL_ACCESS_SERVER_ID")
+            or "nl"
+        )
+        server_ids = tuple(
+            dict.fromkeys(
+                part.strip().lower() for part in raw_servers.split(",") if part.strip()
+            )
+        ) or ("nl",)
+
         return cls(
             enabled=enabled,
             channel_id=(os.getenv("VPNW_CHANNEL_ACCESS_CHANNEL_ID") or "").strip(),
             channel_url=(
                 os.getenv("VPNW_CHANNEL_ACCESS_CHANNEL_URL") or "https://t.me/fodders_dev"
             ).strip(),
-            free_server_id=(os.getenv("VPNW_CHANNEL_ACCESS_SERVER_ID") or "nl").strip(),
+            free_server_ids=server_ids,
             # 0 hours means the website profile never expires: the first profile
             # is a gift, not a trial with a countdown.
             web_grace_hours=number("VPNW_CHANNEL_ACCESS_WEB_GRACE_HOURS", 12, minimum=0),
@@ -59,12 +72,17 @@ class ChannelAccessConfig:
         )
 
     @property
+    def free_server_id(self) -> str:
+        """The default exit: what NULL assignments and member claims mean."""
+        return self.free_server_ids[0]
+
+    @property
     def configured(self) -> bool:
         return bool(
             self.enabled
             and self.channel_id
             and self.channel_url
-            and self.free_server_id
+            and self.free_server_ids
             and self.bot_token
         )
 
@@ -78,6 +96,8 @@ class ChannelAccessStatus:
     telegram_id: Optional[int] = None
     grace_expires_at: Optional[int] = None
     membership_checked_at: Optional[int] = None
+    # Exit assigned at signup; None means the config default.
+    server_id: Optional[str] = None
 
 
 def telegram_channel_member(config: ChannelAccessConfig, telegram_id: int) -> bool:
@@ -133,6 +153,7 @@ def access_status(
             kind="grace" if row else None,
             access_id=access_id,
             grace_expires_at=expires or None,
+            server_id=(row or {}).get("server_id") or None,
         )
 
     row = store.channel_access_by_telegram(access_id) or row
@@ -147,6 +168,7 @@ def access_status(
             access_id=int(row["access_id"]),
             telegram_id=access_id,
             membership_checked_at=checked,
+            server_id=row.get("server_id") or None,
         )
     if not refresh_membership and row is None and not create_member:
         return ChannelAccessStatus(configured=True, active=False, telegram_id=access_id)
@@ -164,4 +186,5 @@ def access_status(
         access_id=int((row or {}).get("access_id") or access_id),
         telegram_id=access_id,
         membership_checked_at=stamp,
+        server_id=(row or {}).get("server_id") or None,
     )

@@ -610,7 +610,7 @@ def test_channel_member_can_issue_only_the_free_netherlands_server(
         f"/api/awg/{owner}/config", params={"token": token, "server": "nl"}
     )
     assert denied.status_code == 403
-    assert "Нидерланды" in denied.text
+    assert "закреплённой" in denied.text
     assert allowed.status_code == 200
 
 
@@ -981,6 +981,99 @@ def test_one_shared_code_onboards_the_whole_chat_until_the_limit(
     assert refused.status_code == 400 and "Лимит" in refused.json()["detail"]
     checked = client.get(f"/api/web/invite/{code}").json()
     assert checked["valid"] is False and "Лимит" in checked["detail"]
+
+
+def _configure_two_servers(monkeypatch: pytest.MonkeyPatch, secret: str = "link-secret") -> None:
+    monkeypatch.setenv(
+        "VPNW_AWG_SERVERS",
+        json.dumps(
+            [
+                {"id": "nl", "label": "Нидерланды", "host": "10.0.0.1", "password": "p", "listen_port": 443},
+                {"id": "fi", "label": "Финляндия", "host": "10.0.0.2", "password": "p", "listen_port": 3478},
+            ]
+        ),
+    )
+    monkeypatch.setenv("VPNW_AWG_LINK_SECRET", secret)
+
+
+def test_free_signups_spread_across_the_configured_exits(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    # Two exits, four neighbours: the least-loaded pick alternates them, and
+    # each person stays pinned to the exit they were given.
+    secret = "link-secret"
+    owner = 449066726
+    _configure_two_servers(monkeypatch, secret)
+    _configure_channel_access(monkeypatch)
+    monkeypatch.setenv("VPNW_CHANNEL_ACCESS_SERVER_IDS", "nl,fi")
+    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(1))
+    server_module._shared_redeem_log.clear()
+
+    from vpn_wizard.web_signup import create_shared_invite
+
+    code = create_shared_invite(
+        server_module.build_account_store(), owner, max_uses=4
+    )["code"]
+    bodies = [client.post(f"/api/web/invite/{code}/redeem").json() for _ in range(4)]
+    assigned = [body["server_id"] for body in bodies]
+    assert assigned.count("nl") == 2 and assigned.count("fi") == 2
+
+    first = bodies[0]
+    other = "fi" if first["server_id"] == "nl" else "nl"
+    own = client.get(
+        f"/api/awg/{first['telegram_id']}/access",
+        params={"token": first["token"]},
+    )
+    # The country gate sits on config issuance and rejects before any SSH.
+    foreign = client.get(
+        f"/api/awg/{first['telegram_id']}/config",
+        params={"token": first["token"], "server": other},
+    )
+    assert own.status_code == 200
+    assert foreign.status_code == 403 and "закреплённой" in foreign.text
+    server_module._shared_redeem_log.clear()
+
+
+def test_owner_mints_promo_codes_beyond_the_default_cap(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    # Промокоды: the owner hands out extra profiles personally, so the
+    # three-outstanding cap must not apply to them.
+    secret = "link-secret"
+    owner = 449066726
+    _configure_single_server(monkeypatch, secret)
+    _configure_channel_access(monkeypatch)
+    monkeypatch.setenv("VPNW_OWNER_IDS", str(owner))
+    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(1))
+    token = issue_token(secret, owner)
+
+    codes = set()
+    for _ in range(5):
+        response = client.post(f"/api/awg/{owner}/invites", params={"token": token})
+        assert response.status_code == 200
+        codes.add(response.json()["code"])
+    assert len(codes) == 5
+
+
+def test_owner_hears_about_every_web_signup(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    secret = "link-secret"
+    owner = 449066726
+    _configure_single_server(monkeypatch, secret)
+    _configure_channel_access(monkeypatch)
+    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(1))
+    server_module._shared_redeem_log.clear()
+    sent: list[str] = []
+    monkeypatch.setattr(server_module, "_notify_owner_async", sent.append)
+
+    from vpn_wizard.web_signup import create_shared_invite
+
+    code = create_shared_invite(
+        server_module.build_account_store(), owner, max_uses=1
+    )["code"]
+    assert client.post(f"/api/web/invite/{code}/redeem").status_code == 200
+    assert sent and code in sent[0] and "1/1" in sent[0]
 
 
 def test_zero_grace_hours_issues_a_profile_without_a_deadline(

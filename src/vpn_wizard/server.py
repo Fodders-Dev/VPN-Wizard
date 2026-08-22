@@ -31,6 +31,8 @@ from pydantic import BaseModel, Field, model_validator
 import qrcode
 import uvicorn
 
+from urllib import request as _owner_notify_request
+
 import vpn_wizard.proxy as proxy_module
 from vpn_wizard.account import (
     build_account_store,
@@ -1344,7 +1346,10 @@ def portal_links(request: Request) -> Response:
     if free_access.active and not active_user:
         payload.device_limit = 1
         payload.personal_vpn_url = _channel_access_personal_url(
-            base, telegram_id, config.link_secret, channel.free_server_id
+            base,
+            telegram_id,
+            config.link_secret,
+            free_access.server_id or channel.free_server_id,
         )
     # The invite link must be personal, or nobody is credited for bringing
     # anyone in. The code lives in the bot's database; if it is unreachable the
@@ -3020,7 +3025,10 @@ def _awg_authorise_entitlement(
 
     channel = ChannelAccessConfig.from_env()
     free_slot = required_device_slot == 1
-    free_location = server_id is None or server_id == channel.free_server_id
+    # Each free account is pinned to the exit assigned at signup, so load stays
+    # spread instead of everyone drifting to one server.
+    assigned = entitlement.free.server_id or channel.free_server_id
+    free_location = server_id is None or server_id == assigned
     if entitlement.free.active and free_slot and free_location:
         return 1, entitlement.free.kind or "member"
 
@@ -3034,7 +3042,7 @@ def _awg_authorise_entitlement(
     if entitlement.free.active and not free_location:
         raise HTTPException(
             status_code=403,
-            detail="Бесплатный профиль работает только на сервере Нидерланды.",
+            detail="Бесплатный профиль работает только на закреплённой за вами стране.",
         )
     if entitlement.free.active and not free_slot:
         raise HTTPException(
@@ -3266,7 +3274,8 @@ def _awg_webhook_apply(action: str, telegram_id: int) -> None:
     except ChannelAccessError:
         free_unknown = True
         free = ChannelAccessStatus(configured=True, active=False)
-    free_server_id = ChannelAccessConfig.from_env().free_server_id
+    # A free account lives on the exit assigned at signup, not on a global one.
+    free_server_id = free.server_id or ChannelAccessConfig.from_env().free_server_id
     for logical_server_id, service in services:
         try:
             peer_ids = _awg_peer_ids_for_owner(service, telegram_id)
@@ -3587,8 +3596,14 @@ def awg_invite_create(telegram_id: int, token: str) -> InviteCreateResponse:
             detail="Приглашения доступны после привязки Telegram.",
         )
 
+    config = InviteConfig.from_env()
+    owners = owner_ids()
+    if owners and telegram_id in owners:
+        # Владелец раздаёт промокоды сам: его лимитирует только здравый смысл,
+        # а не потолок в три неиспользованных кода.
+        config = InviteConfig(max_outstanding=10_000, ttl_days=config.ttl_days)
     try:
-        invite = create_invite(build_account_store(), telegram_id, InviteConfig.from_env())
+        invite = create_invite(build_account_store(), telegram_id, config)
     except InviteError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     base = os.getenv("VPNW_PUBLIC_BASE_URL", "").strip().rstrip("/")
@@ -3626,6 +3641,56 @@ def web_invite_check(code: str) -> InviteCheckResponse:
     return InviteCheckResponse(
         ok=True, valid=True, grace_hours=channel.web_grace_hours
     )
+
+
+def _notify_owner(text: str) -> None:
+    """Telegram message to the first VPNW_OWNER_IDS entry, via the product bot."""
+    token = (
+        os.getenv("VPNW_TELEGRAM_AUTH_TOKEN") or os.getenv("VPNW_BOT_TOKEN") or ""
+    ).strip()
+    owner = (os.getenv("VPNW_OWNER_IDS") or "").split(",")[0].strip()
+    if not token or not owner:
+        return
+    body = urlencode({"chat_id": owner, "text": text}).encode()
+    with _owner_notify_request.urlopen(
+        _owner_notify_request.Request(
+            f"https://api.telegram.org/bot{token}/sendMessage", data=body
+        ),
+        timeout=10,
+    ) as response:
+        response.read()
+
+
+def _notify_owner_async(text: str) -> None:
+    """Fire-and-forget: a dead Telegram must never slow down or fail a signup."""
+
+    def _run() -> None:
+        try:
+            _notify_owner(text)
+        except Exception:
+            logging.getLogger("vpn_wizard").warning("owner notify failed", exc_info=True)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def _pick_free_server(store: AccountStore, channel: ChannelAccessConfig) -> str:
+    """Least-loaded exit among the configured free ones.
+
+    Filtered through the registry so a disabled exit never receives new people;
+    NULL assignments in the ledger count toward the default exit.
+    """
+    candidates = list(channel.free_server_ids)
+    try:
+        offerable = {server.id for server in _awg_registry().offerable}
+    except Exception:
+        offerable = set()
+    if offerable:
+        alive = [sid for sid in candidates if sid in offerable]
+        candidates = alive or candidates
+    if len(candidates) == 1:
+        return candidates[0]
+    counts = store.channel_access_counts_by_server(channel.free_server_id)
+    return min(candidates, key=lambda sid: (counts.get(sid, 0), candidates.index(sid)))
 
 
 # A shared code sits in a chat where anyone can refresh-click, and every redeem
@@ -3712,11 +3777,13 @@ def web_invite_redeem(code: str, request: Request) -> InviteRedeemResponse:
     stamp = int(time.time())
     # 0 = issued for good; the countdown UI stays off and nothing ever suspends it.
     expires_at = stamp + channel.web_grace_hours * 3600 if channel.web_grace_hours else 0
+    assigned_server = _pick_free_server(store, channel)
     try:
         store.channel_access_grant_grace(
             account_id,
             invite["code"],
             expires_at=expires_at,
+            server_id=assigned_server,
             now=stamp,
         )
     except Exception:
@@ -3727,6 +3794,16 @@ def web_invite_redeem(code: str, request: Request) -> InviteRedeemResponse:
             store.shared_invite_release(shared_code)
         store.channel_access_delete(account_id)
         raise
+    if shared_code:
+        spent = store.shared_invite_get(shared_code) or {}
+        _notify_owner_async(
+            f"🎁 Выдан бесплатный профиль ({assigned_server}) по общему коду "
+            f"{shared_code}: {spent.get('used_count', '?')}/{spent.get('max_uses', '?')}."
+        )
+    else:
+        _notify_owner_async(
+            f"🎟 Активирован код {invite['code']}: профиль на {assigned_server}."
+        )
     bot_username = (os.getenv("VPNW_BOT_USERNAME") or "foddervpnbot").strip().lstrip("@")
     return InviteRedeemResponse(
         ok=True,
@@ -3734,7 +3811,7 @@ def web_invite_redeem(code: str, request: Request) -> InviteRedeemResponse:
         token=issue_token(awg_cfg.link_secret, account_id),
         grace_hours=channel.web_grace_hours,
         grace_expires_at=expires_at,
-        server_id=channel.free_server_id,
+        server_id=assigned_server,
         bind_url=f"https://t.me/{bot_username}?start=web_{invite['code']}",
     )
 
@@ -3807,13 +3884,19 @@ def web_invite_link(
     base = _public_base_url_from_request(request)
     if not base:
         raise HTTPException(status_code=503, detail="Public URL is not configured.")
+    # The person keeps the exit that was assigned at signup — the migrated row
+    # carries it; the fallback re-grant path starts fresh on the default.
+    assigned_server = (
+        (store.channel_access_by_telegram(telegram_id) or {}).get("server_id")
+        or channel.free_server_id
+    )
     return InviteLinkResponse(
         ok=True,
         linked=migrated,
         personal_vpn_url=_channel_access_personal_url(
-            base, telegram_id, awg_cfg.link_secret, channel.free_server_id
+            base, telegram_id, awg_cfg.link_secret, assigned_server
         ),
-        server_id=channel.free_server_id,
+        server_id=assigned_server,
     )
 
 

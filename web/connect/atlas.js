@@ -362,9 +362,15 @@
     fetch('/connect/status.json?ts=' + Date.now(), { cache: 'no-store' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
-        if (d && d.notice && (!d.until || Date.now() / 1000 < d.until)) {
+        if (!d) return;
+        if (d.notice && (!d.until || Date.now() / 1000 < d.until)) {
           render(String(d.notice));
         }
+        // Посерверные объявления видит только тот, кого они касаются: страница
+        // с ?server=fi показывает запись servers.fi и молчит про остальные.
+        var sid = (new URLSearchParams(location.search).get('server') || '').toLowerCase();
+        var per = d.servers && sid ? d.servers[sid] : null;
+        if (per) render(String(per));
       })
       .catch(function () {});
   }
