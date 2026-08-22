@@ -54,12 +54,13 @@
     <span class="steps__dot"></span><span class="steps__dot"></span>
   </div>
 
-  <section class="note note--warn" id="web-grace" hidden style="margin-bottom:18px">
+  <section class="note" id="web-grace" hidden style="margin-bottom:18px">
     <svg class="i" aria-hidden="true"><use href="#i-clock"/></svg>
     <div>
-      <h2 class="note__title" id="grace-title">Временный доступ: 12 часов</h2>
-      <p class="note__body" id="grace-copy">Сейчас Нидерланды работают временно. Подключите профиль,
-        откройте Telegram через VPN, подпишитесь на Fodder’s Dev и привяжите профиль.</p>
+      <h2 class="note__title" id="grace-title">Профиль ваш — насовсем</h2>
+      <p class="note__body" id="grace-copy">Пользуйтесь на здоровье. Если есть Telegram —
+        по желанию подпишитесь на Fodder’s Dev и привяжите профиль: так он сохранится
+        при смене телефона, а в канале будут запасные ссылки на случай блокировок.</p>
       <p class="offer__timer" id="grace-countdown" role="timer" aria-live="off"></p>
       <p class="t-sm" id="grace-hint" style="margin-top:10px">Сначала закончите подключение ниже —
         кнопки Telegram появятся, когда вы включите VPN.</p>
@@ -68,7 +69,7 @@
           <span class="btn__label">1. Подписаться на Fodder’s Dev</span>
         </a>
         <a class="btn btn--primary" id="bind-link" href="#" target="_blank" rel="noopener noreferrer">
-          <span class="btn__label">2. Сохранить этот профиль навсегда</span>
+          <span class="btn__label">2. Привязать профиль к Telegram</span>
         </a>
       </div>
     </div>
@@ -612,9 +613,10 @@
         var readyToBind=step===4;
         $("grace-actions").hidden=!readyToBind;
         $("grace-hint").hidden=readyToBind;
-        $("grace-title").textContent=readyToBind
-          ?"Сохраните профиль через Telegram"
-          :"Временный доступ: 12 часов";
+        // Без дедлайна привязка — вежливое предложение, а не условие выживания.
+        $("grace-title").textContent=u.graceUntil
+          ?(readyToBind?"Сохраните профиль через Telegram":"Временный доступ: 12 часов")
+          :(readyToBind?"По желанию: привяжите профиль":"Профиль ваш — насовсем");
       }
     }
     $("back").hidden=(next==="1"||next===1);
@@ -657,7 +659,7 @@
     if(/Нидерланды|Netherlands|free profile/i.test(text))
       return {msg:"Бесплатный профиль работает только через Нидерланды. Другие страны доступны по подписке.",cta:""};
     if(/Нет активного|No active subscription/i.test(text))
-      return {msg:"Бесплатные 12 часов закончились или подписка на канал не подтверждена. Откройте бота и сохраните профиль.",cta:"Открыть бота"};
+      return {msg:"Профиль не найден или отключён. Откройте бота — он поможет восстановить доступ.",cta:"Открыть бота"};
     if(/Invalid or missing/i.test(text)||status===403)
       return {msg:"Ссылка недействительна или устарела. Попросите новую у того, кто её прислал.",cta:""};
     if(status===503)
@@ -935,8 +937,15 @@
   if(u.web&&u.bind){
     $("web-grace").hidden=false;
     $("bind-link").href=u.bind;
-    renderGrace();
-    graceTicker=setInterval(renderGrace,1000);
+    if(u.graceUntil){
+      // Режим с дедлайном (grace_until в ссылке): янтарный тон, таймер и
+      // прежние строгие тексты. Без дедлайна блок остаётся спокойной подсказкой.
+      $("web-grace").classList.add("note--warn");
+      $("grace-copy").textContent="Сейчас Нидерланды работают временно. Подключите профиль, "+
+        "откройте Telegram через VPN, подпишитесь на Fodder’s Dev и привяжите профиль.";
+      renderGrace();
+      graceTicker=setInterval(renderGrace,1000);
+    }
   }
   $("personal-access").hidden=u.family;
   $("family-access").hidden=!u.family;

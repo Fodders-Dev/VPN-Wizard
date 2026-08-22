@@ -3710,7 +3710,8 @@ def web_invite_redeem(code: str, request: Request) -> InviteRedeemResponse:
             store.shared_invite_release(shared_code)
         raise HTTPException(status_code=409, detail="Это приглашение только что активировал кто-то другой.")
     stamp = int(time.time())
-    expires_at = stamp + channel.web_grace_hours * 3600
+    # 0 = issued for good; the countdown UI stays off and nothing ever suspends it.
+    expires_at = stamp + channel.web_grace_hours * 3600 if channel.web_grace_hours else 0
     try:
         store.channel_access_grant_grace(
             account_id,
@@ -3763,13 +3764,11 @@ def web_invite_link(
         or int(invite.get("used_by") or 0) != int(grace["access_id"])
     ):
         raise HTTPException(status_code=404, detail="Временный профиль не найден.")
-    if (
-        grace.get("status") != "active"
-        or int(grace.get("grace_expires_at") or 0) <= int(time.time())
-    ):
+    expires_at = int(grace.get("grace_expires_at") or 0)
+    if grace.get("status") != "active" or (expires_at and expires_at <= int(time.time())):
         raise HTTPException(
             status_code=410,
-            detail="12 часов уже прошли. Попросите новый код.",
+            detail="Срок временного профиля прошёл. Попросите новый код.",
         )
     try:
         member = telegram_channel_member(channel, telegram_id)

@@ -47,7 +47,9 @@ class ChannelAccessConfig:
                 os.getenv("VPNW_CHANNEL_ACCESS_CHANNEL_URL") or "https://t.me/fodders_dev"
             ).strip(),
             free_server_id=(os.getenv("VPNW_CHANNEL_ACCESS_SERVER_ID") or "nl").strip(),
-            web_grace_hours=number("VPNW_CHANNEL_ACCESS_WEB_GRACE_HOURS", 12),
+            # 0 hours means the website profile never expires: the first profile
+            # is a gift, not a trial with a countdown.
+            web_grace_hours=number("VPNW_CHANNEL_ACCESS_WEB_GRACE_HOURS", 12, minimum=0),
             membership_cache_seconds=number(
                 "VPNW_CHANNEL_ACCESS_CACHE_SECONDS", 300, minimum=0
             ),
@@ -117,12 +119,13 @@ def access_status(
     access_id = int(access_id)
     row = store.channel_access_get(access_id)
     if is_web_account(access_id):
+        # grace_expires_at == 0 is a profile issued without a deadline.
         expires = int((row or {}).get("grace_expires_at") or 0)
         active = bool(
             row
             and row.get("status") == "active"
             and not row.get("telegram_id")
-            and expires > stamp
+            and (expires == 0 or expires > stamp)
         )
         return ChannelAccessStatus(
             configured=True,

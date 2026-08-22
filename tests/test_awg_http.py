@@ -983,6 +983,28 @@ def test_one_shared_code_onboards_the_whole_chat_until_the_limit(
     assert checked["valid"] is False and "Лимит" in checked["detail"]
 
 
+def test_zero_grace_hours_issues_a_profile_without_a_deadline(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    # The first profile is a gift: no countdown, nothing ever suspends it.
+    secret = "link-secret"
+    owner = 449066726
+    _configure_single_server(monkeypatch, secret)
+    _configure_channel_access(monkeypatch)
+    monkeypatch.setenv("VPNW_CHANNEL_ACCESS_WEB_GRACE_HOURS", "0")
+    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(1))
+    code = client.post(
+        f"/api/awg/{owner}/invites", params={"token": issue_token(secret, owner)}
+    ).json()["code"]
+
+    body = client.post(f"/api/web/invite/{code}/redeem").json()
+    assert body["grace_hours"] == 0
+    assert body["grace_expires_at"] == 0
+    assert client.get(
+        f"/api/awg/{body['telegram_id']}/access", params={"token": body["token"]}
+    ).status_code == 200
+
+
 def test_shared_redeems_from_one_address_are_rate_limited(
     monkeypatch: pytest.MonkeyPatch, client: TestClient
 ) -> None:
@@ -1125,7 +1147,7 @@ def test_website_profile_cannot_be_linked_after_12_hour_window(
         params={"telegram_id": 777001, "token": issue_token(secret, 777001)},
     )
     assert linked.status_code == 410
-    assert "12 часов" in linked.json()["detail"]
+    assert "Срок временного профиля" in linked.json()["detail"]
 
 
 def test_revoking_the_family_slot_kills_the_link_already_handed_out(
