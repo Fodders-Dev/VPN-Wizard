@@ -25,6 +25,10 @@
   .check-list li::before{content:counter(s);flex:none;width:26px;height:26px;border-radius:999px;
     background:var(--accent-soft);color:var(--accent-text);font-size:14px;font-weight:600;
     line-height:26px;text-align:center}
+  .shot{margin:16px 0 0}
+  .shot img{display:block;width:min(280px,86%);margin:0 auto;border-radius:14px;
+    border:1px solid var(--line)}
+  .shot figcaption{margin-top:8px;text-align:center;font-size:14px;color:var(--text-dim)}
   .progress{height:6px;margin-top:16px;border-radius:999px;background:var(--surface-2);overflow:hidden}
   .progress span{display:block;height:100%;width:0;border-radius:999px;background:var(--accent);
     transition:width .5s linear}
@@ -226,13 +230,44 @@
   <section id="view-3" class="stack" hidden>
     <h1 class="h1">Откройте профиль в AmneziaWG</h1>
     <div class="card">
+      <!-- Живой прогон показал: «открыть файл из Загрузок» на части устройств
+           не предлагает AmneziaWG в списке приложений. Импорт из самого
+           приложения срабатывает всегда, поэтому он и является инструкцией. -->
       <ol class="check-list">
-        <li><span>Откройте <b>скачанный файл</b>. На Android ищите его в папке
-          <b>Загрузки</b> — в списке «Недавние» он иногда показывается без имени и не открывается.</span></li>
-        <li><span>Приложение предложит <b>добавить профиль</b> — согласитесь.</span></li>
-        <li><span><b>Включите VPN</b> внутри приложения. Первый раз система спросит разрешение.</span></li>
+        <li><span>Откройте приложение <b>AmneziaWG</b> и нажмите кнопку
+          <b>«+»</b> в правом нижнем углу.</span></li>
+        <li><span>Выберите <b>«Импорт из файла или архива»</b> и нажмите на
+          скачанный файл — он лежит в папке <b>Загрузки</b>.</span></li>
+        <li><span><b>Включите переключатель</b> напротив профиля. Первый раз
+          система спросит разрешение — нажмите <b>ОК</b>.</span></li>
       </ol>
     </div>
+
+    <details class="disclosure" id="guide-shots">
+      <summary>Показать, как это выглядит (Android)</summary>
+      <div class="disclosure__body">
+        <figure class="shot">
+          <img loading="lazy" src="assets/guide/and-2-download.png" alt="Chrome предлагает скачать файл FVPN-nl.conf">
+          <figcaption>Так выглядит скачивание профиля — нажмите «Скачать».</figcaption>
+        </figure>
+        <figure class="shot">
+          <img loading="lazy" src="assets/guide/and-3b-import.png" alt="Меню импорта в AmneziaWG">
+          <figcaption>В AmneziaWG: «+» → «Импорт из файла или архива».</figcaption>
+        </figure>
+        <figure class="shot">
+          <img loading="lazy" src="assets/guide/and-3a-files.png" alt="Файл FVPN-nl.conf в папке Загрузки">
+          <figcaption>Скачанный файл — в «Недавних» или папке «Скачанные».</figcaption>
+        </figure>
+        <figure class="shot">
+          <img loading="lazy" src="assets/guide/and-3c-tunnel.png" alt="Профиль FVPN-nl в списке туннелей">
+          <figcaption>Профиль появился — включите переключатель справа.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img loading="lazy" src="assets/guide/and-3d-permission.png" alt="Системный запрос разрешения VPN">
+          <figcaption>Системный вопрос про VPN — нажмите «ОК».</figcaption>
+        </figure>
+      </div>
+    </details>
     <button class="btn btn--primary" type="button" id="to-4">
       <span class="btn__label">Я включил VPN</span>
     </button>
@@ -265,6 +300,11 @@
     <button class="btn btn--secondary" type="button" id="check-fix" hidden>
       <span class="btn__label">Исправить подключение</span>
     </button>
+    <!-- Про платное — только после того, как бесплатный профиль реально
+         заработал. До этого любые тарифы только пугают. -->
+    <p class="t-sm mute" id="check-upsell" hidden style="text-align:center">Дальше — по желанию:
+      в боте <a href="https://t.me/foddervpnbot" target="_blank" rel="noopener noreferrer">@foddervpnbot</a>
+      есть другие страны (Финляндия, США) и профили на несколько устройств.</p>
   </section>
 
   <!-- ============================================== выбор страны -->
@@ -821,6 +861,7 @@
     $("check-text").textContent=text;
     $("check-again").hidden=ok;
     $("check-fix").hidden=ok;
+    $("check-upsell").hidden=!(ok&&u.free);
     $("check-progress").hidden=true;
     if(ok)$("check-card").classList.add("note--ok");
     else $("check-card").classList.remove("note--ok");
