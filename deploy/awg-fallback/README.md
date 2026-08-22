@@ -98,7 +98,7 @@ button for users with an active subscription. Give the Bedolaga container the sa
 ```
 VPNW_AWG_LINK_SECRET=<same secret as vpn-wizard>
 VPNW_AWG_PUBLIC_URL=https://<vpn-wizard-domain>
-VPNW_AWG_PUBLIC_SERVERS='[{"id":"nl","display":"🇳🇱 Нидерланды"},{"id":"fi","display":"🇫🇮 Финляндия"},{"id":"tr","display":"🇹🇷 Турция"},{"id":"us","display":"🇺🇸 США"}]'
+VPNW_AWG_PUBLIC_SERVERS='[{"id":"nl","display":"🇳🇱 Нидерланды"},{"id":"fi","display":"🇫🇮 Финляндия"},{"id":"us","display":"🇺🇸 США"}]'
 VPNW_CHANNEL_ACCESS_CHANNEL_URL="https://t.me/fodders_dev"
 VPNW_CHANNEL_ACCESS_SERVER_ID="nl"
 ```

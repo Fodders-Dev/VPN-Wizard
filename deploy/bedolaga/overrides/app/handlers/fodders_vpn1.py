@@ -82,9 +82,9 @@ def _format_last_seen(timestamp: int | None) -> str:
     return 'давно не подключалось'
 
 
-DEFAULT_PORTAL_URL = 'https://212-69-84-167.nip.io/portal/?v=20260722-3'
-DEFAULT_MINIAPP_URL = 'https://212-69-84-167.nip.io/wizard/?v=20260722-3'
-DEFAULT_AWG_PUBLIC_URL = 'https://212-69-84-167.nip.io'
+DEFAULT_PORTAL_URL = 'https://77-67-89-164.nip.io/portal/'
+DEFAULT_MINIAPP_URL = 'https://77-67-89-164.nip.io/wizard/'
+DEFAULT_AWG_PUBLIC_URL = 'https://77-67-89-164.nip.io'
 
 
 def _portal_url() -> str:

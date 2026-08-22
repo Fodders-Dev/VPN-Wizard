@@ -169,7 +169,7 @@ BotFather's **Main Mini App** (`Open` in the bot profile and the large launch
 button) is separate from the Bot API menu button. Set its Web App URL to:
 
 ```text
-https://212-69-84-167.nip.io/portal/?v=20260722-3
+https://77-67-89-164.nip.io/portal/
 ```
 
 When all boxes pass, you have the "paid → works, unpaid → off" loop. That's the MVP.

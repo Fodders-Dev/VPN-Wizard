@@ -3,7 +3,7 @@ from __future__ import annotations
 from urllib.parse import urlparse
 
 
-CANONICAL_API_BASE = "https://vpn-wizard-production.up.railway.app"
+CANONICAL_API_BASE = "https://77-67-89-164.nip.io"
 CANONICAL_MINIAPP_URL = f"{CANONICAL_API_BASE}/miniapp/"
 
 

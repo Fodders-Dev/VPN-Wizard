@@ -21,7 +21,7 @@
 - TLS-ключ: `/etc/openvpn/tc.key`
 
 ## Как подключиться к серверу
-- SSH: `ssh root@212.69.84.167`
+- SSH: `ssh root@77.67.89.164`
 - Смена пароля: `passwd`
 - Рекомендация: позже отключить вход по паролю и перейти на SSH‑ключи.
 
@@ -31,42 +31,42 @@
    - Публичная часть: `~/.ssh/id_ed25519.pub`. В ней должна быть **одна строка** вида `ssh-ed25519 AAAA... email`. Если разбито на несколько строк — пересоздай файл: `ssh-keygen -y -f ~/.ssh/id_ed25519 > ~/.ssh/id_ed25519.pub`.
    - На сервере содержимое этой строки должно лежать в `~/.ssh/authorized_keys`.
 2. **Если видишь `Permission denied (publickey)`:**
-   - Разово войди по паролю: `ssh artem@212.69.84.167` → пароль `<YOUR_PASSWORD>`.
+   - Разово войди по паролю: `ssh artem@77.67.89.164` → пароль `<YOUR_PASSWORD>`.
    - После входа добавь ключ:
       ```
       mkdir -p ~/.ssh && chmod 700 ~/.ssh
       echo "<содержимое ~/.ssh/id_ed25519.pub>" >> ~/.ssh/authorized_keys
      chmod 600 ~/.ssh/authorized_keys
      ```
-     Либо с локалки выполни `ssh-copy-id -i ~/.ssh/id_ed25519 artem@212.69.84.167` (запросит пароль один раз).
-3. **Дальнейший вход:** `ssh -i ~/.ssh/id_ed25519 artem@212.69.84.167` (при необходимости `sudo -s` для root).
+     Либо с локалки выполни `ssh-copy-id -i ~/.ssh/id_ed25519 artem@77.67.89.164` (запросит пароль один раз).
+3. **Дальнейший вход:** `ssh -i ~/.ssh/id_ed25519 artem@77.67.89.164` (при необходимости `sudo -s` для root).
 4. **Залить/обновить скрипт генерации:**
    ```
-   scp ovpn-add-client.sh artem@212.69.84.167:~/ovpn-add-client.sh
-   ssh -i ~/.ssh/id_ed25519 artem@212.69.84.167 \
+   scp ovpn-add-client.sh artem@77.67.89.164:~/ovpn-add-client.sh
+   ssh -i ~/.ssh/id_ed25519 artem@77.67.89.164 \
      'sudo mv ~/ovpn-add-client.sh /root/ && sudo chmod +x /root/ovpn-add-client.sh'
    ```
 5. **Создать профиль (пример для `android-pixel`):**
    ```
-   ssh -i ~/.ssh/id_ed25519 artem@212.69.84.167 \
+   ssh -i ~/.ssh/id_ed25519 artem@77.67.89.164 \
      'sudo /root/ovpn-add-client.sh android-pixel'
    ```
    Скрипт сообщит путь вида `/root/android-pixel.ovpn`.
 6. **Скачать профиль на свой ПК (замени имя файла и папку):**
    ```
-   scp -i ~/.ssh/id_ed25519 artem@212.69.84.167:/root/android-pixel.ovpn ~/Downloads/
+   scp -i ~/.ssh/id_ed25519 artem@77.67.89.164:/root/android-pixel.ovpn ~/Downloads/
    ```
    На Windows в Git Bash можно указать `~/Downloads`, в PowerShell — `C:\Users\<ты>\Downloads\android-pixel.ovpn`.
-   - Если скрипт запускается через `sudo` и профиль хранится в `~/ovpn-profiles`, файл принадлежит root и имеет `chmod 600`. Перед `scp` сбрось права: `sudo chown artem:artem ~/ovpn-profiles/android-pixel.ovpn` (подставь имя) или скачай от root (`scp root@212.69.84.167:/home/artem/ovpn-profiles/...`).
+   - Если скрипт запускается через `sudo` и профиль хранится в `~/ovpn-profiles`, файл принадлежит root и имеет `chmod 600`. Перед `scp` сбрось права: `sudo chown artem:artem ~/ovpn-profiles/android-pixel.ovpn` (подставь имя) или скачай от root (`scp root@77.67.89.164:/home/artem/ovpn-profiles/...`).
 7. **Импортировать** `.ovpn` в OpenVPN Connect/Viscosity/овский клиент на телефоне/ПК.
 
 ### Быстрый вариант "в одну команду на устройство"
 ```
 DEVICE=android-pixel
-ssh -i ~/.ssh/id_ed25519 artem@212.69.84.167 \
+ssh -i ~/.ssh/id_ed25519 artem@77.67.89.164 \
   "sudo /root/ovpn-add-client.sh ${DEVICE}"
 scp -i ~/.ssh/id_ed25519 \
-  artem@212.69.84.167:/root/${DEVICE}.ovpn ~/VPN-Profiles/
+  artem@77.67.89.164:/root/${DEVICE}.ovpn ~/VPN-Profiles/
 ```
 - В первую команду подставь имя профиля, скрипт создаст `/root/${DEVICE}.ovpn`.
 - Вторая команда скачает файл в локальную папку (`~/VPN-Profiles` создай заранее или укажи свою).
@@ -128,8 +128,8 @@ dco
 ## Генерация профилей (на сервере)
 1) Залить (или обновить) скрипт:
 ```
-scp ovpn-add-client.sh root@212.69.84.167:/root/
-ssh root@212.69.84.167 chmod +x /root/ovpn-add-client.sh
+scp ovpn-add-client.sh root@77.67.89.164:/root/
+ssh root@77.67.89.164 chmod +x /root/ovpn-add-client.sh
 ```
 2) Сгенерировать профиль для устройства:
 ```
@@ -137,7 +137,7 @@ sudo /root/ovpn-add-client.sh <device_name>
 ```
 3) Забирать локально:
 ```
-scp root@212.69.84.167:/root/<device_name>.ovpn .
+scp root@77.67.89.164:/root/<device_name>.ovpn .
 ```
 4) Импорт в клиент OpenVPN (ПК/мобилка) и подключение.
 
