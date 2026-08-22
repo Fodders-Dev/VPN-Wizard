@@ -48,7 +48,11 @@ CONTROL_NODES = ["il2.node.check-host.net", "ro1.node.check-host.net"]
 
 
 def http_json(url: str):
-    request = urllib.request.Request(url, headers={"Accept": "application/json"})
+    # check-host.net отдаёт 403 дефолтному Python-urllib — любой другой UA проходит.
+    request = urllib.request.Request(
+        url,
+        headers={"Accept": "application/json", "User-Agent": "fodder-ru-watchdog/1.0"},
+    )
     with urllib.request.urlopen(request, timeout=25) as response:
         return json.loads(response.read().decode("utf-8"))
 
