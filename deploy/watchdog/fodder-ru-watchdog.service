@@ -1,0 +1,10 @@
+[Unit]
+Description=Fodder VPN: RU reachability watchdog (check-host.net)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/vpn-wizard.env
+StateDirectory=fodder-ru-watchdog
+ExecStart=/usr/local/bin/fodder-ru-watchdog

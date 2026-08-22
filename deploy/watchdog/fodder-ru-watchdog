@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+"""Fodder VPN — сторож доступности из России.
+
+Каждые 10 минут спрашивает у check-host.net, виден ли сервер с российских
+нод и с контрольных зарубежных. Вердикты на каждую цель:
+
+  ok       ru-ноды видят порт;
+  blocked  ru-ноды не видят, зарубежные видят — похоже на блокировку;
+  down     не видит никто — сервер лежит целиком, Россия ни при чём.
+
+Состояние лежит в /var/lib/fodder-ru-watchdog/state.json. Владельцу уходит
+Telegram-сообщение только на СМЕНУ состояния, плюс напоминание раз в 6 часов,
+пока плохо, и отбой, когда починилось. Сбой самой проверки (check-host лёг,
+сеть моргнула) алертом не считается: непонятно — значит молчим до следующего
+запуска, а не будим среди ночи.
+
+Токен и владелец берутся из окружения (EnvironmentFile=/etc/vpn-wizard.env):
+VPNW_TELEGRAM_AUTH_TOKEN (или VPNW_BOT_TOKEN) и VPNW_OWNER_IDS.
+
+Запуск с --test шлёт пробное сообщение и выходит — так проверяется доставка.
+"""
+from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+import urllib.parse
+import urllib.request
+
+API = "https://check-host.net"
+STATE_DIR = os.environ.get("STATE_DIRECTORY") or "/var/lib/fodder-ru-watchdog"
+STATE_PATH = os.path.join(STATE_DIR, "state.json")
+REMIND_SECONDS = 6 * 3600
+
+TARGETS = [
+    ("NL · сайт и панель", "77.67.89.164:443"),
+    ("FI · Reality", "151.245.140.22:3478"),
+]
+# ru4 на check-host почти всегда мёртв, поэтому его нет: молчащая нода не
+# должна ни поднимать тревогу, ни маскировать её.
+RU_NODES = [
+    "ru1.node.check-host.net",
+    "ru2.node.check-host.net",
+    "ru3.node.check-host.net",
+]
+CONTROL_NODES = ["il2.node.check-host.net", "ro1.node.check-host.net"]
+
+
+def http_json(url: str):
+    request = urllib.request.Request(url, headers={"Accept": "application/json"})
+    with urllib.request.urlopen(request, timeout=25) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def run_check(host: str) -> dict[str, bool]:
+    """Вернуть {нода: видит ли порт} только по успевшим ответить нодам."""
+    query = urllib.parse.urlencode(
+        [("host", host)] + [("node", n) for n in RU_NODES + CONTROL_NODES]
+    )
+    request_id = http_json(f"{API}/check-tcp?{query}")["request_id"]
+    results: dict = {}
+    for _ in range(4):
+        time.sleep(10)
+        results = http_json(f"{API}/check-result/{request_id}") or {}
+        if results and all(value is not None for value in results.values()):
+            break
+    verdicts: dict[str, bool] = {}
+    for node, payload in results.items():
+        if payload is None:
+            continue  # нода так и не ответила — не считаем ни туда, ни сюда
+        entry = payload[0] if isinstance(payload, list) and payload else None
+        verdicts[node] = bool(entry) and "error" not in entry
+    return verdicts
+
+
+def classify(verdicts: dict[str, bool]):
+    ru = [ok for node, ok in verdicts.items() if node in RU_NODES]
+    control = [ok for node, ok in verdicts.items() if node in CONTROL_NODES]
+    if len(ru) < 2:
+        return None  # мало данных — не вердикт
+    if control and not any(control):
+        # Зарубежные тоже слепы: если и ru молчат — сервер лежит целиком.
+        return "down" if not any(ru) else None
+    failed = sum(1 for ok in ru if not ok)
+    if failed >= 2:
+        return "blocked"
+    return "ok"
+
+
+def detail_line(verdicts: dict[str, bool]) -> str:
+    def short(node: str) -> str:
+        return node.split(".")[0]
+
+    return ", ".join(
+        f"{short(node)} {'✓' if ok else '✗'}"
+        for node, ok in sorted(verdicts.items())
+    )
+
+
+def notify(text: str) -> None:
+    token = (
+        os.environ.get("VPNW_TELEGRAM_AUTH_TOKEN")
+        or os.environ.get("VPNW_BOT_TOKEN")
+        or ""
+    ).strip()
+    owner = (os.environ.get("VPNW_OWNER_IDS") or "").split(",")[0].strip()
+    if not token or not owner:
+        print("watchdog: no bot token or owner id in environment", file=sys.stderr)
+        return
+    body = urllib.parse.urlencode({"chat_id": owner, "text": text}).encode()
+    request = urllib.request.Request(
+        f"https://api.telegram.org/bot{token}/sendMessage", data=body
+    )
+    with urllib.request.urlopen(request, timeout=15) as response:
+        response.read()
+
+
+MESSAGES = {
+    "blocked": (
+        "🚨 {name}: {host} НЕ виден из России ({detail}), из-за рубежа отвечает — "
+        "похоже на блокировку.\n\nПлейбук: 1) поднять новый IP/сервер; "
+        "2) оповестить людей — пост в @fodders_dev, рассылка в админке бота, "
+        "SMS тем, кто без Telegram; 3) после переезда обновить status.json."
+    ),
+    "down": (
+        "💥 {name}: {host} не отвечает вообще, даже из-за рубежа ({detail}) — "
+        "лежит сервер или порт, Россия ни при чём."
+    ),
+    "ok": "✅ {name}: {host} снова виден из России ({detail}).",
+}
+
+
+def main() -> int:
+    if "--test" in sys.argv:
+        notify(
+            "🔔 Тест сторожа Fodder VPN: алерты доходят. Каждые 10 минут проверяю "
+            "NL 77.67.89.164:443 и FI 151.245.140.22:3478 из ru1/ru2/ru3."
+        )
+        return 0
+
+    try:
+        with open(STATE_PATH, encoding="utf-8") as handle:
+            state = json.load(handle)
+    except (OSError, ValueError):
+        state = {}
+
+    now = int(time.time())
+    for name, host in TARGETS:
+        try:
+            verdicts = run_check(host)
+            status = classify(verdicts)
+        except Exception as exc:  # сбой проверки — не повод для тревоги
+            print(f"watchdog: check failed for {host}: {exc}", file=sys.stderr)
+            continue
+        if status is None:
+            continue
+        entry = state.get(host) or {"status": "ok", "since": now, "last_alert": 0}
+        changed = status != entry["status"]
+        stale = status != "ok" and now - int(entry.get("last_alert") or 0) >= REMIND_SECONDS
+        if changed or stale:
+            # Отбой шлём только если до этого было плохо: первый же запуск со
+            # статусом ok не должен ничего писать.
+            if status != "ok" or entry["status"] != "ok":
+                text = MESSAGES[status].format(
+                    name=name, host=host, detail=detail_line(verdicts)
+                )
+                if not changed:
+                    text = "⏰ Всё ещё плохо.\n" + text
+                try:
+                    notify(text)
+                    entry["last_alert"] = now
+                except Exception as exc:
+                    print(f"watchdog: notify failed: {exc}", file=sys.stderr)
+        if changed:
+            entry["status"] = status
+            entry["since"] = now
+        state[host] = entry
+
+    os.makedirs(STATE_DIR, exist_ok=True)
+    with open(STATE_PATH, "w", encoding="utf-8") as handle:
+        json.dump(state, handle)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

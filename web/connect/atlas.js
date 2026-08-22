@@ -330,3 +330,47 @@
     syncTheme: syncTheme,
   };
 })();
+
+/* --------------------------------------------------------- оповещения
+ * /connect/status.json правится прямо на GitHub (автодеплой доносит за
+ * минуту) и превращается в баннер на каждой странице: плановые работы,
+ * смена адреса, «скачайте профиль заново». Пустой notice — баннера нет.
+ * Предпросмотр без правки файла: #status-preview=Текст%20баннера
+ */
+(function () {
+  'use strict';
+  function render(text) {
+    var host = document.querySelector('main') || document.body;
+    if (!host || !text) return;
+    var note = document.createElement('section');
+    note.className = 'note note--warn';
+    note.style.margin = '16px 0';
+    note.innerHTML =
+      (window.Atlas ? Atlas.icon('alert') : '') +
+      '<div><div class="note__title">Важное объявление</div>' +
+      '<p class="note__body"></p></div>';
+    note.querySelector('.note__body').textContent = text;
+    host.insertBefore(note, host.firstChild);
+  }
+  function boot() {
+    var preview = (location.hash || '').match(/status-preview=([^&]+)/);
+    if (preview) {
+      try { render(decodeURIComponent(preview[1])); } catch (e) {}
+      return;
+    }
+    if (!window.fetch) return;
+    fetch('/connect/status.json?ts=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (d && d.notice && (!d.until || Date.now() / 1000 < d.until)) {
+          render(String(d.notice));
+        }
+      })
+      .catch(function () {});
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();
