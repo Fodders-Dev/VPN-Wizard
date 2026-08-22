@@ -944,6 +944,71 @@ def test_redeem_does_not_burn_the_code_when_signup_fails(
     assert client.get(f"/api/web/invite/{code}").json()["valid"] is True
 
 
+def test_one_shared_code_onboards_the_whole_chat_until_the_limit(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    secret = "link-secret"
+    owner = 449066726
+    _configure_single_server(monkeypatch, secret)
+    _configure_channel_access(monkeypatch)
+    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(1))
+    server_module._shared_redeem_log.clear()
+
+    from vpn_wizard.web_signup import create_shared_invite
+
+    code = create_shared_invite(
+        server_module.build_account_store(), owner, max_uses=2
+    )["code"]
+    assert client.get(f"/api/web/invite/{code}").json()["valid"] is True
+
+    first = client.post(f"/api/web/invite/{code}/redeem")
+    second = client.post(f"/api/web/invite/{code}/redeem")
+    assert first.status_code == 200 and second.status_code == 200
+    one, two = first.json(), second.json()
+
+    # Two different people: separate accounts, separate hidden bind codes — the
+    # shared code itself never becomes anyone's identity.
+    assert one["telegram_id"] != two["telegram_id"]
+    assert one["bind_url"] != two["bind_url"]
+    assert f"web_{code}" not in one["bind_url"]
+    for body in (one, two):
+        assert client.get(
+            f"/api/awg/{body['telegram_id']}/access", params={"token": body["token"]}
+        ).status_code == 200
+
+    # The third neighbour is politely refused, and the check endpoint agrees.
+    refused = client.post(f"/api/web/invite/{code}/redeem")
+    assert refused.status_code == 400 and "Лимит" in refused.json()["detail"]
+    checked = client.get(f"/api/web/invite/{code}").json()
+    assert checked["valid"] is False and "Лимит" in checked["detail"]
+
+
+def test_shared_redeems_from_one_address_are_rate_limited(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    # One person refresh-clicking must not drain the family's counter.
+    secret = "link-secret"
+    owner = 449066726
+    _configure_single_server(monkeypatch, secret)
+    _configure_channel_access(monkeypatch)
+    server_module._shared_redeem_log.clear()
+
+    from vpn_wizard.web_signup import create_shared_invite
+
+    code = create_shared_invite(
+        server_module.build_account_store(), owner, max_uses=50
+    )["code"]
+    for _ in range(server_module._SHARED_REDEEM_PER_IP):
+        assert client.post(f"/api/web/invite/{code}/redeem").status_code == 200
+    throttled = client.post(f"/api/web/invite/{code}/redeem")
+    assert throttled.status_code == 429
+
+    # The brake spends no uses, so the family still has the rest of the pool.
+    shared = server_module.build_account_store().shared_invite_get(code)
+    assert shared["used_count"] == server_module._SHARED_REDEEM_PER_IP
+    server_module._shared_redeem_log.clear()
+
+
 def test_operator_preset_rewrites_the_config_it_serves(
     monkeypatch: pytest.MonkeyPatch, client: TestClient
 ) -> None:

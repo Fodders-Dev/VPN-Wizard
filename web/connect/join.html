@@ -37,6 +37,15 @@
     </div>
   </header>
 
+  <div class="card stack" id="resume" hidden style="margin-top:24px">
+    <h2 class="h3">Вы уже получали профиль</h2>
+    <p class="t-sm dim" style="margin:0">На этом устройстве доступ уже выдавался —
+      продолжайте с того же места, второй раз тратить код не нужно.</p>
+    <a class="btn btn--primary" id="resume-link" href="#">
+      <span class="btn__label">Продолжить подключение</span>
+    </a>
+  </div>
+
   <form id="form" novalidate class="stack" style="margin-top:28px">
     <div>
       <label class="field-label" for="code" style="text-align:center">Код приглашения</label>
@@ -59,8 +68,8 @@
       <li>Подключите его и откройте Telegram через VPN.</li>
       <li>Подпишитесь на Fodder’s Dev и сохраните этот же профиль без срока.</li>
     </ol>
-    <p class="t-sm mute">Код одноразовый. Если он не подошёл — ничего не изменилось,
-      попросите новый у того, кто его прислал.</p>
+    <p class="t-sm mute">Если код не подошёл — ничего не изменилось: попросите новый
+      у того, кто его прислал.</p>
   </div>
 
 </main>
@@ -70,6 +79,22 @@
   "use strict";
   var $=function(id){return document.getElementById(id);};
   var input=$("code"), form=$("form"), go=$("go"), msg=$("msg");
+
+  // Один общий код на семейный чат тает с каждым нажатием, а страницу люди
+  // переоткрывают постоянно. Возврат ведём на уже выданный профиль, пока не
+  // кончилась его 12-часовая связка.
+  var RESUME_KEY="fvpnJoinResume";
+  var saved=null;
+  try{saved=JSON.parse(localStorage.getItem(RESUME_KEY)||"null");}catch(e){}
+  if(saved&&saved.url&&(!saved.until||Date.now()/1000<saved.until)){
+    try{
+      var parsed=new URL(saved.url,location.href);
+      if(parsed.origin===location.origin){
+        $("resume-link").href=parsed.toString();
+        $("resume").hidden=false;
+      }
+    }catch(e){}
+  }
 
   function show(text,kind){
     msg.hidden=false;
@@ -128,12 +153,15 @@
       }
       show("Доступ готов. Открываем страницу подключения…","ok");
       // Страница подключения и есть кабинет: страна, профиль, QR.
-      location.href="/connect/awg.html?tid="+encodeURIComponent(body.telegram_id)
+      var target="/connect/awg.html?tid="+encodeURIComponent(body.telegram_id)
         +"&token="+encodeURIComponent(body.token)
         +"&server="+encodeURIComponent(body.server_id)
         +"&free=1&web=1"
         +"&grace_until="+encodeURIComponent(body.grace_expires_at)
         +"&bind="+encodeURIComponent(body.bind_url);
+      try{localStorage.setItem(RESUME_KEY,JSON.stringify(
+        {url:target,until:body.grace_expires_at||0}));}catch(e){}
+      location.href=target;
     }catch(e){
       show("Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.");
       stop();

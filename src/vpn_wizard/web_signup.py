@@ -135,3 +135,79 @@ def check_invite(account: Any, raw_code: str, *, now: Optional[int] = None) -> d
     if invite.get("expires_at") and invite["expires_at"] <= stamp:
         raise InviteError("Срок приглашения истёк — попросите новое.")
     return invite
+
+
+# --- shared invites ---------------------------------------------------------------
+# One code dropped into a family chat instead of a personal SMS each. The code
+# itself never becomes an account: every redemption mints a hidden single-use
+# invite, so the bind flow and per-person metrics work exactly as before.
+
+def create_shared_invite(
+    account: Any,
+    issuer_telegram_id: int,
+    *,
+    max_uses: int,
+    ttl_days: Optional[int] = None,
+    note: Optional[str] = None,
+    now: Optional[int] = None,
+) -> dict[str, Any]:
+    stamp = int(now if now is not None else time.time())
+    expires_at = stamp + int(ttl_days) * 86400 if ttl_days else None
+    for _ in range(5):
+        code = generate_code()
+        if account.invite_get(code) is None and account.shared_invite_get(code) is None:
+            return account.shared_invite_create(
+                code,
+                issuer_telegram_id,
+                max_uses=max_uses,
+                expires_at=expires_at,
+                note=note,
+            )
+    raise InviteError("Не удалось создать код, попробуйте ещё раз.")
+
+
+def check_shared_invite(account: Any, raw_code: str, *, now: Optional[int] = None) -> dict[str, Any]:
+    stamp = int(now if now is not None else time.time())
+    code = normalize_code(raw_code)
+    if code is None:
+        raise InviteError("Код должен быть из 8 символов, например ABCD-2345.")
+    shared = account.shared_invite_get(code)
+    if shared is None:
+        raise InviteError("Такого приглашения не существует. Проверьте код.")
+    if shared.get("disabled_at"):
+        raise InviteError("Это приглашение больше не действует — попросите новое.")
+    if shared.get("expires_at") and shared["expires_at"] <= stamp:
+        raise InviteError("Срок приглашения истёк — попросите новое.")
+    if int(shared["used_count"]) >= int(shared["max_uses"]):
+        raise InviteError("Лимит этого приглашения исчерпан — попросите новое.")
+    return shared
+
+
+def resolve_invite(account: Any, raw_code: str, *, now: Optional[int] = None) -> dict[str, Any]:
+    """Classify a typed code. Personal codes win, shared codes are the fallback,
+    and an unknown code raises the same message either way."""
+    code = normalize_code(raw_code)
+    if code is None:
+        raise InviteError("Код должен быть из 8 символов, например ABCD-2345.")
+    if account.invite_get(code) is not None:
+        return {"kind": "single", "invite": check_invite(account, code, now=now)}
+    return {"kind": "shared", "invite": check_shared_invite(account, code, now=now)}
+
+
+def mint_shared_redemption(account: Any, shared: dict[str, Any]) -> dict[str, Any]:
+    """One hidden single-use invite per use of a shared code.
+
+    Deliberately skips the max_outstanding cap: the row is claimed within the
+    same request, so it is never really outstanding.
+    """
+    for _ in range(5):
+        code = generate_code()
+        if account.invite_get(code) is None and account.shared_invite_get(code) is None:
+            account.invite_create(
+                code,
+                int(shared["issuer_telegram_id"]),
+                expires_at=None,
+                note=f"shared:{shared['code']}",
+            )
+            return account.invite_get(code)
+    raise InviteError("Не удалось создать код, попробуйте ещё раз.")

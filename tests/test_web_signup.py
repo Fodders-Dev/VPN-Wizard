@@ -11,11 +11,15 @@ from vpn_wizard.web_signup import (
     InviteConfig,
     InviteError,
     check_invite,
+    check_shared_invite,
     create_invite,
+    create_shared_invite,
     generate_code,
     is_web_account,
+    mint_shared_redemption,
     normalize_code,
     outstanding_invites,
+    resolve_invite,
     web_account_id,
 )
 
@@ -221,3 +225,64 @@ def test_release_is_scoped_to_the_claimer(tmp_path: Path) -> None:
 
     assert store.invite_release(code, web_account_id(10)) is False
     assert store.invite_get(code)["used_by"] == winner
+
+
+# --- shared invites: one code for the whole family chat ---------------------------
+
+def test_shared_invite_spends_uses_atomically_and_stops_at_the_cap(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    shared = create_shared_invite(store, OWNER, max_uses=2, now=NOW)
+
+    assert store.shared_invite_consume(shared["code"], now=NOW) is True
+    assert store.shared_invite_consume(shared["code"], now=NOW) is True
+    assert store.shared_invite_consume(shared["code"], now=NOW) is False
+    with pytest.raises(InviteError, match="Лимит"):
+        check_shared_invite(store, shared["code"], now=NOW)
+
+
+def test_shared_invite_release_refunds_but_never_goes_negative(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    shared = create_shared_invite(store, OWNER, max_uses=1, now=NOW)
+
+    assert store.shared_invite_release(shared["code"]) is False
+    assert store.shared_invite_consume(shared["code"], now=NOW) is True
+    assert store.shared_invite_release(shared["code"]) is True
+    # The refunded use is spendable again.
+    assert store.shared_invite_consume(shared["code"], now=NOW) is True
+
+
+def test_shared_invite_expiry_and_disable_close_the_door(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    aged = create_shared_invite(store, OWNER, max_uses=5, ttl_days=1, now=NOW)
+    with pytest.raises(InviteError, match="истёк"):
+        check_shared_invite(store, aged["code"], now=NOW + 2 * 86400)
+    assert store.shared_invite_consume(aged["code"], now=NOW + 2 * 86400) is False
+
+    fresh = create_shared_invite(store, OWNER, max_uses=5, now=NOW)
+    assert store.shared_invite_disable(fresh["code"]) is True
+    with pytest.raises(InviteError, match="не действует"):
+        check_shared_invite(store, fresh["code"], now=NOW)
+    assert store.shared_invite_consume(fresh["code"], now=NOW) is False
+
+
+def test_resolve_invite_prefers_personal_codes_and_falls_back_to_shared(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    personal = create_invite(store, OWNER, now=NOW)
+    shared = create_shared_invite(store, OWNER, max_uses=3, now=NOW)
+
+    assert resolve_invite(store, personal["code"], now=NOW)["kind"] == "single"
+    assert resolve_invite(store, shared["code"], now=NOW)["kind"] == "shared"
+    with pytest.raises(InviteError, match="не существует"):
+        resolve_invite(store, "ZZZZ-9999", now=NOW)
+
+
+def test_each_shared_redemption_mints_its_own_hidden_single_use_code(tmp_path: Path) -> None:
+    # The hidden per-use invite is what the bind flow and metrics key on.
+    store = _store(tmp_path)
+    shared = create_shared_invite(store, OWNER, max_uses=3, now=NOW)
+
+    first = mint_shared_redemption(store, shared)
+    second = mint_shared_redemption(store, shared)
+    assert first["code"] != second["code"]
+    assert first["note"] == f"shared:{shared['code']}"
+    assert first["issuer_telegram_id"] == OWNER

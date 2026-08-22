@@ -181,6 +181,21 @@ class AccountStore:
                 CREATE INDEX IF NOT EXISTS idx_web_invites_issuer
                     ON web_invites(issuer_telegram_id);
 
+                -- A shared invite is one code posted to a family chat: many people
+                -- redeem it, each redemption silently mints its own single-use
+                -- web_invites row so binding and metrics keep working per person.
+                -- The counter is the only brake, so it is spent atomically.
+                CREATE TABLE IF NOT EXISTS web_shared_invites (
+                    code TEXT PRIMARY KEY,
+                    issuer_telegram_id INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    expires_at INTEGER,
+                    max_uses INTEGER NOT NULL,
+                    used_count INTEGER NOT NULL DEFAULT 0,
+                    disabled_at INTEGER,
+                    note TEXT
+                );
+
                 -- One claim per Telegram account for named channel campaigns.
                 -- A short-lived "pending" row closes the double-click/race window;
                 -- failed remote activation releases it, while an interrupted request
@@ -963,6 +978,90 @@ class AccountStore:
                 WHERE code = ? AND issuer_telegram_id = ? AND used_at IS NULL
                 """,
                 (str(code), int(issuer_telegram_id)),
+            )
+            return cursor.rowcount > 0
+
+    # --- shared invites ----------------------------------------------------
+    def shared_invite_create(
+        self,
+        code: str,
+        issuer_telegram_id: int,
+        *,
+        max_uses: int,
+        expires_at: Optional[int] = None,
+        note: Optional[str] = None,
+    ) -> dict[str, Any]:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO web_shared_invites
+                    (code, issuer_telegram_id, created_at, expires_at, max_uses, note)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(code),
+                    int(issuer_telegram_id),
+                    _now(),
+                    expires_at,
+                    max(1, int(max_uses)),
+                    (note or "").strip() or None,
+                ),
+            )
+        return self.shared_invite_get(code) or {}
+
+    def shared_invite_get(self, code: str) -> Optional[dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM web_shared_invites WHERE code = ?", (str(code),)
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "code": str(row["code"]),
+            "issuer_telegram_id": int(row["issuer_telegram_id"]),
+            "created_at": int(row["created_at"]),
+            "expires_at": row["expires_at"],
+            "max_uses": int(row["max_uses"]),
+            "used_count": int(row["used_count"]),
+            "disabled_at": row["disabled_at"],
+            "note": row["note"],
+        }
+
+    def shared_invite_consume(self, code: str, *, now: Optional[int] = None) -> bool:
+        """Spend one use. Atomic, so parallel redeems cannot overshoot the cap."""
+        stamp = int(now if now is not None else _now())
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE web_shared_invites SET used_count = used_count + 1
+                WHERE code = ? AND disabled_at IS NULL
+                  AND used_count < max_uses
+                  AND (expires_at IS NULL OR expires_at > ?)
+                """,
+                (str(code), stamp),
+            )
+            return cursor.rowcount > 0
+
+    def shared_invite_release(self, code: str) -> bool:
+        """Hand back a spent use after a failed signup, never going below zero."""
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE web_shared_invites SET used_count = used_count - 1
+                WHERE code = ? AND used_count > 0
+                """,
+                (str(code),),
+            )
+            return cursor.rowcount > 0
+
+    def shared_invite_disable(self, code: str) -> bool:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE web_shared_invites SET disabled_at = ?
+                WHERE code = ? AND disabled_at IS NULL
+                """,
+                (_now(), str(code)),
             )
             return cursor.rowcount > 0
 

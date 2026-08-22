@@ -71,10 +71,11 @@ from vpn_wizard.web_signup import (
     InviteConfig,
     is_web_account,
     InviteError,
-    check_invite,
     create_invite,
+    mint_shared_redemption,
     normalize_code,
     outstanding_invites,
+    resolve_invite,
     web_account_id,
 )
 from vpn_wizard.proxy import ProxyProvisioner, rewrite_vless_alternatives, rewrite_vless_endpoint
@@ -3619,7 +3620,7 @@ def web_invite_check(code: str) -> InviteCheckResponse:
             detail="Бесплатная выдача пока не включена.",
         )
     try:
-        check_invite(build_account_store(), code)
+        resolve_invite(build_account_store(), code)
     except InviteError as exc:
         return InviteCheckResponse(ok=False, valid=False, detail=str(exc))
     return InviteCheckResponse(
@@ -3627,8 +3628,45 @@ def web_invite_check(code: str) -> InviteCheckResponse:
     )
 
 
+# A shared code sits in a chat where anyone can refresh-click, and every redeem
+# mints a real peer. A small per-IP hourly brake keeps one bored person from
+# draining the family's counter; honest retries fit far under it.
+_SHARED_REDEEM_WINDOW_SECONDS = 3600
+_SHARED_REDEEM_PER_IP = 6
+_shared_redeem_log: dict[str, list[float]] = {}
+_shared_redeem_lock = threading.Lock()
+
+
+def _shared_redeem_allowed(ip: str, *, now: Optional[float] = None) -> bool:
+    if not ip:
+        return True
+    stamp = float(now if now is not None else time.time())
+    horizon = stamp - _SHARED_REDEEM_WINDOW_SECONDS
+    with _shared_redeem_lock:
+        seen = [t for t in _shared_redeem_log.get(ip, []) if t > horizon]
+        if len(seen) >= _SHARED_REDEEM_PER_IP:
+            _shared_redeem_log[ip] = seen
+            return False
+        seen.append(stamp)
+        _shared_redeem_log[ip] = seen
+        if len(_shared_redeem_log) > 4096:
+            stale = [key for key, hits in _shared_redeem_log.items() if not hits or max(hits) <= horizon]
+            for key in stale:
+                _shared_redeem_log.pop(key, None)
+    return True
+
+
+def _client_ip(request: Optional[Request]) -> str:
+    if request is None:
+        return ""
+    forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    if forwarded:
+        return forwarded
+    return request.client.host if request.client else ""
+
+
 @app.post("/api/web/invite/{code}/redeem", response_model=InviteRedeemResponse)
-def web_invite_redeem(code: str) -> InviteRedeemResponse:
+def web_invite_redeem(code: str, request: Request) -> InviteRedeemResponse:
     """Issue one NL profile for 12 hours so Telegram can become reachable."""
     store = build_account_store()
     channel = ChannelAccessConfig.from_env()
@@ -3636,7 +3674,7 @@ def web_invite_redeem(code: str) -> InviteRedeemResponse:
     if not channel.configured or not awg_cfg.link_secret:
         raise HTTPException(status_code=503, detail="Сервис временно недоступен.")
     try:
-        invite = check_invite(store, code)
+        resolved = resolve_invite(store, code)
     except InviteError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -3645,7 +3683,31 @@ def web_invite_redeem(code: str) -> InviteRedeemResponse:
     # one won the code. Reserving the code makes the race harmless, and a failed
     # local grant releases it so nobody loses their only way in.
     account_id = web_account_id()
+    shared_code: Optional[str] = None
+    if resolved["kind"] == "shared":
+        shared = resolved["invite"]
+        if not _shared_redeem_allowed(_client_ip(request)):
+            raise HTTPException(
+                status_code=429,
+                detail="Слишком много попыток с этого адреса — попробуйте через час.",
+            )
+        if not store.shared_invite_consume(shared["code"]):
+            raise HTTPException(
+                status_code=409,
+                detail="Лимит этого приглашения исчерпан — попросите новое.",
+            )
+        try:
+            invite = mint_shared_redemption(store, shared)
+        except Exception:
+            store.shared_invite_release(shared["code"])
+            raise
+        shared_code = str(shared["code"])
+    else:
+        invite = resolved["invite"]
     if not store.invite_redeem(invite["code"], account_id):
+        if shared_code:
+            store.invite_delete(invite["code"], invite["issuer_telegram_id"])
+            store.shared_invite_release(shared_code)
         raise HTTPException(status_code=409, detail="Это приглашение только что активировал кто-то другой.")
     stamp = int(time.time())
     expires_at = stamp + channel.web_grace_hours * 3600
@@ -3658,6 +3720,10 @@ def web_invite_redeem(code: str) -> InviteRedeemResponse:
         )
     except Exception:
         store.invite_release(invite["code"], account_id)
+        if shared_code:
+            # The hidden per-use invite must not survive as a spare working code.
+            store.invite_delete(invite["code"], invite["issuer_telegram_id"])
+            store.shared_invite_release(shared_code)
         store.channel_access_delete(account_id)
         raise
     bot_username = (os.getenv("VPNW_BOT_USERNAME") or "foddervpnbot").strip().lstrip("@")
