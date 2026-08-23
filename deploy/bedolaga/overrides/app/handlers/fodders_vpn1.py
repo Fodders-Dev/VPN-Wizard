@@ -1143,8 +1143,44 @@ async def start_followup_middleware(handler, event, data):
     return result
 
 
+async def purchase_followup_middleware(handler, event, data):
+    """Point a fresh buyer at the profile they just paid for.
+
+    Bedolaga ends a purchase with «Перейдите в раздел „Подписка"», which hands
+    out the Remnawave link for xray clients. Everyone here arrived through
+    AmneziaWG instead, so without this they buy a plan and cannot find the
+    thing they bought. The upstream handler runs untouched; this only adds one
+    message with the country picker behind it.
+    """
+    result = await handler(event, data)
+    if not isinstance(event, types.CallbackQuery):
+        return result
+    payload = (getattr(event, 'data', '') or '')
+    if not payload.startswith(('daily_tariff_confirm:', 'daily_tariff_switch_confirm:')):
+        return result
+    try:
+        await event.message.answer(
+            '🛡 <b>Профиль уже готов</b>\n\n'
+            'Нажмите кнопку ниже, выберите страну — и бот пришлёт файл профиля '
+            'с инструкцией. Оплачены все страны, устройство одно.\n\n'
+            f'Позже профиль всегда можно забрать кнопкой {BTN_CONNECT} под полем ввода.',
+            reply_markup=types.InlineKeyboardMarkup(
+                inline_keyboard=[[
+                    types.InlineKeyboardButton(
+                        text='🛡 Получить профиль', callback_data='fodders_awg'
+                    )
+                ]]
+            ),
+            parse_mode='HTML',
+        )
+    except Exception:  # подсказка не должна ломать саму покупку
+        logger.exception('Failed to send purchase follow-up')
+    return result
+
+
 def register_handlers(dp: Dispatcher) -> None:
     dp.message.outer_middleware(start_followup_middleware)
+    dp.callback_query.outer_middleware(purchase_followup_middleware)
     # Exact-text only: these run before Bedolaga's own text handlers, so a loose
     # filter here would swallow promocodes and support messages.
     dp.message.register(open_managed_awg_message, F.text == BTN_CONNECT)
