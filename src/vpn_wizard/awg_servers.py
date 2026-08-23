@@ -181,6 +181,11 @@ class AwgServer:
     # belong to somebody else — our peers then live in their own interface and
     # clients_<iface> directory, and a rebuild can never wipe the owner's peers.
     interface: Optional[str] = None
+    # Ceiling on free accounts this exit may be assigned. Meant for a box that
+    # is somebody's personal server: free users fill it up to the cap, then new
+    # signups go elsewhere instead of eating its traffic allowance. A soft cap —
+    # it never refuses a signup, it only stops preferring a full exit.
+    max_free: Optional[int] = None
     # Set false to stop OFFERING an exit while keeping it fully operational, so
     # peers already issued there can still be suspended/resumed on expiry. Use it
     # when a box is unreachable (e.g. the provider blocks its UDP port) — dropping
@@ -208,6 +213,7 @@ class AwgServer:
             key_content=_clean(data.get("key_content")) or None,
             listen_port=_opt_int(data.get("listen_port")),
             interface=_require_iface(data.get("interface")),
+            max_free=_opt_int(data.get("max_free")),
         )
 
     @property

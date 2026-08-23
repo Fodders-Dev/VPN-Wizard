@@ -3680,8 +3680,15 @@ def _pick_free_server(store: AccountStore, channel: ChannelAccessConfig) -> str:
     NULL assignments in the ledger count toward the default exit.
     """
     candidates = list(channel.free_server_ids)
+    caps: dict[str, int] = {}
     try:
-        offerable = {server.id for server in _awg_registry().offerable}
+        registry = _awg_registry()
+        offerable = {server.id for server in registry.offerable}
+        caps = {
+            server.id: int(server.max_free)
+            for server in registry.servers
+            if getattr(server, "max_free", None)
+        }
     except Exception:
         offerable = set()
     if offerable:
@@ -3690,7 +3697,11 @@ def _pick_free_server(store: AccountStore, channel: ChannelAccessConfig) -> str:
     if len(candidates) == 1:
         return candidates[0]
     counts = store.channel_access_counts_by_server(channel.free_server_id)
-    return min(candidates, key=lambda sid: (counts.get(sid, 0), candidates.index(sid)))
+    # A capped exit drops out of the running once it is full, but never blocks a
+    # signup: if every exit is at its ceiling we still pick the emptiest one.
+    room = [sid for sid in candidates if counts.get(sid, 0) < caps.get(sid, 1 << 30)]
+    pool = room or candidates
+    return min(pool, key=lambda sid: (counts.get(sid, 0), candidates.index(sid)))
 
 
 # A shared code sits in a chat where anyone can refresh-click, and every redeem

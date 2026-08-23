@@ -1034,6 +1034,46 @@ def test_free_signups_spread_across_the_configured_exits(
     server_module._shared_redeem_log.clear()
 
 
+def test_a_capped_exit_stops_taking_new_free_users_when_it_is_full(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    # The Finnish exit is somebody's personal box: free users may fill it up to
+    # the cap, after which new signups go to the product's own server instead of
+    # eating its traffic allowance.
+    secret = "link-secret"
+    owner = 449066726
+    monkeypatch.setenv(
+        "VPNW_AWG_SERVERS",
+        json.dumps(
+            [
+                {"id": "nl", "label": "Нидерланды", "host": "10.0.0.1", "password": "p", "listen_port": 443},
+                {"id": "fi", "label": "Финляндия", "host": "10.0.0.2", "password": "p",
+                 "listen_port": 443, "interface": "awg9", "max_free": 2},
+            ]
+        ),
+    )
+    monkeypatch.setenv("VPNW_AWG_LINK_SECRET", secret)
+    _configure_channel_access(monkeypatch)
+    monkeypatch.setenv("VPNW_CHANNEL_ACCESS_SERVER_IDS", "fi,nl")
+    monkeypatch.setattr(server_module, "RemnawaveClient", _active_remnawave(1))
+    server_module._shared_redeem_log.clear()
+
+    from vpn_wizard.web_signup import create_shared_invite
+
+    code = create_shared_invite(
+        server_module.build_account_store(), owner, max_uses=5
+    )["code"]
+    assigned = [
+        client.post(f"/api/web/invite/{code}/redeem").json()["server_id"]
+        for _ in range(5)
+    ]
+
+    # Exactly the cap lands on fi; everyone after that goes to nl.
+    assert assigned.count("fi") == 2
+    assert assigned[-2:] == ["nl", "nl"]
+    server_module._shared_redeem_log.clear()
+
+
 def test_owner_mints_promo_codes_beyond_the_default_cap(
     monkeypatch: pytest.MonkeyPatch, client: TestClient
 ) -> None:
