@@ -166,6 +166,7 @@ class AwgFallbackConfig:
     key_content: Optional[str]
     listen_port: Optional[int]
     link_secret: str
+    interface: Optional[str] = None
 
     @classmethod
     def from_env(cls) -> "AwgFallbackConfig":
@@ -182,6 +183,7 @@ class AwgFallbackConfig:
             key_content=(os.getenv("VPNW_AWG_FALLBACK_SSH_KEY_CONTENT") or "").strip() or None,
             listen_port=_int("VPNW_AWG_FALLBACK_LISTEN_PORT"),
             link_secret=(os.getenv("VPNW_AWG_LINK_SECRET") or "").strip(),
+            interface=(os.getenv("VPNW_AWG_FALLBACK_INTERFACE") or "").strip() or None,
         )
 
     @classmethod
@@ -196,6 +198,7 @@ class AwgFallbackConfig:
             key_content=server.key_content,
             listen_port=server.listen_port,
             link_secret=link_secret,
+            interface=getattr(server, "interface", None),
         )
 
     @property
@@ -375,9 +378,12 @@ class AwgFallbackService:
                 temp_key.unlink(missing_ok=True)
 
     def _provisioner(self, ssh: Any) -> WireGuardProvisioner:
+        kwargs: dict[str, Any] = {}
         if self.config.listen_port:
-            return WireGuardProvisioner(ssh, listen_port=self.config.listen_port)
-        return WireGuardProvisioner(ssh)
+            kwargs["listen_port"] = self.config.listen_port
+        if self.config.interface:
+            kwargs["iface"] = self.config.interface
+        return WireGuardProvisioner(ssh, **kwargs)
 
     def _ssh_provision(self, name: str) -> str:
         with self._ssh() as ssh:

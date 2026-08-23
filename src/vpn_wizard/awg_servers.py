@@ -49,6 +49,23 @@ def _opt_int(value: Any) -> Optional[int]:
     return int(text) if text.isdigit() else None
 
 
+# An interface name goes straight into shell paths and systemd unit names, so it
+# is validated as strictly as an id — a stray slash or space would let a registry
+# entry write outside /etc/amnezia/amneziawg.
+_IFACE_RE = re.compile(r"^[a-z][a-z0-9]{1,14}$")
+
+
+def _require_iface(raw: Any) -> Optional[str]:
+    value = _clean(raw).lower()
+    if not value:
+        return None
+    if not _IFACE_RE.match(value):
+        raise AwgRegistryError(
+            f"Invalid interface {value!r}: use 2-15 chars of a-z and 0-9, e.g. 'awg9'."
+        )
+    return value
+
+
 def _require_id(raw: Any, *, kind: str) -> str:
     value = _clean(raw).lower()
     if not _ID_RE.match(value):
@@ -160,6 +177,10 @@ class AwgServer:
     key_path: Optional[str]
     key_content: Optional[str]
     listen_port: Optional[int]
+    # Name a dedicated AWG interface (e.g. "awg9") when the box's awg0/awg1
+    # belong to somebody else — our peers then live in their own interface and
+    # clients_<iface> directory, and a rebuild can never wipe the owner's peers.
+    interface: Optional[str] = None
     # Set false to stop OFFERING an exit while keeping it fully operational, so
     # peers already issued there can still be suspended/resumed on expiry. Use it
     # when a box is unreachable (e.g. the provider blocks its UDP port) — dropping
@@ -186,6 +207,7 @@ class AwgServer:
             key_path=_clean(data.get("key_path")) or None,
             key_content=_clean(data.get("key_content")) or None,
             listen_port=_opt_int(data.get("listen_port")),
+            interface=_require_iface(data.get("interface")),
         )
 
     @property

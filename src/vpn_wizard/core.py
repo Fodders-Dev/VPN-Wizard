@@ -164,7 +164,12 @@ class WireGuardProvisioner:
         progress: Optional[Callable[[str], None]] = None,
         protocol: str = "amneziawg",  # "wireguard" or "amneziawg"
         allow_ipv6: bool = False,
+        iface: Optional[str] = None,
     ) -> None:
+        # A dedicated interface (e.g. "awg9") keeps the product's peers off a box
+        # whose awg0/awg1 already belong to someone else. Rebuilding a shared
+        # interface from OUR clients directory would delete their manual peers.
+        self.iface = (iface or "").strip() or None
         self.ssh = ssh
         self.client_name = client_name
         self.client_ip = client_ip
@@ -470,6 +475,37 @@ class WireGuardProvisioner:
     def _allowed_ips(self) -> str:
         return "0.0.0.0/0, ::/0" if self.allow_ipv6 else "0.0.0.0/0"
 
+    @property
+    def dedicated_clients_dir(self) -> Optional[str]:
+        """Where a dedicated interface keeps its own client profiles."""
+        if not self.iface:
+            return None
+        return f"/etc/amnezia/amneziawg/clients_{self.iface}"
+
+    def rebuild_iface_from_clients(self, iface: str, clients_dir: str) -> None:
+        """Rebuild <iface>.conf peers from its own clients dir, keeping the header."""
+        conf = f"/etc/amnezia/amneziawg/{iface}.conf"
+        self.ssh.run(
+            "set -e\n"
+            f"header=$(awk 'BEGIN{{p=1}} /^\\[Peer\\]/{{p=0}} {{if(p) print}}' {conf})\n"
+            "tmp=$(mktemp)\n"
+            "echo \"$header\" > $tmp\n"
+            f"for c in {clients_dir}/*.conf; do\n"
+            "  [ -f \"$c\" ] || continue\n"
+            "  name=$(basename \"$c\" .conf)\n"
+            f"  pub=$(cat {clients_dir}/$name.pub)\n"
+            "  ip=$(grep '^Address' \"$c\" | cut -d= -f2 | tr -d ' ' | tr -d '\\r' | head -n1)\n"
+            "  echo \"\" >> $tmp\n"
+            "  echo \"[Peer]\" >> $tmp\n"
+            "  echo \"PublicKey = $pub\" >> $tmp\n"
+            "  echo \"AllowedIPs = $ip\" >> $tmp\n"
+            "done\n"
+            f"mv $tmp {conf}\n"
+            f"chmod 600 {conf}\n"
+            f"nohup sh -c 'sleep 1; systemctl restart awg-quick@{iface}' >/dev/null 2>&1 &\n",
+            sudo=True,
+        )
+
     def _post_rules(self, ifname: str) -> tuple[str, str]:
         postup = (
             "sysctl -w net.ipv4.ip_forward=1; "
@@ -499,6 +535,15 @@ class WireGuardProvisioner:
                 "ip6tables -w -t nat -D POSTROUTING -s fd42:42:42::/64 -j MASQUERADE || true"
             )
         return postup, postdown
+
+    def _resolve_server_cidr(self, conf_path: str) -> str:
+        """Read the interface's own subnet, so client IPs land inside it."""
+        addr = self.ssh.run(
+            f"awk -F'= ' '/^Address/{{print $2; exit}}' {conf_path} 2>/dev/null || true",
+            sudo=True,
+            check=False,
+        ).strip()
+        return addr or self.server_cidr
 
     def _resolve_listen_port(self, conf_path: str) -> int:
         port = self.ssh.run(
@@ -977,7 +1022,14 @@ class WireGuardProvisioner:
 
     def list_clients(self) -> list[dict]:
         self._auto_detect_protocol()
-        if self.protocol == "amneziawg":
+        if self.protocol == "amneziawg" and self.iface:
+            dirs = [(self.dedicated_clients_dir, self.iface)]
+            stats_by_iface = {
+                self.iface: self._parse_wg_show(
+                    self.ssh.run(f"awg show {self.iface} || true", sudo=True, check=False)
+                )
+            }
+        elif self.protocol == "amneziawg":
             dirs = [("/etc/amnezia/amneziawg/clients", "awg0")]
             tyumen_probe = self.ssh.run(
                 "ls /etc/amnezia/amneziawg/clients_tyumen/*.conf 2>/dev/null | head -n 1 || true",
@@ -1075,7 +1127,10 @@ class WireGuardProvisioner:
         elif self.protocol != "amneziawg" and not has_wg and has_awg:
              self.protocol = "amneziawg"
 
-        if self.protocol == "amneziawg":
+        if self.protocol == "amneziawg" and self.iface:
+            # Dedicated interface: never inspect awg0/awg1, never rebuild them.
+            has_awg = True
+        elif self.protocol == "amneziawg":
             use_alt_iface = is_tyumen
             if not use_alt_iface and has_awg:
                 awg0_port_raw = self.ssh.run(
@@ -1088,7 +1143,16 @@ class WireGuardProvisioner:
                     use_alt_iface = True
         
         # Protocol-specific paths and commands
-        if self.protocol == "amneziawg":
+        if self.protocol == "amneziawg" and self.iface:
+            conf_dir = "/etc/amnezia/amneziawg"
+            wg_conf = f"{conf_dir}/{self.iface}.conf"
+            clients_dir = self.dedicated_clients_dir
+            cmd_genkey = "awg genkey"
+            cmd_pubkey = "awg pubkey"
+            iface_name = self.iface
+            rebuild_cmd = lambda: self.rebuild_iface_from_clients(iface_name, clients_dir)
+            self.server_cidr = self._resolve_server_cidr(wg_conf)
+        elif self.protocol == "amneziawg":
             # Tyumen "Magic" Interface Logic
             if use_alt_iface:
                 conf_dir = "/etc/amnezia/amneziawg"
@@ -1271,7 +1335,19 @@ class WireGuardProvisioner:
         self, client_name: str, suffix: str
     ) -> Optional[tuple[str, Callable[[], None], str]]:
         self._auto_detect_protocol()
-        if self.protocol == "amneziawg":
+        if self.protocol == "amneziawg" and self.iface:
+            # A dedicated interface owns only its own directory: looking into
+            # awg0/awg1 could match a same-named peer that is not ours and then
+            # rebuild somebody else's interface.
+            iface_name, dedicated = self.iface, self.dedicated_clients_dir
+            candidates = [
+                (
+                    dedicated,
+                    lambda: self.rebuild_iface_from_clients(iface_name, dedicated),
+                    iface_name,
+                )
+            ]
+        elif self.protocol == "amneziawg":
             candidates = [
                 ("/etc/amnezia/amneziawg/clients", self.rebuild_awg0_from_clients, "awg0"),
                 ("/etc/amnezia/amneziawg/clients_tyumen", self.rebuild_awg1_from_clients, "awg1"),
@@ -1475,7 +1551,9 @@ class WireGuardProvisioner:
 
     def next_client_ip(self) -> str:
         # Robustly find all used IPs by scanning the config files directly
-        if self.server_cidr.startswith("10.11."): # Tyumen mode check
+        if self.iface and self.protocol == "amneziawg":
+            conf_dir = self.dedicated_clients_dir
+        elif self.server_cidr.startswith("10.11."): # Tyumen mode check
              conf_dir = "/etc/amnezia/amneziawg/clients_tyumen"
         elif self.protocol == "amneziawg":
             conf_dir = "/etc/amnezia/amneziawg/clients"
