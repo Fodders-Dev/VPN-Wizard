@@ -166,7 +166,21 @@
           <svg class="i" aria-hidden="true"><use href="#i-download"/></svg>
           <span class="btn__label">Скачать VPN-профиль</span>
         </a>
-        <p class="t-sm mute" style="text-align:center">Файл .conf для AmneziaWG</p>
+        <p class="t-sm mute" style="text-align:center" id="dl-hint">Файл .conf для AmneziaWG</p>
+
+        <!-- Повторные скачивания — главная причина проблем: браузер добавляет к
+             имени «(1)», «(2)», а скобки AmneziaWG в имени профиля не принимает.
+             Поэтому после первого раза прямо говорим не качать снова и называем
+             точное имя нужного файла. -->
+        <div class="note note--ok" id="dl-done" hidden>
+          <svg class="i" aria-hidden="true"><use href="#i-check-circle"/></svg>
+          <div>
+            <div class="note__title">Профиль сохранён в «Загрузки»</div>
+            <p class="note__body">Файл называется <b id="dl-name">FVPN.conf</b>.
+              Второй раз качать не нужно: если скачать снова, браузер добавит
+              к имени «(1)» или «(2)», а такой файл AmneziaWG не откроет.</p>
+          </div>
+        </div>
 
         <details class="disclosure" id="qr-box">
           <summary>Показать QR для другого устройства</summary>
@@ -242,6 +256,16 @@
         <li><span><b>Включите переключатель</b> напротив профиля. Первый раз
           система спросит разрешение — нажмите <b>ОК</b>.</span></li>
       </ol>
+    </div>
+
+    <div class="note note--warn">
+      <svg class="i" aria-hidden="true"><use href="#i-alert"/></svg>
+      <div>
+        <div class="note__title">Скачали профиль несколько раз?</div>
+        <p class="note__body">Выбирайте файл <b>без цифры в скобках</b> —
+          например <b id="import-name">FVPN.conf</b>, а не FVPN(1).conf.
+          Файлы со скобками AmneziaWG открыть не может.</p>
+      </div>
     </div>
 
     <details class="disclosure" id="guide-shots">
@@ -525,6 +549,21 @@
     $("qr-name").textContent=tunnelName();
     $("device-name").textContent=u.family?"Профиль для близкого":("Устройство "+u.device);
     $("row-device").hidden=u.family||deviceLimit<2;
+    // Точное имя нужного файла — и рядом с кнопкой, и в предупреждении на импорте.
+    var fname=tunnelName()+".conf";
+    if($("dl-name"))$("dl-name").textContent=fname;
+    if($("import-name"))$("import-name").textContent=fname;
+  }
+
+  // Один раз после скачивания: подтверждаем успех и гасим соблазн качать снова
+  // (повторное скачивание — это и есть файл со скобками, который не открыть).
+  function markDownloaded(){
+    var done=$("dl-done"); if(done)done.hidden=false;
+    var hint=$("dl-hint"); if(hint)hint.hidden=true;
+    var label=$("dl").querySelector(".btn__label");
+    if(label)label.textContent="Скачать ещё раз (обычно не нужно)";
+    $("dl").classList.remove("btn--primary");
+    $("dl").classList.add("btn--secondary");
   }
 
   $("qr-box").addEventListener("toggle",function(){
@@ -545,6 +584,7 @@
   // ни ошибки. Внутри Mini App идём через его собственные API.
   $("dl").addEventListener("click",function(event){
     if(this.getAttribute("aria-disabled")==="true"){event.preventDefault();return;}
+    markDownloaded();
     if(!inTelegram)return;              // настоящий браузер: пусть качает сам
     var url=this.href;
     if(!isHttp(url))return;
