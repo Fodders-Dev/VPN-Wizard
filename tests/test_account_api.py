@@ -241,6 +241,12 @@ def test_legacy_miniapp_entry_redirects_to_uncached_portal() -> None:
     assert wizard.status_code == 200
     assert portal.headers["cache-control"] == "no-store, max-age=0"
     assert wizard.headers["cache-control"] == "no-store, max-age=0"
+    # The portal entry serves the liquid-glass cabinet; the previous portal
+    # must stay reachable as a fallback under its own file name.
+    assert "Fodder VPN · кабинет" in portal.text
+    legacy = client.get("/connect/index.html")
+    assert legacy.status_code == 200
+    assert "Fodder VPN · кабинет" not in legacy.text
 
 
 def test_saved_server_roundtrip_works_for_authenticated_user(monkeypatch, tmp_path) -> None:

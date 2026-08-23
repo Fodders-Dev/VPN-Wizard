@@ -3984,15 +3984,17 @@ def legacy_miniapp_entry() -> RedirectResponse:
     )
 
 
-def _entry_file(directory: str) -> FileResponse:
+def _entry_file(directory: str, filename: str = "index.html") -> FileResponse:
     root = Path(__file__).resolve().parents[2]
-    return FileResponse(root / "web" / directory / "index.html", headers=STATIC_ENTRY_HEADERS)
+    return FileResponse(root / "web" / directory / filename, headers=STATIC_ENTRY_HEADERS)
 
 
 @app.get("/portal", include_in_schema=False)
 @app.get("/portal/", include_in_schema=False)
 def portal_entry() -> FileResponse:
-    return _entry_file("connect")
+    # The liquid-glass cabinet. The previous portal keeps living at
+    # /connect/index.html as a reachable fallback while this one settles in.
+    return _entry_file("connect", "next.html")
 
 
 @app.get("/wizard", include_in_schema=False)
