@@ -96,6 +96,34 @@ def test_locate_client_never_looks_into_someone_elses_directory() -> None:
     assert not any("clients/" in cmd or "clients_tyumen" in cmd for cmd in ssh.commands)
 
 
+def test_client_gets_the_dedicated_interfaces_own_server_key() -> None:
+    # The generic server_public.key on a shared box belongs to whichever
+    # interface created it. Handing that key to our client made every
+    # handshake fail silently: packets arrived, nothing ever completed.
+    conf_dir = "/etc/amnezia/amneziawg"
+    prov, _ = _provisioner(iface="awg9")
+    prov.protocol = "amneziawg"
+
+    priv, pub = prov._server_key_paths(conf_dir, use_alt_iface=False)
+    assert priv == f"{conf_dir}/server_private_awg9.key"
+    assert pub == f"{conf_dir}/server_public_awg9.key"
+
+
+def test_shared_interfaces_keep_their_original_key_files() -> None:
+    conf_dir = "/etc/amnezia/amneziawg"
+    prov, _ = _provisioner()
+    prov.protocol = "amneziawg"
+
+    assert prov._server_key_paths(conf_dir, use_alt_iface=False) == (
+        f"{conf_dir}/server_private.key",
+        f"{conf_dir}/server_public.key",
+    )
+    assert prov._server_key_paths(conf_dir, use_alt_iface=True) == (
+        f"{conf_dir}/server_private_awg1.key",
+        f"{conf_dir}/server_public_awg1.key",
+    )
+
+
 def test_client_ip_is_taken_from_the_dedicated_subnet() -> None:
     ssh = FakeSSH(responses={"grep -h '^Address'": "10.99.0.2\n10.99.0.3"})
     prov = WireGuardProvisioner(ssh, iface="awg9")

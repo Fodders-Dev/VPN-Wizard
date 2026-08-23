@@ -536,6 +536,21 @@ class WireGuardProvisioner:
             )
         return postup, postdown
 
+    def _server_key_paths(self, conf_dir: str, use_alt_iface: bool) -> tuple[str, str]:
+        """Which server keypair a client config must be built against.
+
+        A dedicated interface needs its own pair: the generic server_public.key
+        belongs to whichever interface created it, and handing that key to our
+        client fails every handshake silently — packets arrive, nothing completes.
+        """
+        if self.protocol == "amneziawg" and self.iface:
+            suffix = f"_{self.iface}"
+        elif self.protocol == "amneziawg" and use_alt_iface:
+            suffix = "_awg1"
+        else:
+            suffix = ""
+        return f"{conf_dir}/server_private{suffix}.key", f"{conf_dir}/server_public{suffix}.key"
+
     def _resolve_server_cidr(self, conf_path: str) -> str:
         """Read the interface's own subnet, so client IPs land inside it."""
         addr = self.ssh.run(
@@ -1235,12 +1250,7 @@ class WireGuardProvisioner:
 
         self.ssh.run(f"mkdir -p {clients_dir}", sudo=True)
 
-        if self.protocol == "amneziawg" and use_alt_iface:
-            server_priv_path = f"{conf_dir}/server_private_awg1.key"
-            server_pub_path = f"{conf_dir}/server_public_awg1.key"
-        else:
-            server_priv_path = f"{conf_dir}/server_private.key"
-            server_pub_path = f"{conf_dir}/server_public.key"
+        server_priv_path, server_pub_path = self._server_key_paths(conf_dir, use_alt_iface)
 
         # Ensure server keys exist (should be there if conf exists, but good to be safe)
         self.ssh.run(
