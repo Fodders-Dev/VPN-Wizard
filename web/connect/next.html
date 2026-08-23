@@ -51,7 +51,10 @@ body{
     linear-gradient(180deg, var(--bg-0) 0%, var(--bg-1) 46%, var(--bg-2) 100%);
   background-size:340px 340px,260px 260px,300px 300px,380px 380px,220px 220px,320px 320px,400px 400px,100% 100%;
 }
-.aurora{position:fixed;z-index:-1;filter:blur(70px);pointer-events:none;opacity:.5}
+/* Ауроры — радиальные градиенты, они и так растворяются в фон. Дополнительный
+   filter:blur() рисовал три полноэкранных размытия каждый кадр и вешал прокрутку
+   на телефоне, а глазом не менял почти ничего. */
+.aurora{position:fixed;z-index:-1;pointer-events:none;opacity:.55}
 .aurora--cyan{width:60vmin;height:60vmin;left:-18vmin;top:-12vmin;
   background:radial-gradient(circle, rgba(53,214,238,.35), transparent 65%)}
 .aurora--violet{width:70vmin;height:70vmin;right:-24vmin;top:34%;
@@ -63,13 +66,16 @@ body{
   padding:calc(14px + env(safe-area-inset-top,0px)) 16px calc(30px + env(safe-area-inset-bottom,0px))}
 
 /* ============================================================= стекло */
+/* Стекло держим, но дёшево: на странице больше десятка таких поверхностей, и с
+   blur(22px)+saturate каждая перерисовывалась на каждом кадре прокрутки — Chrome
+   на телефоне вставал колом. 10px по этому фону выглядят так же. */
 .glass{
   background:var(--glass);
   border:1px solid var(--line);
   border-radius:var(--r);
   box-shadow:var(--shadow), inset 0 1px 0 rgba(255,255,255,.20);
-  backdrop-filter:blur(22px) saturate(150%);
-  -webkit-backdrop-filter:blur(22px) saturate(150%);
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
 }
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
   .glass{background:rgba(13,20,48,.92)}
@@ -514,7 +520,9 @@ function render(links,servers,devices){
       if(other!==id)$(other).hidden=true;
     });
     box.hidden=!wasHidden;
-    if(!box.hidden)box.scrollIntoView({behavior:"smooth",block:"center"});
+    // Прокрутка мгновенная: плавная заставляла браузер пересчитывать размытие
+    // всех стеклянных поверхностей на каждом кадре и вешала страницу.
+    if(!box.hidden)box.scrollIntoView({block:"nearest"});
   }
 
   var used=(devices||[]).length;
