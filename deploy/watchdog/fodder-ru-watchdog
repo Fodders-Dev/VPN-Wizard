@@ -17,12 +17,19 @@ Telegram-сообщение только на СМЕНУ состояния, п�
 Токен и владелец берутся из окружения (EnvironmentFile=/etc/vpn-wizard.env):
 VPNW_TELEGRAM_AUTH_TOKEN (или VPNW_BOT_TOKEN) и VPNW_OWNER_IDS.
 
+Кроме доступности проверяются ресурсы каждой коробки (загрузка, память, диск и
+давление на TCP-буферы ядра). 23.08.2026 панельный сервер был прекрасно доступен,
+но TCP-память кончилась — и все TLS-хендшейки встали, а узнали мы об этом, только
+когда сайт полностью лёг. Эти пороги предупреждают заранее.
+
 Запуск с --test шлёт пробное сообщение и выходит — так проверяется доставка.
+Запуск с --capacity печатает текущие цифры по всем коробкам и выходит.
 """
 from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import time
 import urllib.parse
@@ -102,6 +109,86 @@ def detail_line(verdicts: dict[str, bool]) -> str:
     )
 
 
+# --- capacity ----------------------------------------------------------------
+# Reachability is only half the story: on 2026-08-23 the panel box was perfectly
+# reachable while TCP memory was exhausted, and every TLS handshake hung. Nothing
+# said a word until the whole site was down. These are the numbers that would
+# have caught it an hour earlier.
+LOAD_PER_CORE = 4.0
+MIN_MEM_PERCENT = 12.0
+MIN_DISK_PERCENT = 10.0
+MAX_TCP_MEM_PERCENT = 85.0
+
+PROBE = r"""
+cores=$(nproc)
+load=$(cut -d' ' -f1 /proc/loadavg)
+mem=$(awk '/MemTotal/{t=$2} /MemAvailable/{a=$2} END{printf "%.0f", a*100/t}' /proc/meminfo)
+disk=$(df -P / | awk 'NR==2{gsub("%","",$5); print 100-$5}')
+tcp=$(awk '/^TCP:/{for(i=1;i<=NF;i++) if($i=="mem") print $(i+1)}' /proc/net/sockstat)
+tcpmax=$(awk '{print $3}' /proc/sys/net/ipv4/tcp_mem)
+echo "$cores|$load|$mem|$disk|$tcp|$tcpmax"
+"""
+
+
+def probe(ssh_target=None):
+    """Read load/memory/disk/TCP pressure, locally or over SSH."""
+    if ssh_target is None:
+        argv = ["sh", "-c", PROBE]
+    else:
+        host, user, port, key = ssh_target
+        argv = [
+            "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+            "-o", "StrictHostKeyChecking=accept-new",
+            "-p", str(port), "-i", key, f"{user}@{host}", PROBE,
+        ]
+    out = subprocess.run(argv, capture_output=True, text=True, timeout=40)
+    parts = (out.stdout or "").strip().splitlines()[-1].split("|")
+    if len(parts) != 6:
+        raise RuntimeError(f"unreadable probe: {out.stdout!r} {out.stderr[:120]!r}")
+    cores, load, mem, disk, tcp, tcpmax = parts
+    return {
+        "load_per_core": float(load) / max(1, int(cores)),
+        "mem_percent": float(mem),
+        "disk_percent": float(disk),
+        "tcp_percent": (float(tcp) * 100 / float(tcpmax)) if tcp and float(tcpmax) else 0.0,
+    }
+
+
+def capacity_complaints(stats: dict) -> list[str]:
+    out = []
+    if stats["load_per_core"] > LOAD_PER_CORE:
+        out.append(f"загрузка {stats['load_per_core']:.1f} на ядро")
+    if stats["mem_percent"] < MIN_MEM_PERCENT:
+        out.append(f"свободной памяти {stats['mem_percent']:.0f}%")
+    if stats["disk_percent"] < MIN_DISK_PERCENT:
+        out.append(f"свободного диска {stats['disk_percent']:.0f}%")
+    if stats["tcp_percent"] > MAX_TCP_MEM_PERCENT:
+        # The exact failure of 2026-08-23: TLS dies while HTTP still answers.
+        out.append(f"TCP-буферы ядра на {stats['tcp_percent']:.0f}% — TLS вот-вот встанет")
+    return out
+
+
+def exit_targets() -> list[tuple[str, tuple]]:
+    """Remote exits from VPNW_AWG_SERVERS, skipping the local one."""
+    try:
+        servers = json.loads(os.environ.get("VPNW_AWG_SERVERS") or "[]")
+    except ValueError:
+        return []
+    targets = []
+    for s in servers:
+        host = str(s.get("host") or "")
+        key = s.get("key_path")
+        if not host or not key or host.startswith("127.") or s.get("enabled") is False:
+            continue
+        targets.append(
+            (
+                f"{s.get('label') or s.get('id')} ({host})",
+                (host, s.get("user") or "root", s.get("port") or 22, key),
+            )
+        )
+    return targets
+
+
 def notify(text: str) -> None:
     token = (
         os.environ.get("VPNW_TELEGRAM_AUTH_TOKEN")
@@ -134,8 +221,67 @@ MESSAGES = {
     "ok": "✅ {name}: {host} снова виден из России ({detail}).",
 }
 
+CAPACITY_MESSAGES = {
+    "tight": (
+        "📈 {name}: сервер упирается в ресурсы — {detail}.\n\n"
+        "Пока работает, но запаса нет. Стоит подумать об апгрейде тарифа "
+        "или о переносе части людей на другой экзит."
+    ),
+    "ok": "✅ {name}: с ресурсами снова порядок ({detail}).",
+}
+
+
+def check_capacity(state: dict, now: int) -> None:
+    """Warn while a box still works, instead of after it stops."""
+    boxes = [("NL · панель и сайт", None)] + exit_targets()
+    for name, target in boxes:
+        try:
+            stats = probe(target)
+        except Exception as exc:  # a probe failure is not a capacity verdict
+            print(f"watchdog: capacity probe failed for {name}: {exc}", file=sys.stderr)
+            continue
+        complaints = capacity_complaints(stats)
+        status = "tight" if complaints else "ok"
+        detail = ", ".join(complaints) or (
+            f"загрузка {stats['load_per_core']:.1f}/ядро, память {stats['mem_percent']:.0f}%, "
+            f"диск {stats['disk_percent']:.0f}%"
+        )
+        key = f"capacity:{name}"
+        entry = state.get(key) or {"status": "ok", "since": now, "last_alert": 0}
+        changed = status != entry["status"]
+        stale = status == "tight" and now - int(entry.get("last_alert") or 0) >= REMIND_SECONDS
+        if (changed or stale) and (status == "tight" or entry["status"] == "tight"):
+            text = CAPACITY_MESSAGES[status].format(name=name, detail=detail)
+            if not changed:
+                text = "⏰ Всё ещё тесно.\n" + text
+            try:
+                notify(text)
+                entry["last_alert"] = now
+            except Exception as exc:
+                print(f"watchdog: notify failed: {exc}", file=sys.stderr)
+        if changed:
+            entry["status"] = status
+            entry["since"] = now
+        state[key] = entry
+
 
 def main() -> int:
+    if "--capacity" in sys.argv:
+        for name, target in [("NL · панель и сайт", None)] + exit_targets():
+            try:
+                stats = probe(target)
+            except Exception as exc:
+                print(f"{name}: probe failed: {exc}")
+                continue
+            print(
+                f"{name}: загрузка {stats['load_per_core']:.2f}/ядро, "
+                f"память {stats['mem_percent']:.0f}% свободно, "
+                f"диск {stats['disk_percent']:.0f}% свободно, "
+                f"TCP-буферы {stats['tcp_percent']:.0f}% лимита"
+                + (f"  ⚠ {', '.join(capacity_complaints(stats))}" if capacity_complaints(stats) else "")
+            )
+        return 0
+
     if "--test" in sys.argv:
         notify(
             "🔔 Тест сторожа Fodder VPN: алерты доходят. Каждые 10 минут проверяю "
@@ -180,6 +326,8 @@ def main() -> int:
             entry["status"] = status
             entry["since"] = now
         state[host] = entry
+
+    check_capacity(state, now)
 
     os.makedirs(STATE_DIR, exist_ok=True)
     with open(STATE_PATH, "w", encoding="utf-8") as handle:

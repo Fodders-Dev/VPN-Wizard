@@ -23,9 +23,16 @@ systemctl daemon-reload
 systemctl enable --now fodder-ru-watchdog.timer
 ```
 
+Заодно снимает **ресурсы** каждой коробки (панель локально, экзиты по SSH из
+`VPNW_AWG_SERVERS`) и предупреждает ЗАРАНЕЕ: загрузка > 4 на ядро, свободной
+памяти < 12%, свободного диска < 10%, TCP-буферы ядра > 85% лимита. Последний
+порог — про аварию 23.08.2026: сервер был доступен, HTTP отвечал, а TLS вставал,
+потому что `tcp_mem` упёрся в потолок (см. [[rodnya-tcp-mem-outage]]).
+
 Проверка доставки: `systemd-run --wait -p EnvironmentFile=/etc/vpn-wizard.env /usr/local/bin/fodder-ru-watchdog --test`
-(придёт пробное сообщение). Состояние: `/var/lib/fodder-ru-watchdog/state.json`,
-логи: `journalctl -u fodder-ru-watchdog`.
+(придёт пробное сообщение). Текущие цифры без алертов:
+`set -a; . /etc/vpn-wizard.env; set +a; /usr/local/bin/fodder-ru-watchdog --capacity`.
+Состояние: `/var/lib/fodder-ru-watchdog/state.json`, логи: `journalctl -u fodder-ru-watchdog`.
 
 При смене IP поправь адреса в `TARGETS` внутри скрипта и переустанови его.
 
