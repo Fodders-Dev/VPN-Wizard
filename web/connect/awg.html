@@ -419,7 +419,7 @@
       <a class="btn btn--secondary" href="https://t.me/foddervpnbot?start=promo" target="_blank" rel="noopener noreferrer">
         <span class="btn__label">Промокод на ещё один профиль</span>
       </a>
-      <a class="btn btn--secondary" href="https://t.me/fodders_dev" target="_blank" rel="noopener noreferrer">
+      <a class="btn btn--secondary" id="footer-channel" href="https://t.me/fodders_dev" target="_blank" rel="noopener noreferrer">
         <span class="btn__label">Канал Fodder’s Dev — новости и ссылки</span>
       </a>
     </div>
@@ -936,7 +936,11 @@
     $("check-upsell").hidden=!(ok&&u.free);
     // Карточка про канал — только при успехе и только тем, у кого есть Telegram
     // (у web-grace связки внизу уже своя кнопка канала, чтобы не дублировать).
-    $("check-channel").hidden=!(ok&&!u.web);
+    var pitchChannel=ok&&!u.web;
+    $("check-channel").hidden=!pitchChannel;
+    // Два призыва подписаться на одном экране обесценивают друг друга —
+    // подвальная ссылка уходит, пока висит карточка.
+    if($("footer-channel"))$("footer-channel").hidden=pitchChannel;
     $("check-progress").hidden=true;
     if(ok)$("check-card").classList.add("note--ok");
     else $("check-card").classList.remove("note--ok");
