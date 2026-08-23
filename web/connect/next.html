@@ -146,6 +146,11 @@ body{
   border-top:1px solid rgba(255,255,255,.09)}
 .rowline:first-of-type{border-top:0}
 .rowline__ic{font-size:19px;width:30px;text-align:center;flex:none}
+.flag{display:block;width:28px;height:20px;border-radius:4px;object-fit:cover;
+  border:1px solid var(--line)}
+.flag--code{display:grid;place-items:center;font-size:11px;font-weight:700;
+  color:var(--ink-dim);background:rgba(255,255,255,.06)}
+.country-flag{display:flex;justify-content:center}
 .rowline__body{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .rowline__t{font-weight:640;font-size:15px}
 .rowline__s{font-size:12.5px;color:var(--ink-mute);overflow:hidden;
@@ -240,28 +245,51 @@ a.rowline:active{opacity:.7}
       <button class="btn btn--primary" id="offer-claim" type="button">2. Забрать профиль</button>
     </section>
 
+    <!-- Плитки раскрывают секции прямо здесь. Раньше они были ссылками на
+         страницу подключения — куда ни нажми, человек улетал из кабинета и
+         не мог вернуться. Уходим со страницы только по явной кнопке внутри. -->
     <nav class="tiles" id="tiles">
-      <a class="glass tile" id="t-devices" href="#">
+      <button class="glass tile" id="t-devices" type="button">
         <span class="tile__icon">📱</span>
         <span class="tile__name">Устройства</span>
         <span class="tile__hint" id="t-devices-hint">…</span>
-      </a>
-      <a class="glass tile" id="t-countries" href="#">
+      </button>
+      <button class="glass tile" id="t-countries" type="button">
         <span class="tile__icon">🌍</span>
         <span class="tile__name">Страны</span>
         <span class="tile__hint" id="t-countries-hint">…</span>
-      </a>
-      <a class="glass tile" id="t-family" href="#">
+      </button>
+      <button class="glass tile" id="t-family" type="button">
         <span class="tile__icon">💛</span>
         <span class="tile__name">Для близкого</span>
         <span class="tile__hint">Отдельный профиль по семейной ссылке</span>
-      </a>
+      </button>
       <button class="glass tile" id="t-consoles" type="button">
         <span class="tile__icon">🎮</span>
         <span class="tile__name">Приставки<span class="soon" id="consoles-soon">скоро</span></span>
         <span class="tile__hint" id="t-consoles-hint">Прокси для PlayStation и Switch</span>
       </button>
     </nav>
+
+    <!-- страны -->
+    <section class="glass section" id="countries" hidden>
+      <h2>🌍 Страны</h2>
+      <p class="sub" id="countries-sub"></p>
+      <div id="countries-list"></div>
+    </section>
+
+    <!-- для близкого -->
+    <section class="glass section" id="family" hidden>
+      <h2>💛 Профиль для близкого</h2>
+      <p class="sub">Отдельный профиль по семейной ссылке: он не отключит ваши
+        устройства, а близкому не нужен ни Telegram, ни регистрация. Ссылку лучше
+        не публиковать — это один слот для родного человека.</p>
+      <a class="btn btn--primary" id="family-open" style="margin-top:14px" href="#">
+        <span class="btn__label">Открыть страницу для близкого</span>
+      </a>
+      <p class="sub" style="margin-top:10px" id="family-note" hidden>Семейный доступ
+        входит в тарифы от 3 устройств.</p>
+    </section>
 
     <!-- устройства -->
     <section class="glass section" id="devices" hidden>
@@ -464,32 +492,50 @@ function render(links,servers,devices){
   }
   $("st-facts").innerHTML=facts;
 
-  $("cta-connect").href=links.personal_vpn_url;
+  // Единственный «уход» с главного экрана — эта кнопка, и она помечена так,
+  // чтобы со страницы подключения был путь обратно в кабинет.
+  var connectUrl=links.personal_vpn_url;
+  try{
+    var cu=new URL(links.personal_vpn_url,location.href);
+    cu.searchParams.set("from","portal");
+    connectUrl=cu.toString();
+  }catch(e){}
+  $("cta-connect").href=connectUrl;
   $("cta-connect").hidden=!active;
 
   $("offer").hidden=!(links.channel_access_available&&!active);
   if(links.channel_access_channel_url)$("offer-channel").href=links.channel_access_channel_url;
 
+  // Каждая плитка раскрывает свою секцию и закрывает соседние: так на экране
+  // всегда одна открытая тема, и человек не теряется.
+  function toggle(id){
+    var box=$(id),wasHidden=box.hidden;
+    ["devices","countries","family","consoles"].forEach(function(other){
+      if(other!==id)$(other).hidden=true;
+    });
+    box.hidden=!wasHidden;
+    if(!box.hidden)box.scrollIntoView({behavior:"smooth",block:"center"});
+  }
+
   var used=(devices||[]).length;
-  $("t-devices-hint").textContent=active?(used+" из "+limit+" "+plural(limit,"слота","слотов","слотов")+" занято"):"Появятся после подключения";
-  $("t-devices").href=links.personal_vpn_url;
-  $("t-devices").onclick=function(ev){
-    if(!(devices&&devices.length))return; ev.preventDefault();
-    $("devices").hidden=!$("devices").hidden;
-    if(!$("devices").hidden)$("devices").scrollIntoView({behavior:"smooth",block:"center"});
-  };
+  $("t-devices-hint").textContent=active
+    ?(used+" из "+limit+" "+plural(limit,"слота","слотов","слотов")+" занято")
+    :"Появятся после подключения";
+  $("t-devices").onclick=function(){toggle("devices");};
 
   var count=(servers||[]).length;
   $("t-countries-hint").textContent=count
-    ?(count+" "+plural(count,"страна","страны","стран")+(paid?"":" · платно кроме вашей"))
+    ?(count+" "+plural(count,"страна","страны","стран"))
     :"Список загрузится позже";
-  $("t-countries").href=links.personal_vpn_url;
-  $("t-family").href=links.family_vpn_url||"#";
-  $("t-consoles").onclick=function(){
-    var box=$("consoles");
-    box.hidden=!box.hidden;
-    if(!box.hidden)box.scrollIntoView({behavior:"smooth",block:"center"});
-  };
+  $("t-countries").onclick=function(){toggle("countries");};
+  renderCountries(servers,links,paid,free,myServer);
+
+  $("t-family").onclick=function(){toggle("family");};
+  $("family-open").href=links.family_vpn_url||"#";
+  $("family-open").hidden=!links.family_vpn_url;
+  $("family-note").hidden=!!links.family_vpn_url;
+
+  $("t-consoles").onclick=function(){toggle("consoles");};
 
   $("plan-chip").hidden=false;
   $("plan-chip").textContent=paid?"тариф активен":(free?"бесплатный доступ":"без доступа");
@@ -512,6 +558,58 @@ function render(links,servers,devices){
 
   renderDevices(devices||[]);
   show("cabinet");
+}
+
+/* --------------------------------------------------------------- страны */
+// Windows не рисует эмодзи-флаги (🇳🇱 превращается в буквы «NL»), поэтому флаг —
+// картинка, а код страны остаётся запасным вариантом.
+function flagHtml(id){
+  var code=String(id||"").toLowerCase();
+  return '<img class="flag" src="assets/flags/'+encodeURIComponent(code)+'.svg" alt=""'
+    +' onerror="this.replaceWith(Object.assign(document.createElement(\'span\'),'
+    +'{className:\'flag flag--code\',textContent:\''+code.toUpperCase()+'\'}))">';
+}
+function renderCountries(servers,links,paid,free,myServer){
+  var list=$("countries-list");
+  if(!servers||!servers.length){list.innerHTML="";return;}
+  $("countries-sub").textContent=paid
+    ? "Профиль для каждой страны скачивается отдельно и не занимает лишнее устройство."
+    : "Ваша страна включена бесплатно. Остальные открываются платной подпиской.";
+  var html="";
+  servers.forEach(function(){ html+=
+    '<div class="rowline"><span class="rowline__ic country-flag"></span>'
+    +'<span class="rowline__body"><span class="rowline__t"></span>'
+    +'<span class="rowline__s"></span></span>'
+    +'<span class="rowline__aside"></span></div>';});
+  list.innerHTML=html;
+  var rows=list.querySelectorAll(".rowline");
+  servers.forEach(function(s,i){
+    var row=rows[i];
+    var mine=free&&myServer&&s.id===myServer;
+    var allowed=paid||mine;
+    row.querySelector(".country-flag").innerHTML=flagHtml(s.id);
+    row.querySelector(".rowline__t").textContent=s.label||s.display||s.id;
+    row.querySelector(".rowline__s").textContent=mine
+      ? "Ваша страна — бесплатно"
+      : (paid ? "Входит в ваш тариф" : "Доступна по подписке");
+    var aside=row.querySelector(".rowline__aside");
+    if(allowed&&links.personal_vpn_url){
+      var a=document.createElement("a");
+      a.className="rowline__aside";a.textContent="Получить";
+      a.style.color="var(--accent)";
+      // Уход со страницы — только по явному нажатию, и с меткой from=portal,
+      // чтобы со страницы подключения можно было вернуться в кабинет.
+      try{
+        var url=new URL(links.personal_vpn_url,location.href);
+        url.searchParams.set("server",s.id);
+        url.searchParams.set("from","portal");
+        a.href=url.toString();
+      }catch(e){a.href=links.personal_vpn_url;}
+      aside.replaceWith(a);
+    }else{
+      aside.textContent="🔒";
+    }
+  });
 }
 
 /* ------------------------------------------------- прокси для приставок */

@@ -521,7 +521,8 @@
     return {cfg:cfg,qr:qr,access:access,devices:devices,server:(p.get("server")||"").trim(),
             preset:(p.get("preset")||"").trim(),family:!!family,free:p.get("free")==="1",
             web:p.get("web")==="1",graceUntil:parseInt(p.get("grace_until")||"0",10),
-            bind:(p.get("bind")||"").trim(),device:device>0?device:1};
+            bind:(p.get("bind")||"").trim(),fromPortal:p.get("from")==="portal",
+            device:device>0?device:1};
   }
   function profileUrl(url,server,device){
     if(!isHttp(url))return url;
@@ -687,10 +688,17 @@
           :(readyToBind?"По желанию: привяжите профиль":"Профиль ваш — насовсем");
       }
     }
-    $("back").hidden=(next==="1"||next===1);
+    // На первом шаге «Назад» обычно некуда — кроме случая, когда человек пришёл
+    // из кабинета: тогда кнопка возвращает туда.
+    var atStart=(next==="1"||next===1);
+    var canLeave=!atStart||u.fromPortal;
+    $("back").hidden=!canLeave;
+    if(atStart&&u.fromPortal){
+      $("back").lastChild.textContent="В кабинет";
+    }
     try{
       if(tg&&tg.BackButton){
-        if(next==="1"||next===1)tg.BackButton.hide();else tg.BackButton.show();
+        if(canLeave)tg.BackButton.show();else tg.BackButton.hide();
       }
     }catch(e){}
     window.scrollTo(0,0);
@@ -698,8 +706,11 @@
   function back(){
     var current=$("view-country").hidden===false?"country":
                 $("view-device").hidden===false?"device":String(step);
-    if(current==="country"||current==="device")go(returnTo);
-    else go(Math.max(1,step-1));
+    if(current==="country"||current==="device"){go(returnTo);return;}
+    // С первого шага возвращаемся в кабинет, если пришли оттуда: иначе человек
+    // застревает на странице подключения без единого пути назад.
+    if(step<=1&&u.fromPortal){location.href="/portal/";return;}
+    go(Math.max(1,step-1));
   }
   $("back").addEventListener("click",back);
   try{ if(window.Telegram&&window.Telegram.WebApp&&window.Telegram.WebApp.BackButton){
@@ -853,7 +864,14 @@
             node.type="button";node.className="pick";node.dataset.id=item.id;
             node.setAttribute("role","radio");node.setAttribute("aria-checked","false");
             node.innerHTML=
-              '<span class="pick__flag">'+Atlas.escapeHtml(flag===name?"":flag)+'</span>'+
+              // Windows не рисует эмодзи-флаги: 🇳🇱 показывается буквами «NL».
+              // Поэтому флаг — картинка, а эмодзи/код остаётся запасным вариантом,
+              // если для страны ещё нет своего SVG.
+              '<span class="pick__flag"><img src="assets/flags/'+
+                encodeURIComponent(String(item.id||"").toLowerCase())+'.svg" alt=""'+
+                ' onerror="this.replaceWith(document.createTextNode('+
+                "'"+Atlas.escapeHtml(flag===name?String(item.id||"").toUpperCase():flag)+"'"+
+                '))"></span>'+
               '<span class="pick__body"><span class="pick__name">'+Atlas.escapeHtml(name)+'</span>'+
               (index===0?'<span class="badge">'+Atlas.icon("star")+'Рекомендуем</span>':'')+
               '</span>'+
