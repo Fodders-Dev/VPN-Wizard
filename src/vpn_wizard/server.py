@@ -61,6 +61,11 @@ from vpn_wizard.awg_devices import (
 )
 from vpn_wizard.awg_servers import AwgRegistry, AwgRegistryError, apply_preset
 from vpn_wizard.bot_api import BotApiClient, referral_link, subscription_facts_of
+from vpn_wizard.console_proxy import (
+    ConsoleProxyConfig,
+    normalize_ip,
+    sync_ips_file,
+)
 from vpn_wizard.channel_access import (
     ChannelAccessConfig,
     ChannelAccessError,
@@ -575,6 +580,17 @@ class PortalLinksResponse(BaseModel):
     channel_access_channel_url: Optional[str] = None
     channel_access_server_id: Optional[str] = None
     channel_access_grace_expires_at: Optional[int] = None
+
+
+class ConsoleProxyResponse(BaseModel):
+    ok: bool
+    enabled: bool = False
+    entitled: bool = False
+    host: Optional[str] = None
+    port: Optional[int] = None
+    ips: list[dict[str, Any]] = []
+    limit: int = 2
+    bound_ip: Optional[str] = None
 
 
 class ChannelAccessVerifyResponse(BaseModel):
@@ -3909,6 +3925,74 @@ def web_invite_link(
         ),
         server_id=assigned_server,
     )
+
+
+# --- прокси для приставок -------------------------------------------------------
+# Приставки не умеют пароль у прокси, поэтому доступ по домашнему IP: кнопка в
+# кабинете добавляет адрес запроса в allowlist squid'а на отдельном порту.
+
+def _console_proxy_context(telegram_id: int, token: str):
+    awg_cfg = AwgFallbackConfig.from_env()
+    if not awg_cfg.link_secret:
+        raise HTTPException(status_code=503, detail="Сервис временно недоступен.")
+    if not verify_issue_token(awg_cfg.link_secret, telegram_id, token):
+        raise HTTPException(status_code=403, detail="Invalid or missing token.")
+    config = ConsoleProxyConfig.from_env()
+    entitlement = _awg_entitlement(telegram_id)
+    if entitlement.billing_error is not None:
+        raise HTTPException(status_code=502, detail=str(entitlement.billing_error))
+    return config, bool(entitlement.paid_user)
+
+
+def _console_proxy_payload(config, entitled: bool, telegram_id: int, **extra) -> ConsoleProxyResponse:
+    store = build_account_store()
+    return ConsoleProxyResponse(
+        ok=True,
+        enabled=config.configured,
+        entitled=entitled,
+        host=config.host or None,
+        port=config.port if config.configured else None,
+        ips=store.console_ips(telegram_id) if entitled else [],
+        limit=config.max_ips,
+        **extra,
+    )
+
+
+@app.get("/api/console-proxy/{telegram_id}", response_model=ConsoleProxyResponse)
+def console_proxy_access(telegram_id: int, token: str) -> ConsoleProxyResponse:
+    config, entitled = _console_proxy_context(telegram_id, token)
+    return _console_proxy_payload(config, entitled, telegram_id)
+
+
+@app.post("/api/console-proxy/{telegram_id}/bind", response_model=ConsoleProxyResponse)
+def console_proxy_bind(telegram_id: int, token: str, request: Request) -> ConsoleProxyResponse:
+    """Разрешить прокси домашней сети, из которой пришёл этот запрос."""
+    config, entitled = _console_proxy_context(telegram_id, token)
+    if not config.configured:
+        raise HTTPException(status_code=503, detail="Прокси пока не включён.")
+    if not entitled:
+        raise HTTPException(
+            status_code=403, detail="Прокси для приставок входит в платный тариф."
+        )
+    ip = normalize_ip(_client_ip(request))
+    if not ip:
+        raise HTTPException(status_code=400, detail="Не удалось определить ваш адрес.")
+    store = build_account_store()
+    store.console_ip_bind(telegram_id, ip, ttl_seconds=config.ttl_days * 86400)
+    store.console_ips_trim(telegram_id, config.max_ips)
+    sync_ips_file(config, store)
+    return _console_proxy_payload(config, entitled, telegram_id, bound_ip=ip)
+
+
+@app.delete("/api/console-proxy/{telegram_id}/bind", response_model=ConsoleProxyResponse)
+def console_proxy_unbind(telegram_id: int, token: str, ip: str) -> ConsoleProxyResponse:
+    config, entitled = _console_proxy_context(telegram_id, token)
+    clean = normalize_ip(ip)
+    if clean:
+        store = build_account_store()
+        store.console_ip_unbind(telegram_id, clean)
+        sync_ips_file(config, store)
+    return _console_proxy_payload(config, entitled, telegram_id)
 
 
 @app.get("/api/metrics")

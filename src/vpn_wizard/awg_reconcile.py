@@ -298,6 +298,28 @@ def main() -> int:
         account.metrics_save_day(day_key(), daily_snapshot(report))
     except Exception as exc:  # history is a nicety; entitlements are not
         result["errors"].append({"error": "metrics_snapshot_failed", "detail": str(exc)})
+    # Console proxy hygiene: expired bindings leave, and bindings of users whose
+    # subscription lapsed leave with them; squid's allowlist follows the ledger.
+    try:
+        from vpn_wizard.console_proxy import ConsoleProxyConfig, sync_ips_file
+
+        proxy_cfg = ConsoleProxyConfig.from_env()
+        if proxy_cfg.configured:
+            account.console_ips_purge()
+            for row in account.console_ips_active():
+                try:
+                    entitled = RemnawaveClient(RemnawaveConfig.from_env()).active_user(
+                        int(row["telegram_id"])
+                    )
+                except Exception:
+                    # Billing outage must not disconnect paying consoles.
+                    continue
+                if not entitled:
+                    account.console_ip_unbind(int(row["telegram_id"]), str(row["ip"]))
+            if sync_ips_file(proxy_cfg, account):
+                result["console_proxy_synced"] = True
+    except Exception as exc:
+        result["errors"].append({"error": "console_proxy_sync_failed", "detail": str(exc)})
     print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
     return 1 if result["errors"] else 0
 

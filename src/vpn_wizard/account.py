@@ -239,6 +239,18 @@ class AccountStore:
                     updated_at INTEGER NOT NULL
                 );
 
+                -- Console proxy: game consoles cannot enter a proxy password,
+                -- so access is granted per home IP instead. Rows expire and are
+                -- re-blessed by a tap in the cabinet; a sync pass renders them
+                -- into squid's allowlist file.
+                CREATE TABLE IF NOT EXISTS console_proxy_ips (
+                    telegram_id INTEGER NOT NULL,
+                    ip TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    PRIMARY KEY (telegram_id, ip)
+                );
+
                 -- One aggregate row per day, so the owner can see a trend instead
                 -- of a snapshot. Counts only — nothing here identifies anyone.
                 CREATE TABLE IF NOT EXISTS metrics_daily (
@@ -1365,6 +1377,85 @@ class AccountStore:
                 "DELETE FROM channel_access WHERE access_id = ?", (int(access_id),)
             )
             return cursor.rowcount > 0
+
+    # --- console proxy IP bindings ------------------------------------------
+    def console_ip_bind(
+        self, telegram_id: int, ip: str, *, ttl_seconds: int, now: Optional[int] = None
+    ) -> dict[str, Any]:
+        stamp = int(now if now is not None else _now())
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO console_proxy_ips (telegram_id, ip, created_at, expires_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(telegram_id, ip) DO UPDATE SET
+                    expires_at = excluded.expires_at
+                """,
+                (int(telegram_id), str(ip), stamp, stamp + int(ttl_seconds)),
+            )
+        return {"ip": str(ip), "expires_at": stamp + int(ttl_seconds)}
+
+    def console_ip_unbind(self, telegram_id: int, ip: str) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM console_proxy_ips WHERE telegram_id = ? AND ip = ?",
+                (int(telegram_id), str(ip)),
+            )
+            return cur.rowcount > 0
+
+    def console_ips(self, telegram_id: int, *, now: Optional[int] = None) -> list[dict[str, Any]]:
+        stamp = int(now if now is not None else _now())
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT ip, created_at, expires_at FROM console_proxy_ips
+                WHERE telegram_id = ? AND expires_at > ?
+                ORDER BY created_at
+                """,
+                (int(telegram_id), stamp),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def console_ips_trim(self, telegram_id: int, keep: int) -> None:
+        """Drop bindings beyond the per-user ceiling, keeping the freshest.
+
+        Freshness is expires_at: every tap of the bind button pushes it
+        forward, so the addresses a person actually re-blesses survive and
+        the abandoned ones fall off. rowid breaks same-second ties.
+        """
+        with self._connect() as conn:
+            conn.execute(
+                """
+                DELETE FROM console_proxy_ips
+                WHERE telegram_id = ? AND ip NOT IN (
+                    SELECT ip FROM console_proxy_ips
+                    WHERE telegram_id = ?
+                    ORDER BY expires_at DESC, rowid DESC LIMIT ?
+                )
+                """,
+                (int(telegram_id), int(telegram_id), max(1, int(keep))),
+            )
+
+    def console_ips_active(self, *, now: Optional[int] = None) -> list[dict[str, Any]]:
+        """Every live binding, for rendering squid's allowlist."""
+        stamp = int(now if now is not None else _now())
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT telegram_id, ip, expires_at FROM console_proxy_ips
+                WHERE expires_at > ? ORDER BY telegram_id, ip
+                """,
+                (stamp,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def console_ips_purge(self, *, now: Optional[int] = None) -> int:
+        stamp = int(now if now is not None else _now())
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM console_proxy_ips WHERE expires_at <= ?", (stamp,)
+            )
+            return cur.rowcount
 
     # --- daily aggregate history --------------------------------------------
     def metrics_save_day(self, day: str, payload: dict[str, Any]) -> None:

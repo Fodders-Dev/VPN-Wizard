@@ -256,10 +256,10 @@ a.rowline:active{opacity:.7}
         <span class="tile__name">Для близкого</span>
         <span class="tile__hint">Отдельный профиль по семейной ссылке</span>
       </a>
-      <button class="glass tile tile--soon" id="t-consoles" type="button">
+      <button class="glass tile" id="t-consoles" type="button">
         <span class="tile__icon">🎮</span>
-        <span class="tile__name">Приставки<span class="soon">скоро</span></span>
-        <span class="tile__hint">Прокси для PlayStation и Switch</span>
+        <span class="tile__name">Приставки<span class="soon" id="consoles-soon">скоро</span></span>
+        <span class="tile__hint" id="t-consoles-hint">Прокси для PlayStation и Switch</span>
       </button>
     </nav>
 
@@ -268,6 +268,55 @@ a.rowline:active{opacity:.7}
       <h2>Устройства</h2>
       <p class="sub" id="devices-sub"></p>
       <div id="devices-list"></div>
+    </section>
+
+    <!-- приставки: прокси по домашнему IP -->
+    <section class="glass section" id="consoles" hidden>
+      <h2>🎮 Прокси для приставок</h2>
+      <div id="consoles-locked" hidden>
+        <p class="sub">PlayStation и Switch не умеют VPN, но умеют прокси. Он входит
+          в платный тариф: подключаете — и магазины, обновления и игры ходят
+          через Нидерланды.</p>
+        <a class="btn btn--primary" style="margin-top:14px"
+           href="https://t.me/foddervpnbot?start=plan" target="_blank" rel="noopener noreferrer">
+          Оформить подписку в боте
+        </a>
+      </div>
+      <div id="consoles-open" hidden>
+        <p class="sub">Приставки не умеют вводить пароль у прокси, поэтому доступ
+          привязывается к домашнему Wi-Fi. Нажмите кнопку с телефона,
+          подключённого к той же сети, что и приставка.</p>
+        <button class="btn btn--primary" id="consoles-bind" type="button"
+                style="margin-top:14px">Разрешить мой домашний Wi-Fi</button>
+        <div id="consoles-ips"></div>
+        <div class="rowline">
+          <span class="rowline__ic">🌐</span>
+          <span class="rowline__body">
+            <span class="rowline__t" id="consoles-host">…</span>
+            <span class="rowline__s">Адрес прокси — впишите его в приставку</span>
+          </span>
+          <span class="rowline__aside" id="consoles-copy">Копировать</span>
+        </div>
+        <details style="margin-top:10px">
+          <summary style="cursor:pointer;color:var(--ink-dim);font-size:14.5px">Как настроить PlayStation</summary>
+          <ol class="sub" style="margin:10px 0 0;padding-left:20px;line-height:1.7">
+            <li>Настройки → Сеть → Настройки → Установить соединение с Интернетом.</li>
+            <li>Выберите свой Wi-Fi → Дополнительные настройки.</li>
+            <li>Всё оставьте «Автоматически», а в пункте <b>Прокси-сервер</b>
+              выберите «Использовать».</li>
+            <li>Введите адрес и порт, показанные выше, и сохраните.</li>
+          </ol>
+        </details>
+        <details style="margin-top:8px">
+          <summary style="cursor:pointer;color:var(--ink-dim);font-size:14.5px">Как настроить Nintendo Switch</summary>
+          <ol class="sub" style="margin:10px 0 0;padding-left:20px;line-height:1.7">
+            <li>Настройки → Интернет → Параметры интернета.</li>
+            <li>Выберите свою сеть → Изменить настройки.</li>
+            <li><b>Настройки прокси-сервера</b> → Включить.</li>
+            <li>Введите адрес и порт, показанные выше. Авторизация — «Выкл».</li>
+          </ol>
+        </details>
+      </div>
     </section>
 
     <!-- тариф — тихо, в самом низу смыслового блока -->
@@ -437,7 +486,9 @@ function render(links,servers,devices){
   $("t-countries").href=links.personal_vpn_url;
   $("t-family").href=links.family_vpn_url||"#";
   $("t-consoles").onclick=function(){
-    alert("Прокси для приставок почти готов: сайт выдаст адрес, логин и пароль — впишете их в сетевые настройки PlayStation или Switch.");
+    var box=$("consoles");
+    box.hidden=!box.hidden;
+    if(!box.hidden)box.scrollIntoView({behavior:"smooth",block:"center"});
   };
 
   $("plan-chip").hidden=false;
@@ -461,6 +512,74 @@ function render(links,servers,devices){
 
   renderDevices(devices||[]);
   show("cabinet");
+}
+
+/* ------------------------------------------------- прокси для приставок */
+var consoleCreds=null;
+function consoleApi(path,opts){
+  return api("/api/console-proxy/"+encodeURIComponent(consoleCreds.tid)+path
+    +(path.indexOf("?")>=0?"&":"?")+"token="+encodeURIComponent(consoleCreds.token),opts);
+}
+function renderConsoles(data){
+  var soon=$("consoles-soon"),hint=$("t-consoles-hint");
+  if(!data||!data.enabled){
+    soon.hidden=false;hint.textContent="Прокси для PlayStation и Switch";
+    $("consoles-locked").hidden=true;$("consoles-open").hidden=true;return;
+  }
+  soon.hidden=true;
+  $("consoles-locked").hidden=!!data.entitled;
+  $("consoles-open").hidden=!data.entitled;
+  hint.textContent=data.entitled
+    ?((data.ips||[]).length?"Домашний Wi-Fi разрешён":"Нажмите, чтобы настроить")
+    :"Входит в платный тариф";
+  if(!data.entitled)return;
+
+  var addr=(data.host||"")+" : "+(data.port||"");
+  $("consoles-host").textContent=addr;
+  $("consoles-copy").onclick=function(){
+    var plain=(data.host||"")+":"+(data.port||"");
+    (navigator.clipboard?navigator.clipboard.writeText(plain):Promise.reject())
+      .then(function(){$("consoles-copy").textContent="Скопировано";})
+      .catch(function(){});
+  };
+
+  var list=$("consoles-ips");
+  if((data.ips||[]).length){
+    var html="";
+    data.ips.forEach(function(){ html+=
+      '<div class="rowline"><span class="rowline__ic">🏠</span>'
+      +'<span class="rowline__body"><span class="rowline__t"></span>'
+      +'<span class="rowline__s">Разрешён до продления привязки</span></span>'
+      +'<span class="rowline__aside" role="button" style="cursor:pointer">Убрать</span></div>';});
+    list.innerHTML=html;
+    var rows=list.querySelectorAll(".rowline");
+    data.ips.forEach(function(item,i){
+      rows[i].querySelector(".rowline__t").textContent="Wi-Fi · "+item.ip;
+      rows[i].querySelector(".rowline__aside").onclick=function(){
+        if(!consoleCreds)return;
+        consoleApi("/bind?ip="+encodeURIComponent(item.ip),{method:"DELETE"})
+          .then(renderConsoles).catch(function(){});
+      };
+    });
+  }else{
+    list.innerHTML="";
+  }
+  var bind=$("consoles-bind");
+  bind.disabled=false;
+  bind.onclick=function(){
+    bind.disabled=true;bind.textContent="Привязываем…";
+    (consoleCreds?consoleApi("/bind",{method:"POST"})
+      :Promise.resolve(data))  /* превью: показываем успех без сети */
+      .then(function(d){
+        bind.textContent="Готово — этот Wi-Fi разрешён ✓";
+        setTimeout(function(){bind.textContent="Разрешить мой домашний Wi-Fi";bind.disabled=false;},2500);
+        renderConsoles(d);
+      })
+      .catch(function(){
+        bind.textContent="Не получилось — попробуйте ещё раз";
+        setTimeout(function(){bind.textContent="Разрешить мой домашний Wi-Fi";bind.disabled=false;},2500);
+      });
+  };
 }
 
 function renderDevices(devices){
@@ -510,6 +629,10 @@ async function start(){
       }catch(e){}
     }
     render(links,servers,devices);
+    if(creds&&creds.tid&&creds.token){
+      consoleCreds=creds;
+      consoleApi("").then(renderConsoles).catch(function(){renderConsoles(null);});
+    }
   }catch(e){
     show("locked");
   }
@@ -533,6 +656,10 @@ function renderPreview(){
   ],[
     {slot:1,label:"Мой телефон",last_seen_at:Math.floor(Date.now()/1000)-120}
   ]);
+  renderConsoles({
+    enabled:true,entitled:true,host:"77.67.89.164",port:3129,
+    ips:[{ip:"95.161.60.194",expires_at:0}]
+  });
 }
 })();
 </script>
