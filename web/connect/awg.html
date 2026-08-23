@@ -58,9 +58,10 @@
     <svg class="i" aria-hidden="true"><use href="#i-clock"/></svg>
     <div>
       <h2 class="note__title" id="grace-title">Профиль ваш — насовсем</h2>
-      <p class="note__body" id="grace-copy">Пользуйтесь на здоровье. Если есть Telegram —
-        по желанию подпишитесь на Fodder’s Dev и привяжите профиль: так он сохранится
-        при смене телефона, а в канале будут запасные ссылки на случай блокировок.</p>
+      <p class="note__body" id="grace-copy">Пользуйтесь на здоровье. Подпишитесь на
+        Fodder’s Dev: если этот адрес заблокируют — как только что случилось со старым —
+        новую рабочую ссылку мы дадим только там. А если привяжете профиль к Telegram,
+        он не потеряется при смене телефона.</p>
       <p class="offer__timer" id="grace-countdown" role="timer" aria-live="off"></p>
       <p class="t-sm" id="grace-hint" style="margin-top:10px">Сначала закончите подключение ниже —
         кнопки Telegram появятся, когда вы включите VPN.</p>
@@ -325,6 +326,25 @@
     <button class="btn btn--secondary" type="button" id="check-fix" hidden>
       <span class="btn__label">Исправить подключение</span>
     </button>
+
+    <!-- Показываем только после успеха: в этот момент человек рад, что всё
+         заработало, и аргумент бьёт в его же сегодняшнюю боль — старый адрес
+         только что заблокировали. Это не уговоры, а реальная страховка. -->
+    <section class="note note--warn" id="check-channel" hidden style="margin-top:18px">
+      <svg class="i" aria-hidden="true"><use href="#i-shield-check"/></svg>
+      <div>
+        <h2 class="note__title">Подпишитесь, чтобы не остаться без VPN</h2>
+        <p class="note__body">Этот адрес однажды могут заблокировать — как это
+          случилось со старым. Новую рабочую ссылку мы выкладываем только в канале
+          Fodder’s Dev. Подписаны — переключитесь за минуту; нет — останетесь без VPN
+          и не будете знать, где взять новый.</p>
+        <a class="btn btn--primary" id="check-channel-btn" style="margin-top:12px"
+           href="https://t.me/fodders_dev" target="_blank" rel="noopener noreferrer">
+          <span class="btn__label">Подписаться на Fodder’s Dev</span>
+        </a>
+      </div>
+    </section>
+
     <!-- Про платное — только после того, как бесплатный профиль реально
          заработал. До этого любые тарифы только пугают. -->
     <p class="t-sm mute" id="check-upsell" hidden style="text-align:center">Дальше — по желанию:
@@ -914,6 +934,9 @@
     $("check-again").hidden=ok;
     $("check-fix").hidden=ok;
     $("check-upsell").hidden=!(ok&&u.free);
+    // Карточка про канал — только при успехе и только тем, у кого есть Telegram
+    // (у web-grace связки внизу уже своя кнопка канала, чтобы не дублировать).
+    $("check-channel").hidden=!(ok&&!u.web);
     $("check-progress").hidden=true;
     if(ok)$("check-card").classList.add("note--ok");
     else $("check-card").classList.remove("note--ok");
