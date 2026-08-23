@@ -14,6 +14,27 @@ from app.database.models import ServerSquad, Tariff
 
 PLANS = (
     {
+        # Посуточный ключ: включил на день-другой, сделал дела. Плата списывается
+        # с баланса раз в сутки штатным DailySubscriptionService; кончился баланс
+        # — доступ ставится на паузу и сам возобновляется после пополнения.
+        # 8 ₽/сутки — дороже помесячной пропорции (199/30 ≈ 6.6), чтобы подписка
+        # оставалась выгоднее для тех, кто пользуется постоянно.
+        "name": "На день · 1 устройство",
+        "aliases": (),
+        "description": (
+            "Оплата с баланса по дням: 8 ₽ в сутки, пока хватает баланса. "
+            "Удобно включить на пару дней; постоянно — выгоднее подписка."
+        ),
+        "devices": 1,
+        "prices": {1: 800},
+        # Show it after the monthly plans: a subscription is the better deal for
+        # regulars, the daily key is the "just for a couple of days" option.
+        "order": 10,
+        "tier": 1,
+        "is_daily": True,
+        "daily_price_kopeks": 800,
+    },
+    {
         "name": "Личный · 1 устройство",
         "aliases": (),
         "description": "Один личный профиль, все платные локации и поддержка.",
@@ -89,7 +110,9 @@ async def main() -> None:
                 is_trial_available=False,
                 allow_traffic_topup=False,
                 traffic_topup_enabled=False,
-                show_in_gift=True,
+                show_in_gift=not plan.get("is_daily", False),
+                is_daily=plan.get("is_daily", False),
+                daily_price_kopeks=plan.get("daily_price_kopeks", 0),
             )
             if tariff is None:
                 tariff = await create_tariff(db, **values)
