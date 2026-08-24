@@ -70,7 +70,7 @@
           <span class="btn__label">1. Подписаться на Fodder’s Dev</span>
         </a>
         <a class="btn btn--primary" id="bind-link" href="#" target="_blank" rel="noopener noreferrer">
-          <span class="btn__label">2. Привязать профиль к Telegram</span>
+          <span class="btn__label">Привязать профиль к Telegram</span>
         </a>
       </div>
     </div>
@@ -682,6 +682,9 @@
         var readyToBind=step===4;
         $("grace-actions").hidden=!readyToBind;
         $("grace-hint").hidden=readyToBind;
+        // Кнопка канала живёт в карточке ниже — здесь остаётся только привязка,
+        // иначе два одинаковых призыва на одном экране гасят друг друга.
+        if(readyToBind&&$("channel-link"))$("channel-link").hidden=true;
         // Без дедлайна привязка — вежливое предложение, а не условие выживания.
         $("grace-title").textContent=u.graceUntil
           ?(readyToBind?"Сохраните профиль через Telegram":"Временный доступ: 12 часов")
@@ -954,7 +957,10 @@
     $("check-upsell").hidden=!(ok&&u.free);
     // Карточка про канал — только при успехе и только тем, у кого есть Telegram
     // (у web-grace связки внизу уже своя кнопка канала, чтобы не дублировать).
-    var pitchChannel=ok&&!u.web;
+    // Показываем всем, кто дошёл до работающего VPN. Раньше здесь стояло
+    // `&& !u.web` — и призыв не видел ровно тот, ради кого он написан: 60 из 62
+    // человек приходят по коду на сайте, без Telegram.
+    var pitchChannel=ok;
     $("check-channel").hidden=!pitchChannel;
     // Два призыва подписаться на одном экране обесценивают друг друга —
     // подвальная ссылка уходит, пока висит карточка.
