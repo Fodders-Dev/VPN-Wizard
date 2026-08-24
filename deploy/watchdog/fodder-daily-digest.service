@@ -1,0 +1,9 @@
+[Unit]
+Description=Fodder VPN: daily rollout digest to Telegram
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/vpn-wizard.env
+ExecStart=/usr/local/bin/fodder-daily-digest

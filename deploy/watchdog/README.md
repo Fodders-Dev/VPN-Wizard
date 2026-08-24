@@ -36,6 +36,27 @@ systemctl enable --now fodder-ru-watchdog.timer
 
 При смене IP поправь адреса в `TARGETS` внутри скрипта и переустанови его.
 
+## 1b. Ежедневная сводка `fodder-daily-digest`
+
+Раз в сутки (21:07 МСК) присылает в Telegram: сколько профилей выдано, у скольких
+**заработал хотя бы раз**, сколько пользовались за сутки, разбивку по странам и
+остаток общего кода.
+
+Ключевая метрика — «заработал хотя бы раз» (`first_handshake_at`). Обычный
+«последний хендшейк» для этого не годится: выдача любого профиля перезапускает
+`awg-quick`, после чего WireGuard рапортует «never» сразу для всех пиров, и
+сводка показывала бы горстку живых вместо реальной картины.
+
+```bash
+install -m 755 /opt/vpn-wizard/app/deploy/watchdog/fodder-daily-digest /usr/local/bin/
+cp /opt/vpn-wizard/app/deploy/watchdog/fodder-daily-digest.{service,timer} /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now fodder-daily-digest.timer
+```
+
+Посмотреть цифры прямо сейчас, ничего не отправляя:
+`set -a; . /etc/vpn-wizard.env; set +a; /usr/local/bin/fodder-daily-digest --print`
+
 ## 2. Баннер на сайте (`web/connect/status.json`)
 
 `atlas.js` на каждой странице (`/connect/*`, `/portal/`) читает

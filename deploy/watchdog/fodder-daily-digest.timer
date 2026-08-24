@@ -1,0 +1,11 @@
+[Unit]
+Description=Fodder VPN: rollout digest once a day
+
+[Timer]
+# 21:07 MSK — вечером итоги дня уже осмысленны, а нечётная минута не собирает
+# в одну секунду всех, кто ставит таймеры на ровный час.
+OnCalendar=*-*-* 18:07:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

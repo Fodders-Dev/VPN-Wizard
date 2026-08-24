@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""Ежедневная сводка по раздаче: сколько выдано и у скольких VPN реально заработал.
+
+Считает по `first_handshake_at` — липкой отметке, которая переживает перезапуск
+интерфейса. Обычный «последний хендшейк» для этого не годится: выдача любого
+профиля перезапускает awg-quick, и WireGuard рапортует «never» для всех сразу,
+из-за чего сводка показывала бы горстку живых вместо реальной картины.
+
+Запускается раз в сутки systemd-таймером и шлёт результат владельцу в Telegram.
+С флагом --print печатает в консоль и ничего не отправляет.
+"""
+from __future__ import annotations
+
+import os
+import sqlite3
+import sys
+import time
+import urllib.parse
+import urllib.request
+
+DAY = 86400
+
+
+def connect() -> sqlite3.Connection:
+    path = (os.getenv("VPNW_STATE_DB") or "").strip()
+    if not path:
+        raise SystemExit("VPNW_STATE_DB is not set")
+    db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    db.row_factory = sqlite3.Row
+    return db
+
+
+def collect(db: sqlite3.Connection, now: int) -> dict:
+    def scalar(sql: str, args: tuple = ()) -> int:
+        return int(db.execute(sql, args).fetchone()[0] or 0)
+
+    issued = scalar("SELECT COUNT(*) FROM channel_access WHERE status='active'")
+    bound = scalar(
+        "SELECT COUNT(*) FROM channel_access WHERE status='active' AND telegram_id IS NOT NULL"
+    )
+    ever = scalar(
+        "SELECT COUNT(DISTINCT telegram_id) FROM awg_peer_usage"
+        " WHERE first_handshake_at IS NOT NULL"
+    )
+    active_24h = scalar(
+        "SELECT COUNT(DISTINCT telegram_id) FROM awg_peer_usage"
+        " WHERE last_handshake_at IS NOT NULL AND last_handshake_at > ?",
+        (now - DAY,),
+    )
+    new_24h = scalar(
+        "SELECT COUNT(*) FROM channel_access WHERE status='active' AND created_at > ?",
+        (now - DAY,),
+    )
+    by_server = {
+        str(row["s"]): int(row["c"])
+        for row in db.execute(
+            "SELECT COALESCE(server_id,'nl') s, COUNT(*) c FROM channel_access"
+            " WHERE status='active' GROUP BY s"
+        )
+    }
+    codes = [
+        (str(row["code"]), int(row["used_count"]), int(row["max_uses"]))
+        for row in db.execute(
+            "SELECT code, used_count, max_uses FROM web_shared_invites"
+            " WHERE disabled_at IS NULL AND max_uses > 1 ORDER BY created_at"
+        )
+    ]
+    return {
+        "issued": issued,
+        "bound": bound,
+        "ever": ever,
+        "active_24h": active_24h,
+        "new_24h": new_24h,
+        "by_server": by_server,
+        "codes": codes,
+    }
+
+
+def render(stats: dict) -> str:
+    issued = stats["issued"]
+    ever = stats["ever"]
+    share = f" ({round(ever * 100 / issued)}%)" if issued else ""
+    lines = [
+        "📊 Fodder VPN — сводка за сутки",
+        "",
+        f"Профилей выдано: {issued}" + (f"  (+{stats['new_24h']} за сутки)" if stats["new_24h"] else ""),
+        f"Заработал хотя бы раз: {ever}{share}",
+        f"Пользовались за сутки: {stats['active_24h']}",
+    ]
+    if stats["by_server"]:
+        spread = ", ".join(f"{name}: {count}" for name, count in sorted(stats["by_server"].items()))
+        lines.append(f"По странам: {spread}")
+    if stats["bound"]:
+        lines.append(f"Привязано к Telegram: {stats['bound']}")
+    for code, used, cap in stats["codes"]:
+        left = max(0, cap - used)
+        note = "  ⚠️ почти кончился" if left <= 10 else ""
+        lines.append(f"Код {code}: {used}/{cap}, свободно {left}{note}")
+    return "\n".join(lines)
+
+
+def notify(text: str) -> None:
+    token = (
+        os.getenv("VPNW_TELEGRAM_AUTH_TOKEN") or os.getenv("VPNW_BOT_TOKEN") or ""
+    ).strip()
+    owner = (os.getenv("VPNW_OWNER_IDS") or "").split(",")[0].strip()
+    if not token or not owner:
+        raise SystemExit("no bot token or owner id in environment")
+    body = urllib.parse.urlencode({"chat_id": owner, "text": text}).encode()
+    request = urllib.request.Request(
+        f"https://api.telegram.org/bot{token}/sendMessage", data=body
+    )
+    with urllib.request.urlopen(request, timeout=15) as response:
+        response.read()
+
+
+def main() -> int:
+    with connect() as db:
+        text = render(collect(db, int(time.time())))
+    if "--print" in sys.argv:
+        print(text)
+        return 0
+    notify(text)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
