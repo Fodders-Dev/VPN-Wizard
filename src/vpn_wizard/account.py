@@ -262,9 +262,14 @@ class AccountStore:
                 -- Last-seen/traffic per peer, refreshed by the reconcile pass.
                 -- Cached because reading it means SSH-ing every exit, which must
                 -- never happen on a user-facing request.
+                -- first_handshake_at is deliberately sticky. WireGuard forgets
+                -- every peer's handshake when the interface restarts, and issuing
+                -- a profile restarts it — so "last handshake" answers "is this
+                -- person connected right now", never "did it ever work for them".
                 CREATE TABLE IF NOT EXISTS awg_peer_usage (
                     server_id TEXT NOT NULL,
                     telegram_id INTEGER NOT NULL,
+                    first_handshake_at INTEGER,
                     last_handshake_at INTEGER,
                     rx_bytes INTEGER NOT NULL DEFAULT 0,
                     tx_bytes INTEGER NOT NULL DEFAULT 0,
@@ -282,6 +287,17 @@ class AccountStore:
         existing = {str(row["name"]) for row in rows}
         if "server_id" not in existing:
             conn.execute("ALTER TABLE channel_access ADD COLUMN server_id TEXT")
+        usage = {
+            str(row["name"])
+            for row in conn.execute("PRAGMA table_info(awg_peer_usage)").fetchall()
+        }
+        if usage and "first_handshake_at" not in usage:
+            conn.execute("ALTER TABLE awg_peer_usage ADD COLUMN first_handshake_at INTEGER")
+            # Anyone already known to have connected keeps that fact.
+            conn.execute(
+                "UPDATE awg_peer_usage SET first_handshake_at = last_handshake_at"
+                " WHERE last_handshake_at IS NOT NULL"
+            )
 
     def _ensure_saved_server_columns(self, conn: sqlite3.Connection) -> None:
         rows = conn.execute("PRAGMA table_info(saved_servers)").fetchall()
@@ -1555,10 +1571,21 @@ class AccountStore:
             conn.execute(
                 """
                 INSERT INTO awg_peer_usage
-                    (server_id, telegram_id, last_handshake_at, rx_bytes, tx_bytes, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (server_id, telegram_id, first_handshake_at, last_handshake_at,
+                     rx_bytes, tx_bytes, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(server_id, telegram_id) DO UPDATE SET
-                    last_handshake_at = excluded.last_handshake_at,
+                    -- Restarting the interface makes wg report "never" for
+                    -- everyone. Taking the newer of the two keeps "last seen"
+                    -- honest instead of resetting it every time somebody else
+                    -- gets a profile.
+                    last_handshake_at = NULLIF(MAX(
+                        COALESCE(awg_peer_usage.last_handshake_at, 0),
+                        COALESCE(excluded.last_handshake_at, 0)
+                    ), 0),
+                    first_handshake_at = COALESCE(
+                        awg_peer_usage.first_handshake_at, excluded.first_handshake_at
+                    ),
                     rx_bytes = excluded.rx_bytes,
                     tx_bytes = excluded.tx_bytes,
                     updated_at = excluded.updated_at
@@ -1566,6 +1593,7 @@ class AccountStore:
                 (
                     str(server_id),
                     int(telegram_id),
+                    int(last_handshake_at) if last_handshake_at else None,
                     int(last_handshake_at) if last_handshake_at else None,
                     max(0, int(rx_bytes)),
                     max(0, int(tx_bytes)),
@@ -1585,6 +1613,7 @@ class AccountStore:
             ).fetchall()
         return {
             (str(row["server_id"]), int(row["telegram_id"])): {
+                "first_handshake_at": row["first_handshake_at"],
                 "last_handshake_at": row["last_handshake_at"],
                 "rx_bytes": int(row["rx_bytes"] or 0),
                 "tx_bytes": int(row["tx_bytes"] or 0),

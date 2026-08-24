@@ -290,3 +290,38 @@ def test_refresh_usage_survives_an_unreachable_exit(tmp_path: Path) -> None:
     services = {"fi": type("F", (), {"server_id": "fi"})()}
     # The healthy exit is still refreshed.
     assert refresh_usage(store, legacy, services, Registry(), read=fake_read) == 1
+
+
+# --- измерение подключений переживает перезапуск интерфейса --------------------
+
+def test_interface_restart_does_not_erase_that_a_peer_ever_connected(tmp_path: Path) -> None:
+    """AmneziaWG забывает хендшейки при рестарте интерфейса, а выдача профиля
+    его перезапускает. Из-за этого «последний раз» обнулялся у всех, стоило
+    кому-то одному получить профиль, и статистика показывала горстку живых
+    вместо реальной картины."""
+    store = _store(tmp_path)
+    _issue(store, OWNER, "nl", "10.10.0.5")
+
+    store.awg_record_usage("nl", OWNER, last_handshake_at=1000, rx_bytes=10, tx_bytes=20)
+    # Кто-то другой получил профиль → awg-quick перезапущен → wg рапортует "never".
+    store.awg_record_usage("nl", OWNER, last_handshake_at=None, rx_bytes=0, tx_bytes=0)
+
+    row = store.awg_get_usage([OWNER])[("nl", OWNER)]
+    assert row["last_handshake_at"] == 1000, "последний раз не должен стираться"
+    assert row["first_handshake_at"] == 1000, "факт подключения запоминается навсегда"
+
+    # Человек снова включил VPN — «последний раз» двигается вперёд, «впервые» нет.
+    store.awg_record_usage("nl", OWNER, last_handshake_at=9000, rx_bytes=5, tx_bytes=5)
+    row = store.awg_get_usage([OWNER])[("nl", OWNER)]
+    assert row["last_handshake_at"] == 9000
+    assert row["first_handshake_at"] == 1000
+
+
+def test_a_peer_that_never_connected_stays_empty(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    _issue(store, OWNER, "nl", "10.10.0.5")
+    store.awg_record_usage("nl", OWNER, last_handshake_at=None, rx_bytes=0, tx_bytes=0)
+
+    row = store.awg_get_usage([OWNER])[("nl", OWNER)]
+    assert row["last_handshake_at"] is None
+    assert row["first_handshake_at"] is None
