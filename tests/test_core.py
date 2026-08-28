@@ -166,8 +166,10 @@ def test_suspend_client_retains_keys_and_rebuilds_interface() -> None:
         "mv /etc/amnezia/amneziawg/clients/sub-42.conf "
         "/etc/amnezia/amneziawg/clients/sub-42.conf.suspended",
     )
-    assert not _has_command(ssh.commands, "rm -f")
-    assert _has_command(ssh.commands, "systemctl restart awg-quick@awg0")
+    # Freezing a subscription must never destroy the client's keys - the
+    # person gets the same profile back on resume.
+    assert not _has_command(ssh.commands, "rm -f /etc/amnezia/amneziawg/clients/")
+    assert _has_command(ssh.commands, "awg syncconf awg0")
 
 
 def test_resume_client_restores_same_config_file() -> None:
@@ -187,7 +189,50 @@ def test_resume_client_restores_same_config_file() -> None:
         "mv /etc/amnezia/amneziawg/clients/sub-42.conf.suspended "
         "/etc/amnezia/amneziawg/clients/sub-42.conf",
     )
-    assert _has_command(ssh.commands, "systemctl restart awg-quick@awg0")
+    assert _has_command(ssh.commands, "awg syncconf awg0")
+
+
+def test_peer_changes_do_not_reset_everyone_elses_session() -> None:
+    """Live measurement 28.08.2026 on a throwaway interface: restarting the
+    unit cost 45 of 60 pings and zeroed every handshake, while syncconf cost
+    0 of 120 and left them untouched.  One person getting a profile must not
+    black out the other forty-seven."""
+    ssh = FakeSSH(
+        {
+            "/etc/amnezia/amneziawg/awg0.conf": "yes",
+            "/etc/wireguard/wg0.conf": "no",
+        }
+    )
+    prov = WireGuardProvisioner(ssh)
+    prov.rebuild_awg0_from_clients()
+
+    script = "\n".join(cmd for cmd, _sudo, _check in ssh.commands)
+    assert "awg-quick strip awg0" in script
+    assert "awg syncconf awg0" in script
+    # The restart survives only as the fallback, guarded by the syncconf branch.
+    assert "systemctl restart awg-quick@awg0" in script
+    assert script.index("awg syncconf awg0") < script.index(
+        "systemctl restart awg-quick@awg0"
+    )
+
+
+def test_peer_sync_survives_a_posix_shell() -> None:
+    """The script is handed to whatever /bin/sh the exit happens to ship, so
+    process substitution and [[ ]] would fail there and nowhere in the tests."""
+    prov = WireGuardProvisioner(FakeSSH({}))
+    script = prov._apply_peers("awg0", "awg")
+    assert "<(" not in script
+    assert "[[" not in script
+    # The temporary file holds the server private key; it must not be left behind.
+    assert 'rm -f "$sync"' in script
+
+
+def test_plain_wireguard_uses_its_own_tools() -> None:
+    prov = WireGuardProvisioner(FakeSSH({}), protocol="wireguard")
+    script = prov._apply_peers("wg0", "wg")
+    assert "wg-quick strip wg0" in script
+    assert "wg syncconf wg0" in script
+    assert "awg" not in script
 
 
 def test_next_client_ip_reserves_addresses_of_suspended_peers() -> None:

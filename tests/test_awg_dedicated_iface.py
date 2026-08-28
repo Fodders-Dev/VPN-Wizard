@@ -75,7 +75,9 @@ def test_rebuild_touches_only_the_dedicated_interface() -> None:
     script = "\n".join(ssh.commands)
     assert "/etc/amnezia/amneziawg/awg9.conf" in script
     assert "clients_awg9" in script
-    assert "awg-quick@awg9" in script
+    assert "awg syncconf awg9" in script
+    assert "awg-quick strip awg9" in script
+    assert "awg-quick@awg9" in script  # restart fallback still names our unit
     # The owner's interfaces must not appear anywhere in the rebuild.
     for foreign in ("awg0.conf", "awg1.conf", "clients_tyumen", "awg-quick@awg0", "awg-quick@awg1"):
         assert foreign not in script, foreign
