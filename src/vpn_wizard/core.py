@@ -11,6 +11,9 @@ from typing import Callable, Optional
 import paramiko
 
 
+SAFE_TUNNEL_TCP_MSS = 1160
+
+
 class RemoteCommandError(RuntimeError):
     pass
 
@@ -507,12 +510,23 @@ class WireGuardProvisioner:
         )
 
     def _post_rules(self, ifname: str) -> tuple[str, str]:
+        # PMTU clamping alone advertises MSS 1240 for an MTU-1280 AWG link.
+        # On some provider paths that still stalls large TCP responses even
+        # though the tunnel handshakes and small packets work.  Pin the MSS for
+        # connections entering the tunnel to the value proven safe in the live
+        # FI path.  Keeping the generic clamp afterwards still protects every
+        # other forwarded path, while existing client profiles may stay at 1280.
+        safe_mss_rule = (
+            f"-i {ifname} -p tcp --tcp-flags SYN,RST SYN "
+            f"-j TCPMSS --set-mss {SAFE_TUNNEL_TCP_MSS}"
+        )
         postup = (
             "sysctl -w net.ipv4.ip_forward=1; "
             "sysctl -w net.ipv6.conf.all.forwarding=1; "
             f"iptables -w -I FORWARD 1 -i {ifname} -j ACCEPT; "
             f"iptables -w -I FORWARD 1 -o {ifname} -j ACCEPT; "
             f"iptables -w -t nat -A POSTROUTING -s {self.server_cidr} -j MASQUERADE; "
+            f"iptables -w -t mangle -I FORWARD 1 {safe_mss_rule}; "
             "iptables -w -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN "
             "-j TCPMSS --clamp-mss-to-pmtu"
         )
@@ -520,6 +534,7 @@ class WireGuardProvisioner:
             f"iptables -w -D FORWARD -i {ifname} -j ACCEPT; "
             f"iptables -w -D FORWARD -o {ifname} -j ACCEPT; "
             f"iptables -w -t nat -D POSTROUTING -s {self.server_cidr} -j MASQUERADE; "
+            f"iptables -w -t mangle -D FORWARD {safe_mss_rule}; "
             "iptables -w -t mangle -D FORWARD -p tcp --tcp-flags SYN,RST SYN "
             "-j TCPMSS --clamp-mss-to-pmtu"
         )

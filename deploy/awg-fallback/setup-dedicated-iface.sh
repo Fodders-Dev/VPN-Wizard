@@ -11,7 +11,8 @@
 # (WireGuardProvisioner._post_rules в src/vpn_wizard/core.py). Один раз этот
 # файл создавался руками без MSS-клэмпинга — у людей поднимался туннель, но
 # крупные TCP-пакеты молча терялись: Telegram-текст ходил, а фото и сайты
-# висели вечно. Не выбрасывай TCPMSS.
+# висели вечно. PMTU-клэмпинг оставляем как страховку, а MSS 1160 нужен потому,
+# что на некоторых AWG-маршрутах вычисленные 1240 всё ещё дают ретрансляции.
 set -euo pipefail
 
 IFACE="${1:-awg9}"
@@ -50,8 +51,8 @@ H1 = 1028292012
 H2 = 2027322962
 H3 = 1500253145
 H4 = 836814590
-PostUp = iptables -w -I FORWARD 1 -i %i -j ACCEPT; iptables -w -I FORWARD 1 -o %i -j ACCEPT; iptables -w -t nat -A POSTROUTING -s $NET -o $EGRESS -j MASQUERADE; iptables -w -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
-PostDown = iptables -w -D FORWARD -i %i -j ACCEPT; iptables -w -D FORWARD -o %i -j ACCEPT; iptables -w -t nat -D POSTROUTING -s $NET -o $EGRESS -j MASQUERADE; iptables -w -t mangle -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+PostUp = iptables -w -I FORWARD 1 -i %i -j ACCEPT; iptables -w -I FORWARD 1 -o %i -j ACCEPT; iptables -w -t nat -A POSTROUTING -s $NET -o $EGRESS -j MASQUERADE; iptables -w -t mangle -I FORWARD 1 -i %i -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1160; iptables -w -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+PostDown = iptables -w -D FORWARD -i %i -j ACCEPT; iptables -w -D FORWARD -o %i -j ACCEPT; iptables -w -t nat -D POSTROUTING -s $NET -o $EGRESS -j MASQUERADE; iptables -w -t mangle -D FORWARD -i %i -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1160; iptables -w -t mangle -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 EOF
 chmod 600 "$DIR/$IFACE.conf"
 

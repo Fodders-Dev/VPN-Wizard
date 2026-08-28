@@ -163,5 +163,21 @@ def test_dedicated_iface_script_keeps_the_mss_clamp() -> None:
     script = Path(__file__).resolve().parents[1] / "deploy" / "awg-fallback" / "setup-dedicated-iface.sh"
     text = script.read_text(encoding="utf-8")
     assert text.count("TCPMSS --clamp-mss-to-pmtu") >= 2, "клэмпинг нужен в PostUp и PostDown"
+    assert text.count("TCPMSS --set-mss 1160") >= 2, "безопасный MSS нужен в PostUp и PostDown"
     assert "-A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS" in text
     assert "-D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS" in text
+
+
+def test_provisioner_pins_mss_before_the_generic_pmtu_clamp() -> None:
+    """MTU 1280 даёт MSS 1240, но на живом FI-маршруте он замедлял 1,18 МБ
+    с 0,5 до 29 секунд.  Серверный MSS 1160 чинит уже выданные профили без
+    ручного изменения MTU у пользователей."""
+    prov, _ = _provisioner(iface="awg9")
+
+    postup, postdown = prov._post_rules("awg9")
+
+    assert "-I FORWARD 1 -i awg9" in postup
+    assert "TCPMSS --set-mss 1160" in postup
+    assert postup.index("--set-mss 1160") < postup.index("--clamp-mss-to-pmtu")
+    assert "-D FORWARD -i awg9" in postdown
+    assert "TCPMSS --set-mss 1160" in postdown
