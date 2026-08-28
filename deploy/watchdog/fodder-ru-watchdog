@@ -205,7 +205,23 @@ def capacity_complaints(stats: dict) -> list[str]:
     return out
 
 
-def exit_targets() -> list[tuple[str, tuple]]:
+# Interfaces the product creates when it owns the whole machine.
+PRODUCT_INTERFACES = ("awg0", "awg1", "wg0")
+
+
+def own_interfaces(server: dict | None = None) -> tuple[str, ...]:
+    """Which interfaces on a box are ours to judge.
+
+    A dedicated exit runs beside somebody's personal tunnels. Complaining that
+    their awg0 has no MSS rule would be noise, and on the Finnish box it would
+    be wrong too: that tunnel is MTU 1420 end to end and needs no clamp.
+    """
+    if server and server.get("interface"):
+        return (str(server["interface"]),)
+    return PRODUCT_INTERFACES
+
+
+def exit_targets() -> list[tuple[str, tuple, tuple]]:
     """Remote exits from VPNW_AWG_SERVERS, skipping the local one."""
     try:
         servers = json.loads(os.environ.get("VPNW_AWG_SERVERS") or "[]")
@@ -221,9 +237,14 @@ def exit_targets() -> list[tuple[str, tuple]]:
             (
                 f"{s.get('label') or s.get('id')} ({host})",
                 (host, s.get("user") or "root", s.get("port") or 22, key),
+                own_interfaces(s),
             )
         )
     return targets
+
+
+def all_boxes() -> list[tuple[str, tuple | None, tuple]]:
+    return [("NL · панель и сайт", None, own_interfaces())] + exit_targets()
 
 
 def notify(text: str) -> None:
@@ -290,42 +311,63 @@ def parse_iface_probe(text: str) -> list[dict]:
     return rows
 
 
-def interface_complaints(rows: list[dict], now: int) -> list[str]:
-    """Name the interfaces that are up but that nobody is actually reaching.
+def interface_complaints(rows: list[dict], now: int, own: tuple[str, ...] = PRODUCT_INTERFACES) -> list[dict]:
+    """What is wrong with our interfaces, and of which kind.
 
-    A handshake age is only meaningful once the interface has been up longer
+    Three different faults come out of here, and they need different answers
+    from the owner, so each carries its kind rather than being flattened into
+    one word.
+
+    A handshake age only means something once the interface has been up longer
     than the window: restarting it zeroes every handshake, so a freshly
-    restarted interface always looks abandoned for a while.
+    restarted interface always looks abandoned for a while. Whether the config
+    is right, on the other hand, does not depend on how many people are on it —
+    a two-peer exit without the clamp loses large TCP exactly like a fifty-peer
+    one, so those checks run at any size.
     """
     window = SILENT_HOURS * 3600
     out = []
+
+    def add(kind: str, iface: str, text: str) -> None:
+        out.append({"kind": kind, "iface": iface, "text": text})
+
     for row in rows:
+        if row["iface"] not in own:
+            continue
+        if not row["has_mss_rule"]:
+            add(
+                "mss",
+                row["iface"],
+                f"{row['iface']}: нет правила TCPMSS --set-mss, "
+                "крупные TCP-пакеты будут молча пропадать",
+            )
+        if not row["has_syncconf"]:
+            add(
+                "syncconf",
+                row["iface"],
+                f"{row['iface']}: тулза без syncconf — "
+                "выдача профиля будет рвать сессии всем",
+            )
         if row["peers"] < MIN_PEERS_TO_JUDGE:
             continue
         settled = row["up_since"] and now - row["up_since"] > window
         if settled and now - row["newest_handshake"] > window:
             if row["newest_handshake"]:
                 hours = int((now - row["newest_handshake"]) // 3600)
-                out.append(
+                add(
+                    "silent",
+                    row["iface"],
                     f"{row['iface']}: {row['peers']} профилей, "
-                    f"последнее подключение {hours} ч назад"
+                    f"последнее подключение {hours} ч назад",
                 )
             else:
                 hours = int((now - row["up_since"]) // 3600)
-                out.append(
+                add(
+                    "silent",
+                    row["iface"],
                     f"{row['iface']}: {row['peers']} профилей и "
-                    f"ни одного подключения за {hours} ч"
+                    f"ни одного подключения за {hours} ч",
                 )
-        if not row["has_mss_rule"]:
-            out.append(
-                f"{row['iface']}: нет правила TCPMSS --set-mss, "
-                "крупные TCP-пакеты будут молча пропадать"
-            )
-        if not row["has_syncconf"]:
-            out.append(
-                f"{row['iface']}: тулза без syncconf — "
-                "выдача профиля будет рвать сессии всем"
-            )
     return out
 
 
@@ -337,13 +379,27 @@ INTERFACE_MESSAGES = {
         "профили на сервере уже новые, а на руках у людей — прежние. "
         "Проверь, роздали ли им обновлённые файлы."
     ),
+    "mss": (
+        "🧱 {name}: {detail}.\n\n"
+        "Это настройка экзита, а не люди. Туннель будет подниматься, мелочь "
+        "ходить, а крупные TCP-пакеты гибнуть молча — сайты виснут, фото не "
+        "грузятся. Смотреть: iptables -t mangle -S FORWARD | grep set-mss"
+    ),
+    "syncconf": (
+        "🧰 {name}: {detail}.\n\n"
+        "Пока этого нет, выдача одного профиля рвёт сессии всем на интерфейсе. "
+        "Нужны amneziawg-tools с подкомандой syncconf."
+    ),
     "ok": "✅ {name}: интерфейсы снова живые ({detail}).",
 }
 
+# A broken config is something the owner can go and fix right now; silence is a
+# question about people. Lead with the actionable one.
+KIND_PRIORITY = ("mss", "syncconf", "silent")
+
 
 def check_interfaces(state: dict, now: int) -> None:
-    boxes = [("NL · панель и сайт", None)] + exit_targets()
-    for name, target in boxes:
+    for name, target, own in all_boxes():
         try:
             stdout, stderr = remote_output(IFACE_PROBE, target)
             rows = parse_iface_probe(stdout)
@@ -352,24 +408,28 @@ def check_interfaces(state: dict, now: int) -> None:
         except Exception as exc:  # a failed probe is not a verdict
             print(f"watchdog: interface probe failed for {name}: {exc}", file=sys.stderr)
             continue
-        complaints = interface_complaints(rows, now)
-        status = "silent" if complaints else "ok"
-        detail = "; ".join(complaints) or ", ".join(
-            f"{r['iface']}×{r['peers']}" for r in rows
+        complaints = interface_complaints(rows, now, own)
+        kinds = {c["kind"] for c in complaints}
+        status = next((k for k in KIND_PRIORITY if k in kinds), "ok")
+        detail = "; ".join(c["text"] for c in complaints) or ", ".join(
+            f"{r['iface']}×{r['peers']}" for r in rows if r["iface"] in own
         )
         key = f"ifaces:{name}"
         entry = state.get(key) or {"status": "ok", "since": now, "last_alert": 0}
-        # Track WHICH interfaces are complaining, not just that some are: with a
-        # single per-box status, a second interface going quiet while the first
-        # is already quiet would never raise a word.
-        culprits = sorted({c.split(":", 1)[0] for c in complaints})
-        changed = status != entry["status"] or culprits != (entry.get("culprits") or [])
+        # Track WHICH interface has WHICH fault, not just that something is
+        # wrong: with a single per-box flag, a second interface going quiet
+        # while the first already is would never raise a word, and an interface
+        # swapping one fault for another would look unchanged.
+        culprits = sorted(f"{c['iface']}:{c['kind']}" for c in complaints)
+        known = entry.get("culprits")  # absent in entries written before this
+        changed = status != entry["status"] or (known is not None and culprits != known)
         entry["culprits"] = culprits
-        stale = status == "silent" and now - int(entry.get("last_alert") or 0) >= REMIND_SECONDS
-        if (changed or stale) and (status == "silent" or entry["status"] == "silent"):
+        bad = status != "ok"
+        stale = bad and now - int(entry.get("last_alert") or 0) >= REMIND_SECONDS
+        if (changed or stale) and (bad or entry["status"] != "ok"):
             text = INTERFACE_MESSAGES[status].format(name=name, detail=detail)
             if not changed:
-                text = "⏰ Всё ещё тихо.\n" + text
+                text = "⏰ Всё ещё так.\n" + text
             try:
                 notify(text)
                 entry["last_alert"] = now
@@ -383,8 +443,7 @@ def check_interfaces(state: dict, now: int) -> None:
 
 def check_capacity(state: dict, now: int) -> None:
     """Warn while a box still works, instead of after it stops."""
-    boxes = [("NL · панель и сайт", None)] + exit_targets()
-    for name, target in boxes:
+    for name, target, _own in all_boxes():
         try:
             stats = probe(target)
         except Exception as exc:  # a probe failure is not a capacity verdict
@@ -417,7 +476,7 @@ def check_capacity(state: dict, now: int) -> None:
 
 def main() -> int:
     if "--capacity" in sys.argv:
-        for name, target in [("NL · панель и сайт", None)] + exit_targets():
+        for name, target, _own in all_boxes():
             try:
                 stats = probe(target)
             except Exception as exc:
@@ -434,7 +493,7 @@ def main() -> int:
 
     if "--interfaces" in sys.argv:
         now = int(time.time())
-        for name, target in [("NL · панель и сайт", None)] + exit_targets():
+        for name, target, own in all_boxes():
             try:
                 stdout, stderr = remote_output(IFACE_PROBE, target)
             except Exception as exc:
@@ -455,9 +514,10 @@ def main() -> int:
                     f"последнее подключение {age}, "
                     f"MSS {'да' if row['has_mss_rule'] else 'НЕТ'}, "
                     f"syncconf {'да' if row['has_syncconf'] else 'НЕТ'}"
+                    + ("" if row["iface"] in own else "   (не наш, не оцениваем)")
                 )
-            for line in interface_complaints(rows, now):
-                print(f"  ⚠ {line}")
+            for c in interface_complaints(rows, now, own):
+                print(f"  ⚠ [{c['kind']}] {c['text']}")
         return 0
 
     if "--test" in sys.argv:
