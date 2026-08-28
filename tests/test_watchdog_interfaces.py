@@ -112,3 +112,18 @@ def test_the_window_is_configurable(watchdog, monkeypatch) -> None:
     monkeypatch.setattr(watchdog, "SILENT_HOURS", 1)
     rows = [row(newest_handshake=NOW - 2 * HOUR, up_since=NOW - 10 * HOUR)]
     assert watchdog.interface_complaints(rows, NOW)
+
+
+def test_a_second_silent_interface_is_not_swallowed_by_the_first(watchdog) -> None:
+    """State is kept per box. If awg1 is already quiet and awg9 goes quiet too,
+    a plain ok/silent flag never changes and nobody hears about awg9."""
+    quiet = dict(iface="awg1", peers=61, newest_handshake=0, up_since=NOW - 6 * 24 * HOUR)
+    first = watchdog.interface_complaints([row(**quiet)], NOW)
+    both = watchdog.interface_complaints(
+        [row(**quiet), row(iface="awg9", peers=32, newest_handshake=0, up_since=NOW - 6 * 24 * HOUR)],
+        NOW,
+    )
+    culprits = lambda cs: sorted({c.split(":", 1)[0] for c in cs})
+    assert culprits(first) == ["awg1"]
+    assert culprits(both) == ["awg1", "awg9"]
+    assert culprits(first) != culprits(both)

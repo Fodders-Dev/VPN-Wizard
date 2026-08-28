@@ -359,7 +359,12 @@ def check_interfaces(state: dict, now: int) -> None:
         )
         key = f"ifaces:{name}"
         entry = state.get(key) or {"status": "ok", "since": now, "last_alert": 0}
-        changed = status != entry["status"]
+        # Track WHICH interfaces are complaining, not just that some are: with a
+        # single per-box status, a second interface going quiet while the first
+        # is already quiet would never raise a word.
+        culprits = sorted({c.split(":", 1)[0] for c in complaints})
+        changed = status != entry["status"] or culprits != (entry.get("culprits") or [])
+        entry["culprits"] = culprits
         stale = status == "silent" and now - int(entry.get("last_alert") or 0) >= REMIND_SECONDS
         if (changed or stale) and (status == "silent" or entry["status"] == "silent"):
             text = INTERFACE_MESSAGES[status].format(name=name, detail=detail)
