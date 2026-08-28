@@ -551,6 +551,22 @@ class WireGuardProvisioner:
             suffix = ""
         return f"{conf_dir}/server_private{suffix}.key", f"{conf_dir}/server_public{suffix}.key"
 
+    def _cap_mtu_to_interface(self, mtu: Optional[int], conf_path: str) -> Optional[int]:
+        """Never promise a client more MTU than the tunnel itself carries."""
+        if not mtu:
+            return mtu
+        raw = self.ssh.run(
+            f"awk -F'= ' '/^MTU/{{print $2; exit}}' {conf_path} 2>/dev/null || true",
+            sudo=True,
+            check=False,
+        ).strip()
+        try:
+            iface_mtu = int(raw)
+        except (TypeError, ValueError):
+            return mtu
+        return min(int(mtu), iface_mtu) if iface_mtu > 0 else mtu
+
+
     def _resolve_server_cidr(self, conf_path: str) -> str:
         """Read the interface's own subnet, so client IPs land inside it."""
         addr = self.ssh.run(
@@ -1242,7 +1258,11 @@ class WireGuardProvisioner:
             )
             
         ip = client_ip or self.next_client_ip()
-        resolved_mtu = self.resolve_mtu()
+        # resolve_mtu() probes the server's own path to the internet, which says
+        # nothing about what the tunnel can carry. Handing a client a bigger MTU
+        # than the interface itself blackholes every large TCP segment: small
+        # requests and Telegram text get through, web pages and photos hang.
+        resolved_mtu = self._cap_mtu_to_interface(self.resolve_mtu(), wg_conf)
         mtu_line = f"MTU = {resolved_mtu}\n" if resolved_mtu else ""
         listen_port = self._resolve_listen_port(wg_conf)
         dns_value = self._resolve_dns(clients_dir)

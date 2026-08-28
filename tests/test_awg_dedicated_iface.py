@@ -131,3 +131,37 @@ def test_client_ip_is_taken_from_the_dedicated_subnet() -> None:
 
     assert prov.next_client_ip() == "10.99.0.4/32"
     assert any("clients_awg9" in cmd for cmd in ssh.commands)
+
+
+# --- MTU клиента не должен превышать MTU туннеля -------------------------------
+
+def test_client_mtu_never_exceeds_the_tunnel_mtu() -> None:
+    """Живая авария 28.08.2026: клиентам выдавался MTU 1420, тогда как интерфейс
+    держал 1280. Туннель молча терял крупные TCP-сегменты — Telegram-текст и
+    голосовые ходили, а сайты и фотографии висели бесконечно."""
+    ssh = FakeSSH(responses={"awk -F'= ' '/^MTU/": "1280"})
+    prov = WireGuardProvisioner(ssh, iface="awg9")
+
+    assert prov._cap_mtu_to_interface(1420, "/etc/amnezia/amneziawg/awg9.conf") == 1280
+    # Значение меньше потолка не трогаем.
+    assert prov._cap_mtu_to_interface(1200, "/etc/amnezia/amneziawg/awg9.conf") == 1200
+
+
+def test_unreadable_interface_mtu_leaves_the_probe_alone() -> None:
+    ssh = FakeSSH(responses={"awk -F'= ' '/^MTU/": ""})
+    prov = WireGuardProvisioner(ssh, iface="awg9")
+
+    assert prov._cap_mtu_to_interface(1420, "/etc/amnezia/amneziawg/awg9.conf") == 1420
+    assert prov._cap_mtu_to_interface(None, "/etc/amnezia/amneziawg/awg9.conf") is None
+
+
+def test_dedicated_iface_script_keeps_the_mss_clamp() -> None:
+    """Скрипт создания интерфейса однажды был написан руками без TCPMSS — именно
+    это и уронило Финляндию. Правило обязано быть и в PostUp, и в PostDown."""
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[1] / "deploy" / "awg-fallback" / "setup-dedicated-iface.sh"
+    text = script.read_text(encoding="utf-8")
+    assert text.count("TCPMSS --clamp-mss-to-pmtu") >= 2, "клэмпинг нужен в PostUp и PostDown"
+    assert "-A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS" in text
+    assert "-D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS" in text
