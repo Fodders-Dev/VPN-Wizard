@@ -22,8 +22,12 @@ VPNW_TELEGRAM_AUTH_TOKEN (или VPNW_BOT_TOKEN) и VPNW_OWNER_IDS.
 но TCP-память кончилась — и все TLS-хендшейки встали, а узнали мы об этом, только
 когда сайт полностью лёг. Эти пороги предупреждают заранее.
 
+Ещё проверяется, доходят ли до интерфейсов живые люди: интерфейс с профилями,
+но без единого хендшейка, — это молча отрезанная аудитория (см. SILENT_HOURS).
+
 Запуск с --test шлёт пробное сообщение и выходит — так проверяется доставка.
 Запуск с --capacity печатает текущие цифры по всем коробкам и выходит.
+Запуск с --interfaces печатает состояние интерфейсов и выходит.
 """
 from __future__ import annotations
 
@@ -119,6 +123,32 @@ MIN_MEM_PERCENT = 12.0
 MIN_DISK_PERCENT = 10.0
 MAX_TCP_MEM_PERCENT = 85.0
 
+# --- silent interfaces ---------------------------------------------------------
+# Every server metric can look perfect while the people are gone.  On 22.08.2026
+# a migration rewrote 61 profiles with the new address, nobody handed the files
+# out, and awg1 sat there with sixty-one peers and not one handshake for six
+# days.  Load, memory, disk and reachability all said "fine" the whole time.
+SILENT_HOURS = float(os.environ.get("VPNW_WATCHDOG_SILENT_HOURS") or 24)
+# Below this an interface is a test bed or somebody's personal tunnel, not a
+# product surface worth waking anyone up about.
+MIN_PEERS_TO_JUDGE = 5
+
+IFACE_PROBE = r"""
+for i in $( (awg show interfaces; wg show interfaces) 2>/dev/null | tr ' ' '\n' | sort -u ); do
+  [ -n "$i" ] || continue
+  if awg show "$i" >/dev/null 2>&1; then t=awg; else t=wg; fi
+  d=$($t show "$i" dump 2>/dev/null | tail -n +2)
+  peers=$(printf '%s' "$d" | grep -c .)
+  newest=$(printf '%s\n' "$d" | awk 'BEGIN{m=0}{if($5+0>m)m=$5+0}END{printf "%d", m}')
+  ts=$(systemctl show "$t-quick@$i" -p ActiveEnterTimestamp --value 2>/dev/null)
+  since=$(date -d "$ts" +%s 2>/dev/null || echo 0)
+  mss=$(iptables -t mangle -S FORWARD 2>/dev/null | grep -c -- "-i $i .*--set-mss")
+  sc=$( ($t --help; $t help) 2>&1 | grep -c syncconf )
+  echo "IFACE|$i|$peers|$newest|${since:-0}|$mss|$sc"
+done
+"""
+
+
 PROBE = r"""
 cores=$(nproc)
 load=$(cut -d' ' -f1 /proc/loadavg)
@@ -130,18 +160,25 @@ echo "$cores|$load|$mem|$disk|$tcp|$tcpmax"
 """
 
 
-def probe(ssh_target=None):
-    """Read load/memory/disk/TCP pressure, locally or over SSH."""
+def remote_output(script: str, ssh_target=None):
+    """Run a snippet locally or on an exit, returning (stdout, stderr)."""
     if ssh_target is None:
-        argv = ["sh", "-c", PROBE]
+        argv = ["sh", "-c", script]
     else:
         host, user, port, key = ssh_target
         argv = [
             "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
             "-o", "StrictHostKeyChecking=accept-new",
-            "-p", str(port), "-i", key, f"{user}@{host}", PROBE,
+            "-p", str(port), "-i", key, f"{user}@{host}", script,
         ]
     out = subprocess.run(argv, capture_output=True, text=True, timeout=40)
+    return out.stdout or "", out.stderr or ""
+
+
+def probe(ssh_target=None):
+    """Read load/memory/disk/TCP pressure, locally or over SSH."""
+    stdout, stderr = remote_output(PROBE, ssh_target)
+    out = type("R", (), {"stdout": stdout, "stderr": stderr})()
     parts = (out.stdout or "").strip().splitlines()[-1].split("|")
     if len(parts) != 6:
         raise RuntimeError(f"unreadable probe: {out.stdout!r} {out.stderr[:120]!r}")
@@ -231,6 +268,114 @@ CAPACITY_MESSAGES = {
 }
 
 
+def parse_iface_probe(text: str) -> list[dict]:
+    rows = []
+    for line in (text or "").splitlines():
+        parts = line.strip().split("|")
+        if len(parts) != 7 or parts[0] != "IFACE":
+            continue
+        try:
+            rows.append(
+                {
+                    "iface": parts[1],
+                    "peers": int(parts[2] or 0),
+                    "newest_handshake": int(parts[3] or 0),
+                    "up_since": int(parts[4] or 0),
+                    "has_mss_rule": int(parts[5] or 0) > 0,
+                    "has_syncconf": int(parts[6] or 0) > 0,
+                }
+            )
+        except ValueError:
+            continue
+    return rows
+
+
+def interface_complaints(rows: list[dict], now: int) -> list[str]:
+    """Name the interfaces that are up but that nobody is actually reaching.
+
+    A handshake age is only meaningful once the interface has been up longer
+    than the window: restarting it zeroes every handshake, so a freshly
+    restarted interface always looks abandoned for a while.
+    """
+    window = SILENT_HOURS * 3600
+    out = []
+    for row in rows:
+        if row["peers"] < MIN_PEERS_TO_JUDGE:
+            continue
+        settled = row["up_since"] and now - row["up_since"] > window
+        if settled and now - row["newest_handshake"] > window:
+            if row["newest_handshake"]:
+                hours = int((now - row["newest_handshake"]) // 3600)
+                out.append(
+                    f"{row['iface']}: {row['peers']} профилей, "
+                    f"последнее подключение {hours} ч назад"
+                )
+            else:
+                hours = int((now - row["up_since"]) // 3600)
+                out.append(
+                    f"{row['iface']}: {row['peers']} профилей и "
+                    f"ни одного подключения за {hours} ч"
+                )
+        if not row["has_mss_rule"]:
+            out.append(
+                f"{row['iface']}: нет правила TCPMSS --set-mss, "
+                "крупные TCP-пакеты будут молча пропадать"
+            )
+        if not row["has_syncconf"]:
+            out.append(
+                f"{row['iface']}: тулза без syncconf — "
+                "выдача профиля будет рвать сессии всем"
+            )
+    return out
+
+
+INTERFACE_MESSAGES = {
+    "silent": (
+        "🔇 {name}: {detail}.\n\n"
+        "Сервер при этом жив и по ресурсам в порядке — значит люди до него не "
+        "доходят. Чаще всего это старый адрес в их приложении после смены IP: "
+        "профили на сервере уже новые, а на руках у людей — прежние. "
+        "Проверь, роздали ли им обновлённые файлы."
+    ),
+    "ok": "✅ {name}: интерфейсы снова живые ({detail}).",
+}
+
+
+def check_interfaces(state: dict, now: int) -> None:
+    boxes = [("NL · панель и сайт", None)] + exit_targets()
+    for name, target in boxes:
+        try:
+            stdout, stderr = remote_output(IFACE_PROBE, target)
+            rows = parse_iface_probe(stdout)
+            if not rows:
+                raise RuntimeError(f"no interfaces parsed: {stderr[:120]!r}")
+        except Exception as exc:  # a failed probe is not a verdict
+            print(f"watchdog: interface probe failed for {name}: {exc}", file=sys.stderr)
+            continue
+        complaints = interface_complaints(rows, now)
+        status = "silent" if complaints else "ok"
+        detail = "; ".join(complaints) or ", ".join(
+            f"{r['iface']}×{r['peers']}" for r in rows
+        )
+        key = f"ifaces:{name}"
+        entry = state.get(key) or {"status": "ok", "since": now, "last_alert": 0}
+        changed = status != entry["status"]
+        stale = status == "silent" and now - int(entry.get("last_alert") or 0) >= REMIND_SECONDS
+        if (changed or stale) and (status == "silent" or entry["status"] == "silent"):
+            text = INTERFACE_MESSAGES[status].format(name=name, detail=detail)
+            if not changed:
+                text = "⏰ Всё ещё тихо.\n" + text
+            try:
+                notify(text)
+                entry["last_alert"] = now
+            except Exception as exc:
+                print(f"watchdog: notify failed: {exc}", file=sys.stderr)
+        if changed:
+            entry["status"] = status
+            entry["since"] = now
+        state[key] = entry
+
+
 def check_capacity(state: dict, now: int) -> None:
     """Warn while a box still works, instead of after it stops."""
     boxes = [("NL · панель и сайт", None)] + exit_targets()
@@ -282,10 +427,38 @@ def main() -> int:
             )
         return 0
 
+    if "--interfaces" in sys.argv:
+        now = int(time.time())
+        for name, target in [("NL · панель и сайт", None)] + exit_targets():
+            try:
+                stdout, stderr = remote_output(IFACE_PROBE, target)
+            except Exception as exc:
+                print(f"{name}: probe failed: {exc}")
+                continue
+            rows = parse_iface_probe(stdout)
+            if not rows:
+                print(f"{name}: no interfaces parsed ({stderr[:80]!r})")
+                continue
+            for row in rows:
+                age = (
+                    f"{int((now - row['newest_handshake']) // 3600)} ч назад"
+                    if row["newest_handshake"]
+                    else "никогда"
+                )
+                print(
+                    f"{name} · {row['iface']}: {row['peers']} профилей, "
+                    f"последнее подключение {age}, "
+                    f"MSS {'да' if row['has_mss_rule'] else 'НЕТ'}, "
+                    f"syncconf {'да' if row['has_syncconf'] else 'НЕТ'}"
+                )
+            for line in interface_complaints(rows, now):
+                print(f"  ⚠ {line}")
+        return 0
+
     if "--test" in sys.argv:
         notify(
             "🔔 Тест сторожа Fodder VPN: алерты доходят. Каждые 10 минут проверяю "
-            "NL 77.67.89.164:443 и FI 151.245.140.22:3478 из ru1/ru2/ru3."
+            "NL 77.67.89.164:443 и FI 193.222.97.50:22 из ru1/ru2/ru3."
         )
         return 0
 
@@ -328,6 +501,7 @@ def main() -> int:
         state[host] = entry
 
     check_capacity(state, now)
+    check_interfaces(state, now)
 
     os.makedirs(STATE_DIR, exist_ok=True)
     with open(STATE_PATH, "w", encoding="utf-8") as handle:
