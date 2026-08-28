@@ -1678,18 +1678,42 @@ class WireGuardProvisioner:
         if not self._name_pattern.match(name):
             raise RuntimeError("Invalid client name. Use letters, numbers, dash, underscore.")
 
-    def backup_config(self) -> Optional[str]:
+    # Enough history to undo a bad afternoon, not enough to bury the directory:
+    # 191 copies of awg0.conf had piled up since December before anyone looked.
+    KEEP_BACKUPS = 20
+
+    def _own_iface(self) -> str:
+        """The interface this provisioner is allowed to write to.
+
+        A dedicated interface lives on somebody else's box next to their own
+        awg0 and awg1.  Backing up - or worse, rolling back - a hardcoded awg0
+        there would hand their personal tunnel an old config of ours and
+        restart it.
+        """
+        if self.protocol != "amneziawg":
+            return "wg0"
+        if self.iface:
+            return self.iface
+        # Same convention next_client_ip() uses to tell the two subnets apart.
+        return "awg1" if self.server_cidr.startswith("10.11.") else "awg0"
+
+    def _config_paths(self) -> tuple[str, str, str]:
+        iface = self._own_iface()
         if self.protocol == "amneziawg":
-            conf_path = "/etc/amnezia/amneziawg/awg0.conf"
-            backup_prefix = "/etc/amnezia/amneziawg/awg0.conf.bak"
-        else:
-            conf_path = "/etc/wireguard/wg0.conf"
-            backup_prefix = "/etc/wireguard/wg0.conf.bak"
+            conf = f"/etc/amnezia/amneziawg/{iface}.conf"
+            return conf, f"{conf}.bak", f"awg-quick@{iface}"
+        conf = "/etc/wireguard/wg0.conf"
+        return conf, f"{conf}.bak", "wg-quick@wg0"
+
+    def backup_config(self) -> Optional[str]:
+        conf_path, backup_prefix, _unit = self._config_paths()
 
         path = self.ssh.run(
             f"if [ -f {conf_path} ]; then\n"
             "  ts=$(date +%Y%m%d%H%M%S)\n"
             f"  cp {conf_path} {backup_prefix}.$ts\n"
+            f"  ls -1t {backup_prefix}.* 2>/dev/null "
+            f"| tail -n +{self.KEEP_BACKUPS + 1} | xargs -r rm -f\n"
             f"  echo {backup_prefix}.$ts\n"
             "fi",
             sudo=True,
@@ -1701,14 +1725,8 @@ class WireGuardProvisioner:
         return None
 
     def rollback_last_backup(self) -> Optional[str]:
-        if self.protocol == "amneziawg":
-            conf_path = "/etc/amnezia/amneziawg/awg0.conf"
-            backup_glob = "/etc/amnezia/amneziawg/awg0.conf.bak.*"
-            service_name = "awg-quick@awg0"
-        else:
-            conf_path = "/etc/wireguard/wg0.conf"
-            backup_glob = "/etc/wireguard/wg0.conf.bak.*"
-            service_name = "wg-quick@wg0"
+        conf_path, backup_prefix, service_name = self._config_paths()
+        backup_glob = f"{backup_prefix}.*"
 
         backup = self.ssh.run(
             "set -e\n"

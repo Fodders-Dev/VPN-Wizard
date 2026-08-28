@@ -183,3 +183,57 @@ def test_provisioner_pins_mss_before_the_generic_pmtu_clamp() -> None:
     assert postup.index("--set-mss 1160") < postup.index("--clamp-mss-to-pmtu")
     assert "-D FORWARD -i awg9" in postdown
     assert "TCPMSS --set-mss 1160" in postdown
+
+
+# --- бэкап и откат не должны трогать чужой интерфейс ----------------------------
+
+def test_backup_saves_our_interface_not_someone_elses() -> None:
+    """The FI exit is the owner's own box: awg0 and awg1 there are their personal
+    tunnels. Backing up a hardcoded awg0 filled their directory with copies of a
+    config we never touch, and left awg9 itself with no safety net at all."""
+    prov, ssh = _provisioner(iface="awg9")
+    prov.protocol = "amneziawg"
+    prov.backup_config()
+
+    script = "\n".join(ssh.commands)
+    assert "/etc/amnezia/amneziawg/awg9.conf.bak" in script
+    assert "awg0.conf" not in script
+
+
+def test_rollback_restores_our_interface_not_someone_elses() -> None:
+    # The dangerous half: a rollback would have copied an old config over the
+    # owner's personal awg0 and restarted their tunnel.
+    prov, ssh = _provisioner(iface="awg9")
+    prov.protocol = "amneziawg"
+    prov.rollback_last_backup()
+
+    script = "\n".join(ssh.commands)
+    assert "awg-quick@awg9" in script
+    assert "awg0.conf" not in script
+    assert "awg-quick@awg0" not in script
+
+
+def test_backups_stop_piling_up() -> None:
+    # 191 copies of awg0.conf had accumulated since December.
+    prov, ssh = _provisioner(iface="awg9")
+    prov.protocol = "amneziawg"
+    prov.backup_config()
+
+    script = "\n".join(ssh.commands)
+    assert f"tail -n +{prov.KEEP_BACKUPS + 1}" in script
+    assert "xargs -r rm -f" in script
+
+
+def test_shared_awg0_keeps_backing_up_awg0() -> None:
+    prov, ssh = _provisioner()
+    prov.protocol = "amneziawg"
+    prov.backup_config()
+    assert "/etc/amnezia/amneziawg/awg0.conf.bak" in "\n".join(ssh.commands)
+
+
+def test_the_tyumen_subnet_backs_up_its_own_interface() -> None:
+    prov, ssh = _provisioner()
+    prov.protocol = "amneziawg"
+    prov.server_cidr = "10.11.0.1/24"
+    prov.backup_config()
+    assert "/etc/amnezia/amneziawg/awg1.conf.bak" in "\n".join(ssh.commands)
