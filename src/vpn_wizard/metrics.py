@@ -141,7 +141,9 @@ def usage_by_country(
         )
         bucket["keys"] += 1
         stats = usage.get((server_id, int(peer["telegram_id"]))) or {}
-        bucket["bytes"] += int(stats.get("rx_bytes") or 0) + int(stats.get("tx_bytes") or 0)
+        # Lifetime totals, not the device's current reading: that one is reset
+        # every time the interface is rebuilt.
+        bucket["bytes"] += int(stats.get("rx_total") or 0) + int(stats.get("tx_total") or 0)
         seen = stats.get("last_handshake_at")
         if seen:
             bucket["connected_keys"] += 1

@@ -273,6 +273,8 @@ class AccountStore:
                     last_handshake_at INTEGER,
                     rx_bytes INTEGER NOT NULL DEFAULT 0,
                     tx_bytes INTEGER NOT NULL DEFAULT 0,
+                    rx_total INTEGER NOT NULL DEFAULT 0,
+                    tx_total INTEGER NOT NULL DEFAULT 0,
                     updated_at INTEGER NOT NULL,
                     PRIMARY KEY (server_id, telegram_id)
                 );
@@ -298,6 +300,13 @@ class AccountStore:
                 "UPDATE awg_peer_usage SET first_handshake_at = last_handshake_at"
                 " WHERE last_handshake_at IS NOT NULL"
             )
+        # rx_bytes/tx_bytes are whatever the device happens to be reporting, and
+        # the device forgets on every restart. The daily summary was quoting
+        # "traffic" that really meant "since somebody last got a profile".
+        if usage and "rx_total" not in usage:
+            conn.execute("ALTER TABLE awg_peer_usage ADD COLUMN rx_total INTEGER NOT NULL DEFAULT 0")
+            conn.execute("ALTER TABLE awg_peer_usage ADD COLUMN tx_total INTEGER NOT NULL DEFAULT 0")
+            conn.execute("UPDATE awg_peer_usage SET rx_total = rx_bytes, tx_total = tx_bytes")
 
     def _ensure_saved_server_columns(self, conn: sqlite3.Connection) -> None:
         rows = conn.execute("PRAGMA table_info(saved_servers)").fetchall()
@@ -1572,8 +1581,8 @@ class AccountStore:
                 """
                 INSERT INTO awg_peer_usage
                     (server_id, telegram_id, first_handshake_at, last_handshake_at,
-                     rx_bytes, tx_bytes, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                     rx_bytes, tx_bytes, rx_total, tx_total, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(server_id, telegram_id) DO UPDATE SET
                     -- Restarting the interface makes wg report "never" for
                     -- everyone. Taking the newer of the two keeps "last seen"
@@ -1588,6 +1597,19 @@ class AccountStore:
                     ),
                     rx_bytes = excluded.rx_bytes,
                     tx_bytes = excluded.tx_bytes,
+                    -- Counters only ever climb until the interface is rebuilt,
+                    -- and then they start from zero. A reading below the last
+                    -- one means a restart happened, so all of it is new.
+                    rx_total = COALESCE(awg_peer_usage.rx_total, 0) + CASE
+                        WHEN excluded.rx_bytes >= COALESCE(awg_peer_usage.rx_bytes, 0)
+                        THEN excluded.rx_bytes - COALESCE(awg_peer_usage.rx_bytes, 0)
+                        ELSE excluded.rx_bytes
+                    END,
+                    tx_total = COALESCE(awg_peer_usage.tx_total, 0) + CASE
+                        WHEN excluded.tx_bytes >= COALESCE(awg_peer_usage.tx_bytes, 0)
+                        THEN excluded.tx_bytes - COALESCE(awg_peer_usage.tx_bytes, 0)
+                        ELSE excluded.tx_bytes
+                    END,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -1597,9 +1619,19 @@ class AccountStore:
                     int(last_handshake_at) if last_handshake_at else None,
                     max(0, int(rx_bytes)),
                     max(0, int(tx_bytes)),
+                    max(0, int(rx_bytes)),
+                    max(0, int(tx_bytes)),
                     _now(),
                 ),
             )
+
+    @staticmethod
+    def _column(row: sqlite3.Row, name: str, default: Any = None) -> Any:
+        """Read a column that older databases may not have yet."""
+        try:
+            return row[name]
+        except (IndexError, KeyError):
+            return default
 
     def awg_get_usage(self, telegram_ids: list[int]) -> dict[tuple[str, int], dict[str, Any]]:
         """Cached last-seen/traffic keyed by ``(server_id, peer_id)``."""
@@ -1617,6 +1649,8 @@ class AccountStore:
                 "last_handshake_at": row["last_handshake_at"],
                 "rx_bytes": int(row["rx_bytes"] or 0),
                 "tx_bytes": int(row["tx_bytes"] or 0),
+                "rx_total": int(self._column(row, "rx_total") or 0),
+                "tx_total": int(self._column(row, "tx_total") or 0),
                 "updated_at": int(row["updated_at"] or 0),
             }
             for row in rows
