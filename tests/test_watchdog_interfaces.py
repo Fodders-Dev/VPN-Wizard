@@ -220,3 +220,26 @@ def test_recovery_is_announced_once(watchdog, monkeypatch) -> None:
     assert len(sent) == 1 and "снова живые" in sent[0]
     sent2, _ = _fire(watchdog, monkeypatch, healthy, state)
     assert sent2 == []
+
+
+def test_a_fault_going_away_is_not_an_alarm(watchdog, monkeypatch) -> None:
+    """awg0 recovering while awg1 is still quiet shrinks the list. That is good
+    news about awg0, not a new incident — the owner should not be pinged."""
+    both = (
+        f"IFACE|awg1|61|0|{NOW - 10 * 24 * HOUR}|1|1\n"
+        f"IFACE|awg0|48|0|{NOW - 10 * 24 * HOUR}|1|1\n"
+    )
+    one = f"IFACE|awg1|61|0|{NOW - 10 * 24 * HOUR}|1|1\n" + \
+          f"IFACE|awg0|48|{NOW - 60}|{NOW - 10 * 24 * HOUR}|1|1\n"
+    sent, state = _fire(watchdog, monkeypatch, both)
+    assert len(sent) == 1
+    sent2, _ = _fire(watchdog, monkeypatch, one, state)
+    assert sent2 == []
+
+
+def test_the_same_fault_is_not_announced_twice(watchdog, monkeypatch) -> None:
+    quiet = f"IFACE|awg1|61|0|{NOW - 10 * 24 * HOUR}|1|1\n"
+    sent, state = _fire(watchdog, monkeypatch, quiet)
+    assert len(sent) == 1
+    sent2, _ = _fire(watchdog, monkeypatch, quiet, state)
+    assert sent2 == [], "one incident, one message"

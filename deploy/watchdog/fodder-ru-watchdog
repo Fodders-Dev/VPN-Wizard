@@ -421,8 +421,13 @@ def check_interfaces(state: dict, now: int) -> None:
         # while the first already is would never raise a word, and an interface
         # swapping one fault for another would look unchanged.
         culprits = sorted(f"{c['iface']}:{c['kind']}" for c in complaints)
+        # News is a fault that was not there before. Comparing the lists for any
+        # difference also fires when the list merely shrinks, or when the way it
+        # is written down changes - and a stored format from an older version
+        # would then re-announce an incident the owner already heard about.
         known = entry.get("culprits")  # absent in entries written before this
-        changed = status != entry["status"] or (known is not None and culprits != known)
+        fresh = set(culprits) - set(known or [])
+        changed = status != entry["status"] or (known is not None and bool(fresh))
         entry["culprits"] = culprits
         bad = status != "ok"
         stale = bad and now - int(entry.get("last_alert") or 0) >= REMIND_SECONDS
