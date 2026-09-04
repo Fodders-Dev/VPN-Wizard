@@ -573,3 +573,42 @@ def test_finishing_the_install_hands_the_person_to_the_channel() -> None:
     assert "t.me/fodders_dev" in handler
     assert "window.open" in handler
     assert "runCheck()" in handler
+
+
+def test_the_ask_blocks_the_screen_once_the_profile_is_downloaded() -> None:
+    """Asked for harsher. The one moment worth spending is right after the
+    download: the person is still on the page and already has what they came
+    for. Before the download it would scare people off at the door."""
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    assert 'id="nag-scrim"' in html and 'aria-modal="true"' in html
+
+    marked = html.split("function markDownloaded(){", 1)[1].split("\n  }", 1)[0]
+    assert "openGate()" in marked, "заслон должен подниматься по факту скачивания"
+    assert "setTimeout" in marked, "не мгновенно: иначе читается как «кнопка не сработала»"
+
+    gate = html.split("function openGate(){", 1)[1].split("\n  }", 1)[0]
+    assert "channelTapped()" in gate, "кто уже нажал — больше не видит заслон"
+
+
+def test_the_way_out_is_there_but_costs_a_wait() -> None:
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    assert 'id="nag-skip"' in html
+    assert "Всё равно пропустить" in html
+    assert "var SKIP_AFTER=5;" in html
+    # Отсчёт видно — человек понимает, что происходит, а не думает, что завис.
+    assert "Пропустить можно через " in html
+
+
+def test_the_reminder_waits_until_the_profile_is_in_hand() -> None:
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    bar = html.split("function updateNagBar(){", 1)[1].split("\n  }", 1)[0]
+    assert "downloaded" in bar and "step>=3" in bar, "на шагах 1-2 не донимаем"
+    assert "channelTapped()" in bar, "нажал — полоска уходит"
+
+
+def test_every_channel_button_counts_as_tapped() -> None:
+    # Иначе человек подписывается со шага 3, а его продолжает догонять полоска.
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    for btn in ("nag-go", "nag-bar-go", "import-channel-btn", "check-channel-btn"):
+        assert f'$("{btn}")' in html, btn
+    assert html.count("markChannelTapped") >= 5

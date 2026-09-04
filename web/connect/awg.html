@@ -33,6 +33,44 @@
   .progress span{display:block;height:100%;width:0;border-radius:999px;background:var(--accent);
     transition:width .5s linear}
   #check-tick{margin-top:8px;text-align:center}
+
+/* Заслон после скачивания и полоска-напоминание. Появляются только когда
+   профиль уже у человека на руках: до этого просить нельзя — отпугнём. */
+.nag-scrim{
+  position:fixed;inset:0;z-index:60;display:none;
+  align-items:center;justify-content:center;padding:18px;
+  background:rgba(7,24,39,.78);
+}
+.nag-scrim.is-open{display:flex}
+.nag-modal{
+  width:100%;max-width:460px;background:var(--surface);color:var(--text);
+  border:1px solid var(--line-strong);border-radius:18px;padding:22px 20px 20px;
+  box-shadow:0 24px 60px -20px rgba(7,24,39,.55);
+  animation:nag-in .22s cubic-bezier(.2,.7,.3,1);
+}
+@keyframes nag-in{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+.nag-modal h2{margin:0 0 10px;font-size:21px;line-height:1.2}
+.nag-modal p{margin:0 0 8px;font-size:15px;line-height:1.55;color:var(--text-dim)}
+.nag-modal .nag-strong{color:var(--text);font-weight:600}
+.nag-modal .btn{width:100%;margin-top:14px}
+.nag-skip{
+  display:block;width:100%;margin-top:12px;padding:8px;
+  background:none;border:0;font:inherit;font-size:14px;
+  color:var(--text-mute);text-align:center;cursor:pointer;
+}
+.nag-skip[disabled]{cursor:default;opacity:.55}
+.nag-skip:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:8px}
+
+.nag-bar{
+  position:fixed;left:0;right:0;bottom:0;z-index:50;display:none;
+  align-items:center;gap:12px;padding:10px 14px;
+  background:var(--surface);border-top:1px solid var(--line-strong);
+  box-shadow:0 -8px 24px -18px rgba(7,24,39,.6);
+}
+.nag-bar.is-open{display:flex}
+.nag-bar span{flex:1;min-width:0;font-size:13.5px;line-height:1.35;color:var(--text-dim)}
+.nag-bar .btn{flex:none;margin:0;padding:9px 14px;font-size:14px}
+body.has-nag-bar{padding-bottom:64px}
 </style>
 </head>
 <body>
@@ -597,6 +635,72 @@
 
   // Один раз после скачивания: подтверждаем успех и гасим соблазн качать снова
   // (повторное скачивание — это и есть файл со скобками, который не открыть).
+  /* ─────────────────────────────────────────────────────────────────────
+     Призыв в канал. Раздача 85 профилей принесла каналу трёх подписчиков,
+     потому что призыв стоял за последней кнопкой мастера. Теперь он ловит
+     человека в единственный момент, когда тот и на странице, и уже с
+     профилем на руках — сразу после скачивания.
+     Отметка о нажатии живёт локально: подтвердить подписку мы не можем
+     (у 106 из 108 нет привязанного Telegram), но человека, который уже
+     нажал, донимать незачем.
+     ───────────────────────────────────────────────────────────────────── */
+  var NAG_KEY="fodders-channel-tapped";
+  var SKIP_AFTER=5;
+
+  function channelTapped(){
+    try{ return localStorage.getItem(NAG_KEY)==="1"; }catch(e){ return false; }
+  }
+  function markChannelTapped(){
+    try{ localStorage.setItem(NAG_KEY,"1"); }catch(e){}
+    closeGate();
+    updateNagBar();
+  }
+  function closeGate(){
+    var s=$("nag-scrim");
+    if(!s)return;
+    s.classList.remove("is-open");
+    s.hidden=true;
+  }
+  function openGate(){
+    var s=$("nag-scrim");
+    if(!s||channelTapped())return;
+    s.hidden=false;
+    s.classList.add("is-open");
+    var skip=$("nag-skip"), left=SKIP_AFTER;
+    if(!skip)return;
+    skip.disabled=true;
+    skip.textContent="Пропустить можно через "+left;
+    var timer=setInterval(function(){
+      left-=1;
+      if(left<=0){
+        clearInterval(timer);
+        skip.disabled=false;
+        skip.textContent="Всё равно пропустить";
+      }else{
+        skip.textContent="Пропустить можно через "+left;
+      }
+    },1000);
+  }
+  function updateNagBar(){
+    var bar=$("nag-bar");
+    if(!bar)return;
+    // Полоска висит с момента скачивания и до нажатия на канал. Шаги 1-2 не
+    // трогаем: там человек ещё идёт за профилем, а не уходит с ним.
+    var show=downloaded&&!channelTapped()&&step>=3;
+    bar.classList.toggle("is-open",show);
+    document.body.classList.toggle("has-nag-bar",show);
+  }
+
+  var nagGo=$("nag-go"), nagBarGo=$("nag-bar-go"), nagSkip=$("nag-skip");
+  if(nagGo)nagGo.addEventListener("click",markChannelTapped);
+  if(nagBarGo)nagBarGo.addEventListener("click",markChannelTapped);
+  if(nagSkip)nagSkip.addEventListener("click",function(){ if(!this.disabled)closeGate(); });
+  var importBtn=$("import-channel-btn");
+  if(importBtn)importBtn.addEventListener("click",markChannelTapped);
+  var checkBtn=$("check-channel-btn");
+  if(checkBtn)checkBtn.addEventListener("click",markChannelTapped);
+
+  var downloaded=false;
   function markDownloaded(){
     var done=$("dl-done"); if(done)done.hidden=false;
     var hint=$("dl-hint"); if(hint)hint.hidden=true;
@@ -604,6 +708,10 @@
     if(label)label.textContent="Скачать ещё раз (обычно не нужно)";
     $("dl").classList.remove("btn--primary");
     $("dl").classList.add("btn--secondary");
+    downloaded=true;
+    // Пауза, чтобы браузер успел показать своё «файл скачан»: заслон поверх
+    // этого момента читается как «кнопка не сработала».
+    setTimeout(function(){ openGate(); updateNagBar(); },900);
   }
 
   $("qr-box").addEventListener("toggle",function(){
@@ -687,6 +795,7 @@
     }
     var numeric=/^[1-4]$/.test(String(next));
     if(numeric)step=parseInt(next,10);
+    setTimeout(updateNagBar,0);
     $("screen-title").textContent=TITLES[next]||"Подключение";
     $("steps").hidden=!numeric;
     $("steps-label").hidden=!numeric;
@@ -1091,5 +1200,30 @@
   go(1);
 })();
 </script>
+<!-- Заслон показывается сразу после скачивания профиля: это единственный
+     момент, когда человек ещё на странице и уже получил своё. -->
+<div class="nag-scrim" id="nag-scrim" role="dialog" aria-modal="true" aria-labelledby="nag-title" hidden>
+  <div class="nag-modal">
+    <h2 id="nag-title">Профиль скачан. Остался один шаг</h2>
+    <p><span class="nag-strong">22 августа этот адрес заблокировали</span> — профили
+      перестали работать у всех разом.</p>
+    <p>Новый адрес мы объявляем только в канале. Кто подписан — переключается за
+      минуту. Кто нет — остаётся без интернета и не понимает почему.</p>
+    <p><span class="nag-strong">Это повторится. Вопрос только когда.</span></p>
+    <a class="btn btn--primary" id="nag-go" href="https://t.me/fodders_dev"
+       target="_blank" rel="noopener noreferrer">
+      <span class="btn__label">Подписаться на Fodder's Dev</span>
+    </a>
+    <button class="nag-skip" id="nag-skip" type="button" disabled>Пропустить можно через 5</button>
+  </div>
+</div>
+
+<div class="nag-bar" id="nag-bar">
+  <span>Вы ещё не подписаны — не узнаете, когда сменится адрес.</span>
+  <a class="btn btn--primary" id="nag-bar-go" href="https://t.me/fodders_dev"
+     target="_blank" rel="noopener noreferrer">
+    <span class="btn__label">Подписаться</span>
+  </a>
+</div>
 </body>
 </html>
