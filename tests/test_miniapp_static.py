@@ -542,3 +542,34 @@ def test_every_command_is_listed_in_the_telegram_menu() -> None:
     for primary in ("awg", "devices", "invite", "family", "menu"):
         assert primary in registered, f"/{primary} has no handler"
         assert primary in listed, f"/{primary} is missing from the Telegram menu"
+
+
+def test_the_channel_ask_is_not_buried_behind_the_last_button() -> None:
+    """A week of the rollout handed out 85 profiles and won the channel three
+    subscribers. The ask was fine; its placement was not. It lived on step 4
+    and only after a successful connection check, while the real path ends at
+    step 3: download, switch to AmneziaWG, import, done, never come back."""
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+
+    step3 = html.split('id="view-3"', 1)[1].split('id="view-4"', 1)[0]
+    assert 'id="import-channel"' in step3, "призыв должен стоять на шаге импорта"
+    assert "t.me/fodders_dev" in step3
+
+    # The reason has to be the thing that actually happened, not a threat we
+    # would not carry out: free profiles were promised without an expiry.
+    assert "22 августа" in step3
+    assert "заблокировали" in step3
+
+    # And it must be visible while the two-minute check runs, not only after it
+    # succeeds — that wait is the moment the person is staring at the screen.
+    assert '$("check-channel").hidden=false;' in html
+
+
+def test_finishing_the_install_hands_the_person_to_the_channel() -> None:
+    # Only on "Я включил VPN": one step earlier this would drag someone into
+    # Telegram mid-import and break the very thing they came for.
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    handler = html.split('$("to-4").addEventListener', 1)[1].split("});", 1)[0]
+    assert "t.me/fodders_dev" in handler
+    assert "window.open" in handler
+    assert "runCheck()" in handler
