@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import sys
@@ -76,6 +77,52 @@ def collect(db: sqlite3.Connection, now: int) -> dict:
     }
 
 
+def channel_size() -> int | None:
+    """How many people are in the channel right now, or None if we cannot ask.
+
+    Handing out 85 profiles in a week won the channel three subscribers, and
+    nobody noticed for a week because nothing reported it. A number that moves
+    every evening is the only way to tell whether a change to the ask worked.
+    """
+    token = (
+        os.getenv("VPNW_TELEGRAM_AUTH_TOKEN") or os.getenv("VPNW_BOT_TOKEN") or ""
+    ).strip()
+    chat = (os.getenv("VPNW_CHANNEL_ACCESS_CHANNEL_ID") or "").strip()
+    if not token or not chat:
+        return None
+    query = urllib.parse.urlencode({"chat_id": chat})
+    url = f"https://api.telegram.org/bot{token}/getChatMemberCount?{query}"
+    try:
+        with urllib.request.urlopen(url, timeout=15) as response:
+            payload = json.load(response)
+    except Exception:  # сводка важнее одной строки в ней
+        return None
+    return payload.get("result") if payload.get("ok") else None
+
+
+def channel_line(subscribers: int | None, issued: int, state_path: str) -> str | None:
+    """One line with the direction of travel, not just today's number."""
+    if subscribers is None:
+        return None
+    previous = None
+    try:
+        with open(state_path, encoding="utf-8") as handle:
+            previous = json.load(handle).get("subscribers")
+    except (OSError, ValueError):
+        pass
+    delta = ""
+    if isinstance(previous, int):
+        change = subscribers - previous
+        delta = f"  ({change:+d} за сутки)" if change else "  (без изменений)"
+    try:
+        with open(state_path, "w", encoding="utf-8") as handle:
+            json.dump({"subscribers": subscribers}, handle)
+    except OSError:
+        pass
+    share = f", это {round(subscribers * 100 / issued)}% от выданных" if issued else ""
+    return f"Подписчиков в канале: {subscribers}{delta}{share}"
+
+
 def render(stats: dict) -> str:
     issued = stats["issued"]
     ever = stats["ever"]
@@ -92,6 +139,16 @@ def render(stats: dict) -> str:
         lines.append(f"По странам: {spread}")
     if stats["bound"]:
         lines.append(f"Привязано к Telegram: {stats['bound']}")
+    line = channel_line(
+        channel_size(),
+        stats.get("issued") or 0,
+        os.path.join(
+            os.getenv("STATE_DIRECTORY") or "/var/lib/fodder-ru-watchdog",
+            "digest-channel.json",
+        ),
+    )
+    if line:
+        lines.append(line)
     for code, used, cap in stats["codes"]:
         left = max(0, cap - used)
         note = "  ⚠️ почти кончился" if left <= 10 else ""
