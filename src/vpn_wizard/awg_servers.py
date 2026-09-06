@@ -186,6 +186,12 @@ class AwgServer:
     # signups go elsewhere instead of eating its traffic allowance. A soft cap —
     # it never refuses a signup, it only stops preferring a full exit.
     max_free: Optional[int] = None
+    # The same location on a different UDP port. Some routers and providers
+    # mangle UDP 443 (it is QUIC, so it gets special treatment) while leaving
+    # 3478 alone, because that is STUN and blocking it breaks every video call
+    # the provider's own subscribers make. An exit marked this way is offered
+    # to anyone with free access as a fallback, not as a second country.
+    alt_port: bool = False
     # Set false to stop OFFERING an exit while keeping it fully operational, so
     # peers already issued there can still be suspended/resumed on expiry. Use it
     # when a box is unreachable (e.g. the provider blocks its UDP port) — dropping
@@ -214,6 +220,7 @@ class AwgServer:
             listen_port=_opt_int(data.get("listen_port")),
             interface=_require_iface(data.get("interface")),
             max_free=_opt_int(data.get("max_free")),
+            alt_port=bool(data.get("alt_port", False)),
         )
 
     @property
@@ -227,7 +234,13 @@ class AwgServer:
 
     def public(self) -> dict[str, Any]:
         """Safe to expose to the bot/website — never leaks host or credentials."""
-        return {"id": self.id, "label": self.label, "flag": self.flag, "display": self.display}
+        return {
+            "id": self.id,
+            "label": self.label,
+            "flag": self.flag,
+            "display": self.display,
+            "alt_port": self.alt_port,
+        }
 
 
 def _legacy_server() -> Optional[AwgServer]:

@@ -612,3 +612,26 @@ def test_every_channel_button_counts_as_tapped() -> None:
     for btn in ("nag-go", "nag-bar-go", "import-channel-btn", "check-channel-btn"):
         assert f'$("{btn}")' in html, btn
     assert html.count("markChannelTapped") >= 5
+
+
+def test_a_failed_check_offers_a_different_port() -> None:
+    """Some people fail not on their own settings but on their network: a router
+    or provider mangles UDP 443. Until now their only way out was messaging the
+    owner personally, so they left instead."""
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    assert 'id="check-altport"' in html
+    assert "Попробовать другой порт" in html
+
+    finish = html.split("function finishCheck(", 1)[1].split("\n  }", 1)[0]
+    assert "offerAlt=!ok&&!!altServer" in finish, "предлагаем только когда не вышло"
+
+
+def test_the_fallback_port_is_not_offered_as_a_country() -> None:
+    # Иначе он встанет в список стран рядом с Финляндией и США, а это не страна,
+    # а выход из положения — и место ему на экране «не получилось».
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    load = html.split("function loadServers(){", 1)[1].split("\n  }", 1)[0]
+    assert "return !item.alt_port;" in load
+    # Запомнить его нужно ДО фильтрации по закреплённой стране: бесплатному
+    # пользователю список стран не показывают вовсе, а кнопка нужна именно ему.
+    assert load.index("altServer=servers[a]") < load.index("item.id===u.server")

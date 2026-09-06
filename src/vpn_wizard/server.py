@@ -3027,6 +3027,17 @@ def _awg_entitlement(telegram_id: int) -> _AwgEntitlement:
     )
 
 
+def _awg_is_alt_port(server_id: Optional[str]) -> bool:
+    """Is this exit the same place on a port that gets through?"""
+    if not server_id:
+        return False
+    try:
+        server = _awg_registry().get_server(server_id)
+    except Exception:  # a broken registry must not turn into a 500 here
+        return False
+    return bool(server is not None and getattr(server, "alt_port", False))
+
+
 def _awg_authorise_entitlement(
     entitlement: _AwgEntitlement,
     *,
@@ -3044,7 +3055,13 @@ def _awg_authorise_entitlement(
     # Each free account is pinned to the exit assigned at signup, so load stays
     # spread instead of everyone drifting to one server.
     assigned = entitlement.free.server_id or channel.free_server_id
-    free_location = server_id is None or server_id == assigned
+    # The pin exists to spread load across countries. A fallback-port exit is
+    # not another country — it is the same one reached over a port the person's
+    # network does not break, so the pin must not stand in the way of someone
+    # whose only alternative is no VPN at all.
+    free_location = (
+        server_id is None or server_id == assigned or _awg_is_alt_port(server_id)
+    )
     if entitlement.free.active and free_slot and free_location:
         return 1, entitlement.free.kind or "member"
 

@@ -383,6 +383,15 @@ body.has-nag-bar{padding-bottom:64px}
     <button class="btn btn--secondary" type="button" id="check-fix" hidden>
       <span class="btn__label">Исправить подключение</span>
     </button>
+    <!-- Часть людей упирается не в свои настройки, а в сеть: роутер или
+         провайдер портит UDP 443. Раньше у них не было никакого выхода, кроме
+         как написать нам лично — и они просто уходили. -->
+    <button class="btn btn--secondary" type="button" id="check-altport" hidden>
+      <span class="btn__label">Попробовать другой порт</span>
+    </button>
+    <p class="t-sm mute" id="check-altport-hint" hidden style="text-align:center">
+      Та же страна, но соединение идёт через порт, который реже режут роутеры
+      и провайдеры. Профиль придётся скачать заново.</p>
 
     <!-- Показываем только после успеха: в этот момент человек рад, что всё
          заработало, и аргумент бьёт в его же сегодняшнюю боль — старый адрес
@@ -960,6 +969,18 @@ body.has-nag-bar{padding-bottom:64px}
   }
 
   /* ---------------------------------------------------------- страны */
+  // Запасной экзит приходится запоминать до фильтрации списка: бесплатному
+  // пользователю страны не показываются вовсе, а этот выход нужен именно ему.
+  var altServer=null;
+
+  function useAltPort(){
+    if(!altServer)return;
+    u.server=altServer.id;
+    try{ render(); }catch(e){}
+    go(2);
+    Atlas.toast("Порт другой — скачайте профиль заново","ok");
+  }
+
   function loadServers(){
     if(!window.fetch) return;
     fetch(base()+"/api/awg/servers",{credentials:"omit"})
@@ -967,6 +988,12 @@ body.has-nag-bar{padding-bottom:64px}
       .then(function(d){
         if(!d||!d.servers||!d.servers.length){$("server-buttons").innerHTML="";return;}
         var servers=d.servers;
+        for(var a=0;a<servers.length;a++){
+          if(servers[a].alt_port&&servers[a].id!==u.server){altServer=servers[a];break;}
+        }
+        // Список стран запасной порт не показывает: это не страна, а выход из
+        // положения, и место ему на экране «не получилось».
+        servers=servers.filter(function(item){return !item.alt_port;});
         if(u.free&&u.server){
           servers=servers.filter(function(item){return item.id===u.server;});
           if(!servers.length){$("server-buttons").innerHTML="";return;}
@@ -1087,6 +1114,9 @@ body.has-nag-bar{padding-bottom:64px}
     $("check-text").textContent=text;
     $("check-again").hidden=ok;
     $("check-fix").hidden=ok;
+    var offerAlt=!ok&&!!altServer;
+    $("check-altport").hidden=!offerAlt;
+    $("check-altport-hint").hidden=!offerAlt;
     $("check-upsell").hidden=!(ok&&u.free);
     // Карточка про канал — только при успехе и только тем, у кого есть Telegram
     // (у web-grace связки внизу уже своя кнопка канала, чтобы не дублировать).
@@ -1153,6 +1183,7 @@ body.has-nag-bar{padding-bottom:64px}
     pollOnce();
   }
   $("check-again").addEventListener("click",runCheck);
+  $("check-altport").addEventListener("click",useAltPort);
   $("check-fix").addEventListener("click",function(){
     go(2);
     var box=$("preset-box");
