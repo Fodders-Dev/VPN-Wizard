@@ -631,7 +631,9 @@ def test_the_fallback_port_is_not_offered_as_a_country() -> None:
     # а выход из положения — и место ему на экране «не получилось».
     html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
     load = html.split("function loadServers(){", 1)[1].split("\n  }", 1)[0]
-    assert "return !item.alt_port;" in load
+    assert "return !item.alt_port||item.id===u.server;" in load, (
+        "свой собственный экзит прятать нельзя — список стран станет пустым"
+    )
     # Запомнить его нужно ДО фильтрации по закреплённой стране: бесплатному
     # пользователю список стран не показывают вовсе, а кнопка нужна именно ему.
     assert load.index("altServer=servers[a]") < load.index("item.id===u.server")

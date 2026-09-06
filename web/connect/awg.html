@@ -992,8 +992,10 @@ body.has-nag-bar{padding-bottom:64px}
           if(servers[a].alt_port&&servers[a].id!==u.server){altServer=servers[a];break;}
         }
         // Список стран запасной порт не показывает: это не страна, а выход из
-        // положения, и место ему на экране «не получилось».
-        servers=servers.filter(function(item){return !item.alt_port;});
+        // положения, и место ему на экране «не получилось». Но если человек
+        // на нём уже сидит, прятать нельзя — список окажется пустым, и он
+        // останется без выбора вообще.
+        servers=servers.filter(function(item){return !item.alt_port||item.id===u.server;});
         if(u.free&&u.server){
           servers=servers.filter(function(item){return item.id===u.server;});
           if(!servers.length){$("server-buttons").innerHTML="";return;}
