@@ -988,8 +988,15 @@ body.has-nag-bar{padding-bottom:64px}
       .then(function(d){
         if(!d||!d.servers||!d.servers.length){$("server-buttons").innerHTML="";return;}
         var servers=d.servers;
+        // Напарник текущего экзита — в любую сторону: с основного порта на
+        // запасной и обратно. Иначе человек, которому не подошёл как раз
+        // запасной, остаётся вообще без вариантов.
+        var mine=null;
+        for(var m=0;m<servers.length;m++){ if(servers[m].id===u.server){mine=servers[m];break;} }
         for(var a=0;a<servers.length;a++){
-          if(servers[a].alt_port&&servers[a].id!==u.server){altServer=servers[a];break;}
+          var s=servers[a];
+          if(s.id===u.server)continue;
+          if(s.alt_of===u.server||(mine&&mine.alt_of===s.id)){altServer=s;break;}
         }
         // Список стран запасной порт не показывает: это не страна, а выход из
         // положения, и место ему на экране «не получилось». Но если человек

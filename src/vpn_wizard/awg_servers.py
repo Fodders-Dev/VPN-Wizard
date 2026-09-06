@@ -192,6 +192,10 @@ class AwgServer:
     # the provider's own subscribers make. An exit marked this way is offered
     # to anyone with free access as a fallback, not as a second country.
     alt_port: bool = False
+    # Which exit this one is the second port of. Naming the partner makes the
+    # pair work both ways: whichever of the two a person is on, the other is
+    # the one to offer when their network will not carry the first.
+    alt_of: Optional[str] = None
     # Set false to stop OFFERING an exit while keeping it fully operational, so
     # peers already issued there can still be suspended/resumed on expiry. Use it
     # when a box is unreachable (e.g. the provider blocks its UDP port) — dropping
@@ -221,6 +225,7 @@ class AwgServer:
             interface=_require_iface(data.get("interface")),
             max_free=_opt_int(data.get("max_free")),
             alt_port=bool(data.get("alt_port", False)),
+            alt_of=(_clean(data.get("alt_of")).lower() or None),
         )
 
     @property
@@ -240,6 +245,7 @@ class AwgServer:
             "flag": self.flag,
             "display": self.display,
             "alt_port": self.alt_port,
+            "alt_of": self.alt_of,
         }
 
 

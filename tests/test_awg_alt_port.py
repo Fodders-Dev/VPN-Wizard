@@ -25,8 +25,11 @@ def make(**extra) -> dict:
 # --- реестр --------------------------------------------------------------------
 
 def test_an_exit_can_be_declared_a_fallback_port() -> None:
-    server = AwgServer.from_dict(make(id="nl-alt", listen_port=3478, alt_port=True))
+    server = AwgServer.from_dict(
+        make(id="nl-alt", listen_port=3478, alt_port=True, alt_of="nl")
+    )
     assert server.alt_port is True
+    assert server.alt_of == "nl"
     assert server.listen_port == 3478
 
 
@@ -37,8 +40,9 @@ def test_ordinary_exits_are_not_fallbacks() -> None:
 def test_the_website_is_told_which_exit_is_the_fallback() -> None:
     # Без этого страница не может предложить его — она знает только то, что
     # отдаёт /api/awg/servers, а хосты и ключи туда не попадают.
-    public = AwgServer.from_dict(make(id="nl-alt", alt_port=True)).public()
+    public = AwgServer.from_dict(make(id="nl-alt", alt_port=True, alt_of="nl")).public()
     assert public["alt_port"] is True
+    assert public["alt_of"] == "nl"
     assert "host" not in public and "password" not in public
 
 
@@ -59,19 +63,37 @@ def _registry_with(monkeypatch, server_module, servers: dict) -> None:
     monkeypatch.setattr(server_module, "_awg_registry", lambda: Registry())
 
 
-def test_a_fallback_exit_is_recognised(monkeypatch, server_module) -> None:
-    _registry_with(
-        monkeypatch,
-        server_module,
-        {
-            "nl": AwgServer.from_dict(make()),
-            "nl-alt": AwgServer.from_dict(make(id="nl-alt", alt_port=True)),
-        },
-    )
-    assert server_module._awg_is_alt_port("nl-alt") is True
-    assert server_module._awg_is_alt_port("nl") is False
-    assert server_module._awg_is_alt_port(None) is False
-    assert server_module._awg_is_alt_port("nope") is False
+PAIR = {
+    "nl": AwgServer.from_dict(make()),
+    "fi": AwgServer.from_dict(make(id="fi")),
+    "nl-alt": AwgServer.from_dict(make(id="nl-alt", alt_port=True, alt_of="nl")),
+}
+
+
+def test_the_two_ports_of_one_country_are_the_same_place(monkeypatch, server_module) -> None:
+    _registry_with(monkeypatch, server_module, PAIR)
+    assert server_module._awg_same_place("nl", "nl-alt") is True
+
+
+def test_the_pairing_works_in_both_directions(monkeypatch, server_module) -> None:
+    """Once the second port is what new people get, the person it fails has to
+    be able to go back to the first one."""
+    _registry_with(monkeypatch, server_module, PAIR)
+    assert server_module._awg_same_place("nl-alt", "nl") is True
+
+
+def test_different_countries_are_not_the_same_place(monkeypatch, server_module) -> None:
+    _registry_with(monkeypatch, server_module, PAIR)
+    assert server_module._awg_same_place("nl", "fi") is False
+    assert server_module._awg_same_place("fi", "nl-alt") is False
+
+
+def test_nonsense_is_not_the_same_place(monkeypatch, server_module) -> None:
+    _registry_with(monkeypatch, server_module, PAIR)
+    assert server_module._awg_same_place(None, "nl-alt") is False
+    assert server_module._awg_same_place("nl", None) is False
+    assert server_module._awg_same_place("nl", "nl") is False
+    assert server_module._awg_same_place("nl", "nope") is False
 
 
 def test_a_broken_registry_does_not_turn_into_a_500(monkeypatch, server_module) -> None:
@@ -79,7 +101,7 @@ def test_a_broken_registry_does_not_turn_into_a_500(monkeypatch, server_module) 
         raise RuntimeError("registry is invalid")
 
     monkeypatch.setattr(server_module, "_awg_registry", boom)
-    assert server_module._awg_is_alt_port("nl-alt") is False
+    assert server_module._awg_same_place("nl", "nl-alt") is False
 
 
 def _free_entitlement(server_module, assigned: str | None):
@@ -92,14 +114,7 @@ def _free_entitlement(server_module, assigned: str | None):
 
 
 def test_a_pinned_free_user_may_still_reach_the_fallback(monkeypatch, server_module) -> None:
-    _registry_with(
-        monkeypatch,
-        server_module,
-        {
-            "nl": AwgServer.from_dict(make()),
-            "nl-alt": AwgServer.from_dict(make(id="nl-alt", alt_port=True)),
-        },
-    )
+    _registry_with(monkeypatch, server_module, PAIR)
     limit, kind = server_module._awg_authorise_entitlement(
         _free_entitlement(server_module, "nl"),
         server_id="nl-alt",
@@ -108,18 +123,20 @@ def test_a_pinned_free_user_may_still_reach_the_fallback(monkeypatch, server_mod
     assert (limit, kind) == (1, "member")
 
 
+def test_someone_given_the_second_port_can_go_back(monkeypatch, server_module) -> None:
+    _registry_with(monkeypatch, server_module, PAIR)
+    limit, kind = server_module._awg_authorise_entitlement(
+        _free_entitlement(server_module, "nl-alt"),
+        server_id="nl",
+        required_device_slot=1,
+    )
+    assert (limit, kind) == (1, "member")
+
+
 def test_the_pin_still_holds_for_another_country(monkeypatch, server_module) -> None:
     # Закрепление существует, чтобы разводить нагрузку по странам. Запасной порт
     # — не страна, а обычная Финляндия по-прежнему закрыта.
-    _registry_with(
-        monkeypatch,
-        server_module,
-        {
-            "nl": AwgServer.from_dict(make()),
-            "fi": AwgServer.from_dict(make(id="fi")),
-            "nl-alt": AwgServer.from_dict(make(id="nl-alt", alt_port=True)),
-        },
-    )
+    _registry_with(monkeypatch, server_module, PAIR)
     with pytest.raises(Exception) as excinfo:
         server_module._awg_authorise_entitlement(
             _free_entitlement(server_module, "nl"),
@@ -130,11 +147,7 @@ def test_the_pin_still_holds_for_another_country(monkeypatch, server_module) -> 
 
 
 def test_the_fallback_does_not_hand_out_a_second_device(monkeypatch, server_module) -> None:
-    _registry_with(
-        monkeypatch,
-        server_module,
-        {"nl-alt": AwgServer.from_dict(make(id="nl-alt", alt_port=True))},
-    )
+    _registry_with(monkeypatch, server_module, PAIR)
     with pytest.raises(Exception) as excinfo:
         server_module._awg_authorise_entitlement(
             _free_entitlement(server_module, "nl"),

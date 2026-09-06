@@ -3027,15 +3027,29 @@ def _awg_entitlement(telegram_id: int) -> _AwgEntitlement:
     )
 
 
-def _awg_is_alt_port(server_id: Optional[str]) -> bool:
-    """Is this exit the same place on a port that gets through?"""
-    if not server_id:
+def _awg_same_place(assigned: Optional[str], requested: Optional[str]) -> bool:
+    """Are these two exits the same country reached over different ports?
+
+    Paired exits are interchangeable for a free account. The pin to one exit
+    exists to spread load across countries, and a second port is not another
+    country — it is the same one reached over a port the person's network does
+    not break. The pairing works both ways: whichever port someone was given,
+    the other one has to remain available when the first fails them.
+    """
+    if not assigned or not requested or assigned == requested:
         return False
     try:
-        server = _awg_registry().get_server(server_id)
+        registry = _awg_registry()
+        one = registry.get_server(assigned)
+        two = registry.get_server(requested)
     except Exception:  # a broken registry must not turn into a 500 here
         return False
-    return bool(server is not None and getattr(server, "alt_port", False))
+    if one is None or two is None:
+        return False
+    return (
+        getattr(two, "alt_of", None) == one.id
+        or getattr(one, "alt_of", None) == two.id
+    )
 
 
 def _awg_authorise_entitlement(
@@ -3060,7 +3074,9 @@ def _awg_authorise_entitlement(
     # network does not break, so the pin must not stand in the way of someone
     # whose only alternative is no VPN at all.
     free_location = (
-        server_id is None or server_id == assigned or _awg_is_alt_port(server_id)
+        server_id is None
+        or server_id == assigned
+        or _awg_same_place(assigned, server_id)
     )
     if entitlement.free.active and free_slot and free_location:
         return 1, entitlement.free.kind or "member"

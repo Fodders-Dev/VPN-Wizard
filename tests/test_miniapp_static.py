@@ -636,4 +636,5 @@ def test_the_fallback_port_is_not_offered_as_a_country() -> None:
     )
     # Запомнить его нужно ДО фильтрации по закреплённой стране: бесплатному
     # пользователю список стран не показывают вовсе, а кнопка нужна именно ему.
-    assert load.index("altServer=servers[a]") < load.index("item.id===u.server")
+    assert "s.alt_of===u.server" in load, "напарник ищется по паре, а не по флагу"
+    assert "mine.alt_of===s.id" in load, "и в обратную сторону тоже"
