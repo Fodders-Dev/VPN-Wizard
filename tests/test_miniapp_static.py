@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -638,3 +639,61 @@ def test_the_fallback_port_is_not_offered_as_a_country() -> None:
     # пользователю список стран не показывают вовсе, а кнопка нужна именно ему.
     assert "s.alt_of===u.server" in load, "напарник ищется по паре, а не по флагу"
     assert "mine.alt_of===s.id" in load, "и в обратную сторону тоже"
+
+
+def test_everything_wired_at_parse_time_already_exists_by_then() -> None:
+    """Разметка заслона лежала после </script>. Обработчики на «Пропустить» и на
+    «Подписаться» вешаются в момент разбора, поэтому getElementById возвращал
+    null, addEventListener не вызывался — и заслон не закрывался ни на одном
+    устройстве. В консоли при этом ни одной ошибки: `if(nagSkip)` глотал её.
+
+    Проверяем весь класс ошибки, а не один заслон: каждый элемент, который
+    скрипт достаёт на верхнем уровне, обязан быть в документе выше скрипта."""
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    script_at = html.index("<script>\n(function(){")
+
+    wired = []
+    for line in html[script_at:].splitlines():
+        # Верхний уровень модуля — ровно два пробела отступа: всё, что глубже,
+        # лежит внутри функции и выполняется уже по готовому DOM.
+        if re.match(r"^  var \w+\s*=", line):
+            wired.extend(re.findall(r'\$\("([\w-]+)"\)', line))
+    assert "nag-skip" in wired, "тест потерял смысл: кнопку больше не ищут на верхнем уровне"
+
+    for element in wired:
+        assert html.index(f'id="{element}"') < script_at, (
+            f"#{element} объявлен ниже скрипта, который вешает на него обработчик"
+        )
+
+
+def test_the_wait_survives_a_webview_that_froze() -> None:
+    """Человек уходит из браузера ставить AmneziaWG, webview засыпает и вместе с
+    ним таймер. Отсчёт по числу тиков оставил бы «Пропустить» заблокированной
+    после возвращения — окно снова было бы не закрыть."""
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    sync = html.split("function syncSkip(){", 1)[1].split("\n  }", 1)[0]
+    assert "skipAt-Date.now()" in sync, "остаток считается от метки времени, а не тиками"
+    assert 'if(!document.hidden&&skipTimer)syncSkip();' in html, (
+        "вернулись на страницу — пересчитать сразу, не дожидаясь тика"
+    )
+
+    # Кнопку «Скачать» страница сама предлагает нажать ещё раз. Второй заслон
+    # поверх открытого не имеет права гасить уже разблокированную «Пропустить».
+    gate = html.split("function openGate(){", 1)[1].split("\n  }", 1)[0]
+    assert "wasOpen" in gate and "if(wasOpen)return;" in gate
+    assert "clearInterval" in html.split("function closeGate(){", 1)[1].split("\n  }", 1)[0], (
+        "закрыли заслон — таймер тоже гасим, иначе он правит подпись у скрытой кнопки"
+    )
+
+
+def test_the_gate_scrolls_so_the_way_out_is_always_reachable() -> None:
+    """В ландшафте и в коротких webview панель выше экрана. Заслон без
+    прокрутки срезал «Пропустить» за нижним краем: кнопка есть, а нажать
+    нечем — ровно та жалоба, с которой всё началось."""
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    scrim = html.split(".nag-scrim{", 1)[1].split("}", 1)[0]
+    assert "overflow-y:auto" in scrim
+    modal = html.split(".nag-modal{", 1)[1].split("}", 1)[0]
+    assert "margin:auto" in modal, (
+        "одного align-items:center мало: при переполнении он срезает верх панели"
+    )

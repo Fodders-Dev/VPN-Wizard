@@ -39,11 +39,17 @@
 .nag-scrim{
   position:fixed;inset:0;z-index:60;display:none;
   align-items:center;justify-content:center;padding:18px;
+  /* Заслон прокручивается: в ландшафте и на коротких webview панель выше
+     экрана, а без прокрутки «Пропустить» оказывалась за нижним краем —
+     кнопка есть, но дотянуться до неё нечем. */
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
   background:rgba(7,24,39,.78);
 }
 .nag-scrim.is-open{display:flex}
 .nag-modal{
-  width:100%;max-width:460px;background:var(--surface);color:var(--text);
+  /* margin:auto вместо одного align-items: центрует, когда панель влезает, и
+     не срезает верх, когда не влезает. */
+  width:100%;max-width:460px;margin:auto;background:var(--surface);color:var(--text);
   border:1px solid var(--line-strong);border-radius:18px;padding:22px 20px 20px;
   box-shadow:0 24px 60px -20px rgba(7,24,39,.55);
   animation:nag-in .22s cubic-bezier(.2,.7,.3,1);
@@ -494,6 +500,37 @@ body.has-nag-bar{padding-bottom:64px}
 
 </main>
 
+<!-- Заслон показывается сразу после скачивания профиля: это единственный
+     момент, когда человек ещё на странице и уже получил своё.
+     Разметка обязана стоять ВЫШЕ инлайнового скрипта: обработчики вешаются на
+     эти кнопки в момент разбора, а не по DOMContentLoaded. Пока блок лежал
+     после </script>, getElementById возвращал null, addEventListener не
+     вызывался — и «Пропустить» не закрывала окно ни на одном устройстве,
+     молча, без ошибки в консоли. -->
+<div class="nag-scrim" id="nag-scrim" role="dialog" aria-modal="true" aria-labelledby="nag-title" hidden>
+  <div class="nag-modal">
+    <h2 id="nag-title">Профиль скачан. Остался один шаг</h2>
+    <p><span class="nag-strong">22 августа этот адрес заблокировали</span> — профили
+      перестали работать у всех разом.</p>
+    <p>Новый адрес мы объявляем только в канале. Кто подписан — переключается за
+      минуту. Кто нет — остаётся без интернета и не понимает почему.</p>
+    <p><span class="nag-strong">Это повторится. Вопрос только когда.</span></p>
+    <a class="btn btn--primary" id="nag-go" href="https://t.me/fodders_dev"
+       target="_blank" rel="noopener noreferrer">
+      <span class="btn__label">Подписаться на Fodder's Dev</span>
+    </a>
+    <button class="nag-skip" id="nag-skip" type="button" disabled>Пропустить можно через 5</button>
+  </div>
+</div>
+
+<div class="nag-bar" id="nag-bar">
+  <span>Вы ещё не подписаны — не узнаете, когда сменится адрес.</span>
+  <a class="btn btn--primary" id="nag-bar-go" href="https://t.me/fodders_dev"
+     target="_blank" rel="noopener noreferrer">
+    <span class="btn__label">Подписаться</span>
+  </a>
+</div>
+
 <script>
 (function(){
   "use strict";
@@ -655,6 +692,7 @@ body.has-nag-bar{padding-bottom:64px}
      ───────────────────────────────────────────────────────────────────── */
   var NAG_KEY="fodders-channel-tapped";
   var SKIP_AFTER=5;
+  var skipTimer=null, skipAt=0;
 
   function channelTapped(){
     try{ return localStorage.getItem(NAG_KEY)==="1"; }catch(e){ return false; }
@@ -664,7 +702,24 @@ body.has-nag-bar{padding-bottom:64px}
     closeGate();
     updateNagBar();
   }
+  // Сколько осталось, считаем от метки времени, а не по числу тиков: webview,
+  // свёрнутый пока человек ставит AmneziaWG, замораживает таймеры, и отсчёт по
+  // тикам оставил бы «Пропустить» заблокированной после возвращения.
+  function syncSkip(){
+    var skip=$("nag-skip");
+    if(!skip)return;
+    var left=Math.ceil((skipAt-Date.now())/1000);
+    if(left>0){
+      skip.disabled=true;
+      skip.textContent="Пропустить можно через "+left;
+      return;
+    }
+    if(skipTimer){clearInterval(skipTimer);skipTimer=null;}
+    skip.disabled=false;
+    skip.textContent="Всё равно пропустить";
+  }
   function closeGate(){
+    if(skipTimer){clearInterval(skipTimer);skipTimer=null;}
     var s=$("nag-scrim");
     if(!s)return;
     s.classList.remove("is-open");
@@ -673,23 +728,23 @@ body.has-nag-bar{padding-bottom:64px}
   function openGate(){
     var s=$("nag-scrim");
     if(!s||channelTapped())return;
+    // Кнопку «Скачать» жмут повторно — она сама это предлагает. Заслон, который
+    // уже висит, от этого не начинает отсчёт заново: иначе уже разблокированная
+    // «Пропустить» снова гасла, и это читалось как «кнопка не работает».
+    var wasOpen=s.classList.contains("is-open");
     s.hidden=false;
     s.classList.add("is-open");
-    var skip=$("nag-skip"), left=SKIP_AFTER;
-    if(!skip)return;
-    skip.disabled=true;
-    skip.textContent="Пропустить можно через "+left;
-    var timer=setInterval(function(){
-      left-=1;
-      if(left<=0){
-        clearInterval(timer);
-        skip.disabled=false;
-        skip.textContent="Всё равно пропустить";
-      }else{
-        skip.textContent="Пропустить можно через "+left;
-      }
-    },1000);
+    if(wasOpen)return;
+    skipAt=Date.now()+SKIP_AFTER*1000;
+    if(skipTimer)clearInterval(skipTimer);
+    skipTimer=setInterval(syncSkip,250);
+    syncSkip();
   }
+  // Вернулись на страницу — пересчитываем сразу, не дожидаясь тика таймера,
+  // который всё это время мог стоять.
+  document.addEventListener("visibilitychange",function(){
+    if(!document.hidden&&skipTimer)syncSkip();
+  });
   function updateNagBar(){
     var bar=$("nag-bar");
     if(!bar)return;
@@ -1240,30 +1295,5 @@ body.has-nag-bar{padding-bottom:64px}
   go(1);
 })();
 </script>
-<!-- Заслон показывается сразу после скачивания профиля: это единственный
-     момент, когда человек ещё на странице и уже получил своё. -->
-<div class="nag-scrim" id="nag-scrim" role="dialog" aria-modal="true" aria-labelledby="nag-title" hidden>
-  <div class="nag-modal">
-    <h2 id="nag-title">Профиль скачан. Остался один шаг</h2>
-    <p><span class="nag-strong">22 августа этот адрес заблокировали</span> — профили
-      перестали работать у всех разом.</p>
-    <p>Новый адрес мы объявляем только в канале. Кто подписан — переключается за
-      минуту. Кто нет — остаётся без интернета и не понимает почему.</p>
-    <p><span class="nag-strong">Это повторится. Вопрос только когда.</span></p>
-    <a class="btn btn--primary" id="nag-go" href="https://t.me/fodders_dev"
-       target="_blank" rel="noopener noreferrer">
-      <span class="btn__label">Подписаться на Fodder's Dev</span>
-    </a>
-    <button class="nag-skip" id="nag-skip" type="button" disabled>Пропустить можно через 5</button>
-  </div>
-</div>
-
-<div class="nag-bar" id="nag-bar">
-  <span>Вы ещё не подписаны — не узнаете, когда сменится адрес.</span>
-  <a class="btn btn--primary" id="nag-bar-go" href="https://t.me/fodders_dev"
-     target="_blank" rel="noopener noreferrer">
-    <span class="btn__label">Подписаться</span>
-  </a>
-</div>
 </body>
 </html>
