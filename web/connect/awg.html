@@ -141,7 +141,7 @@ body.has-nag-bar{padding-bottom:64px}
           <svg class="i" aria-hidden="true"><use href="#i-download"/></svg>
           <span class="btn__label">Открыть Google Play</span>
         </a>
-        <a class="btn btn--secondary" href="https://github.com/amnezia-vpn/amneziawg-android/releases/download/2.0.1/amneziawg-2.0.1.apk" target="_blank" rel="noopener noreferrer">
+        <a class="btn btn--secondary" href="https://github.com/amnezia-vpn/amneziawg-android/releases/download/v3.1.20260814/AmneziaWG-3.1.202060814.apk" target="_blank" rel="noopener noreferrer">
           <span class="btn__label">Если Play не открывается — скачать APK</span>
         </a>
         <p class="t-sm mute">Приложение называется AmneziaWG. APK взят из официального репозитория.</p>
@@ -677,10 +677,15 @@ body.has-nag-bar{padding-bottom:64px}
   var SKIP_AFTER=5;
   var skipTimer=null, skipAt=0;
 
+  // В приватном окне localStorage бросает на чтении и записи, и человек,
+  // который уже нажал, получал заслон снова при каждой проверке.
+  var tappedHere=false;
   function channelTapped(){
+    if(tappedHere)return true;
     try{ return localStorage.getItem(NAG_KEY)==="1"; }catch(e){ return false; }
   }
   function markChannelTapped(){
+    tappedHere=true;
     try{ localStorage.setItem(NAG_KEY,"1"); }catch(e){}
     closeGate();
     updateNagBar();
@@ -735,7 +740,10 @@ body.has-nag-bar{padding-bottom:64px}
     if(!bar)return;
     // Полоска висит с момента скачивания и до нажатия на канал. Шаги 1-2 не
     // трогаем: там человек ещё идёт за профилем, а не уходит с ним.
-    var show=tunnelUp&&!channelTapped();
+    // Полоска молчит, пока на экране висит карточка канала: три одинаковых
+    // призыва разом обесценивают друг друга.
+    var card=$("check-channel");
+    var show=tunnelUp&&!channelTapped()&&!(step===4&&card&&!card.hidden);
     bar.classList.toggle("is-open",show);
     document.body.classList.toggle("has-nag-bar",show);
   }
@@ -833,6 +841,25 @@ body.has-nag-bar{padding-bottom:64px}
   var step=1, returnTo=1;
   var TITLES={1:"Подключение",2:"Ваш профиль",3:"Импорт",4:"Проверка",
               country:"Страна",device:"Устройство"};
+  function updateGraceActions(){
+    if(!u.web)return;
+    // Кнопки Telegram показываем, только когда туннель подтверждён: до этого
+    // t.me попросту не откроется — та же причина, по которой туда переехал и
+    // призыв на канал. Исключение — режим с дедлайном: там привязка это
+    // условие выживания профиля, и спрятать её при неудачной проверке значит
+    // оставить человека без доступа через 12 часов.
+    var readyToBind=step===4&&(tunnelUp||!!u.graceUntil);
+    $("grace-actions").hidden=!readyToBind;
+    $("grace-hint").hidden=readyToBind;
+    // Кнопка канала живёт в карточке ниже — здесь остаётся только привязка,
+    // иначе два одинаковых призыва на одном экране гасят друг друга.
+    if(readyToBind&&$("channel-link"))$("channel-link").hidden=true;
+    // Без дедлайна привязка — вежливое предложение, а не условие выживания.
+    $("grace-title").textContent=u.graceUntil
+      ?(readyToBind?"Сохраните профиль через Telegram":"Временный доступ: 12 часов")
+      :(readyToBind?"По желанию: привяжите профиль":"Профиль ваш — насовсем");
+  }
+
   function go(next){
     var views=["1","2","3","4","country","device"];
     for(var i=0;i<views.length;i++){
@@ -852,18 +879,7 @@ body.has-nag-bar{padding-bottom:64px}
       for(var d=0;d<dots.length;d++){
         dots[d].className="steps__dot"+(d+1<step?" is-done":d+1===step?" is-now":"");
       }
-      if(u.web){
-        var readyToBind=step===4;
-        $("grace-actions").hidden=!readyToBind;
-        $("grace-hint").hidden=readyToBind;
-        // Кнопка канала живёт в карточке ниже — здесь остаётся только привязка,
-        // иначе два одинаковых призыва на одном экране гасят друг друга.
-        if(readyToBind&&$("channel-link"))$("channel-link").hidden=true;
-        // Без дедлайна привязка — вежливое предложение, а не условие выживания.
-        $("grace-title").textContent=u.graceUntil
-          ?(readyToBind?"Сохраните профиль через Telegram":"Временный доступ: 12 часов")
-          :(readyToBind?"По желанию: привяжите профиль":"Профиль ваш — насовсем");
-      }
+      if(u.web)updateGraceActions();
     }
     // На первом шаге «Назад» обычно некуда — кроме случая, когда человек пришёл
     // из кабинета: тогда кнопка возвращает туда.
@@ -1173,6 +1189,11 @@ body.has-nag-bar{padding-bottom:64px}
     // Два призыва подписаться на одном экране обесценивают друг друга —
     // подвальная ссылка уходит, пока висит карточка.
     if($("footer-channel"))$("footer-channel").hidden=pitchChannel;
+    // Не заработало — подвал открываем обратно: там единственная оставшаяся
+    // ссылка на канал, а новый адрес сервера нужнее всего как раз тому, у кого
+    // сейчас не работает. go() прячет подвал на шагах больше второго.
+    if(!ok)$("context").hidden=false;
+    updateGraceActions();
     $("check-progress").hidden=true;
     if(ok)$("check-card").classList.add("note--ok");
     else $("check-card").classList.remove("note--ok");

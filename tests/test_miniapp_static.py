@@ -267,7 +267,11 @@ def test_awg_page_supports_private_family_links_without_telegram() -> None:
     assert 'id="family-access"' in html
     assert '"/api/awg/family/"' in html
     assert "Ни Telegram, ни регистрация не нужны" in html
-    assert "amnezia-vpn/amneziawg-android/releases/download/2.0.1" in html
+    # Прямая ссылка на файл, а не на страницу релизов: иначе пожилому человеку
+    # придётся разворачивать «Assets» и выбирать нужное из списка.
+    assert re.search(
+        r"amnezia-vpn/amneziawg-android/releases/download/[^/\"]+/[^\"]+\.apk", html
+    ), "запасной APK должен скачиваться одним нажатием"
     assert "(или AmneziaVPN)" not in html
     # The platform switch is the segmented control itself; a second, visually
     # hidden set of radios only duplicated it in the focus order.
@@ -650,6 +654,51 @@ def test_the_fallback_port_is_not_offered_as_a_country() -> None:
     # пользователю список стран не показывают вовсе, а кнопка нужна именно ему.
     assert "s.alt_of===u.server" in load, "напарник ищется по паре, а не по флагу"
     assert "mine.alt_of===s.id" in load, "и в обратную сторону тоже"
+
+
+def test_telegram_is_never_asked_for_before_the_tunnel_works() -> None:
+    """The channel card learned to wait for a confirmed tunnel; the bind button
+    beside it did not. It appeared on step 4 by step number alone, so a failed
+    check still showed "Привязать профиль к Telegram" — the same impossible ask
+    in the other branch."""
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    grace = html.split("function updateGraceActions(){", 1)[1].split("\n  }", 1)[0]
+    assert "tunnelUp" in grace
+    # ...but a deadline profile must keep the button: hiding it there would
+    # strand the person when the twelve hours run out.
+    assert "u.graceUntil" in grace
+    assert "updateGraceActions();" in html.split("function finishCheck", 1)[1]
+
+
+def test_a_failed_check_still_leaves_a_way_to_the_channel() -> None:
+    # The person whose VPN did not come up is the one who most needs the new
+    # address when this one gets blocked. Every path to the channel was hidden.
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    finish = html.split("function finishCheck(ok,text){", 1)[1].split("\n  }", 1)[0]
+    assert 'if(!ok)$("context").hidden=false;' in finish
+
+
+def test_the_ask_is_made_once_per_screen() -> None:
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    bar = html.split("function updateNagBar(){", 1)[1].split("\n  }", 1)[0]
+    assert "check-channel" in bar, "полоска молчит, пока висит карточка"
+
+
+def test_a_private_window_still_remembers_the_tap() -> None:
+    # localStorage throws in private mode, so someone who had already tapped
+    # got the blocking gate again on every check.
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    assert "var tappedHere=false;" in html
+    tapped = html.split("function channelTapped(){", 1)[1].split("\n  }", 1)[0]
+    assert "tappedHere" in tapped
+
+
+def test_the_apk_fallback_is_not_a_year_out_of_date() -> None:
+    # Checked against the GitHub releases API: v3.1.20260814, and the doubled
+    # zero in the filename is upstream's own typo.
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    assert "amneziawg-2.0.1.apk" not in html
+    assert "releases/download/v3.1.20260814/AmneziaWG-3.1.202060814.apk" in html
 
 
 def test_nothing_is_wired_to_an_element_that_does_not_exist_yet() -> None:
