@@ -552,7 +552,10 @@ body.has-nag-bar{padding-bottom:64px}
   var platformTabs=document.querySelectorAll('[data-plat]');
   // Панели импорта на шаге 3 переключаются тем же выбором платформы, что и
   // установка на шаге 1: одна кнопка — один сценарий от начала до конца.
-  var importPans=document.querySelectorAll("#import-how .platform");
+  // Все панели, помеченные платформой, где бы они ни лежали: панели импорта
+  // внутри #import-how и галерея скриншотов рядом с ними. Селектор по
+  // контейнеру галерею не доставал, и Android-скриншоты висели у всех.
+  var importPans=document.querySelectorAll(".platform[data-plat]");
 
   function selectPlatform(name){
     for(var key in pans)pans[key].classList.toggle("on",key===name);

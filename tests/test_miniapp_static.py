@@ -613,7 +613,9 @@ def test_the_import_step_speaks_to_the_device_in_hand() -> None:
     assert 'data-plat="and" id="guide-shots"' in step3
     assert "details.platform.on{display:block}" in html
     # Один выбор платформы управляет обоими шагами.
-    assert "#import-how .platform" in html
+    assert '.platform[data-plat]' in html, (
+        "галерея скриншотов лежит вне #import-how — селектор по контейнеру её не достаёт"
+    )
 
 
 def test_the_wording_stays_out_of_the_way() -> None:
