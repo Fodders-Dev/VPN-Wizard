@@ -544,74 +544,79 @@ def test_every_command_is_listed_in_the_telegram_menu() -> None:
         assert primary in listed, f"/{primary} is missing from the Telegram menu"
 
 
-def test_the_channel_ask_is_not_buried_behind_the_last_button() -> None:
-    """A week of the rollout handed out 85 profiles and won the channel three
-    subscribers. The ask was fine; its placement was not. It lived on step 4
-    and only after a successful connection check, while the real path ends at
-    step 3: download, switch to AmneziaWG, import, done, never come back."""
+def test_the_channel_is_asked_for_only_once_the_tunnel_works() -> None:
+    """The ask used to fire the moment the profile downloaded — before it had
+    been imported, so before the person had a working tunnel. In Russia
+    Telegram is exactly what does not open without one, so the page was
+    demanding the one thing it had just made impossible."""
     html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+
+    marked = html.split("function markDownloaded(){", 1)[1].split("\n  }", 1)[0]
+    assert "openGate()" not in marked, "скачивание — ещё не работающий VPN"
+
+    finish = html.split("function finishCheck(ok,text){", 1)[1].split("\n  }", 1)[0]
+    assert "openGate()" in finish and "tunnelUp=true" in finish
 
     step3 = html.split('id="view-3"', 1)[1].split('id="view-4"', 1)[0]
-    assert 'id="import-channel"' in step3, "призыв должен стоять на шаге импорта"
-    assert "t.me/fodders_dev" in step3
-
-    # The reason has to be the thing that actually happened, not a threat we
-    # would not carry out: free profiles were promised without an expiry.
-    assert "22 августа" in step3
-    assert "заблокировали" in step3
-
-    # And it must be visible while the two-minute check runs, not only after it
-    # succeeds — that wait is the moment the person is staring at the screen.
-    assert '$("check-channel").hidden=false;' in html
+    assert "t.me/" not in step3, "на шаге импорта Telegram ещё недоступен"
 
 
-def test_finishing_the_install_hands_the_person_to_the_channel() -> None:
-    # Only on "Я включил VPN": one step earlier this would drag someone into
-    # Telegram mid-import and break the very thing they came for.
+def test_the_install_step_no_longer_throws_people_into_telegram() -> None:
     html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
     handler = html.split('$("to-4").addEventListener', 1)[1].split("});", 1)[0]
-    assert "t.me/fodders_dev" in handler
-    assert "window.open" in handler
+    assert "window.open" not in handler, "VPN ещё не подтверждён — уводить некуда"
     assert "runCheck()" in handler
 
 
-def test_the_ask_blocks_the_screen_once_the_profile_is_downloaded() -> None:
-    """Asked for harsher. The one moment worth spending is right after the
-    download: the person is still on the page and already has what they came
-    for. Before the download it would scare people off at the door."""
+def test_the_gate_blocks_the_screen_at_the_right_moment() -> None:
     html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
     assert 'id="nag-scrim"' in html and 'aria-modal="true"' in html
-
-    marked = html.split("function markDownloaded(){", 1)[1].split("\n  }", 1)[0]
-    assert "openGate()" in marked, "заслон должен подниматься по факту скачивания"
-    assert "setTimeout" in marked, "не мгновенно: иначе читается как «кнопка не сработала»"
-
     gate = html.split("function openGate(){", 1)[1].split("\n  }", 1)[0]
     assert "channelTapped()" in gate, "кто уже нажал — больше не видит заслон"
 
 
-def test_the_way_out_is_there_but_costs_a_wait() -> None:
+def test_the_way_out_actually_works() -> None:
+    """The skip button never did anything: the gate markup sits below the
+    script, so the element did not exist when the listener was bound. Only the
+    subscribe link worked, and only because a link navigates on its own."""
     html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
     assert 'id="nag-skip"' in html
     assert "Всё равно пропустить" in html
     assert "var SKIP_AFTER=5;" in html
-    # Отсчёт видно — человек понимает, что происходит, а не думает, что завис.
-    assert "Пропустить можно через " in html
+
+    script_ends = html.index("</script>", html.index("<script>\n"))
+    assert html.index('id="nag-skip"') > script_ends, (
+        "разметка ниже скрипта — привязка обязана быть делегированной"
+    )
+    assert 'document.addEventListener("click"' in html
+    assert "#nag-skip" in html
 
 
-def test_the_reminder_waits_until_the_profile_is_in_hand() -> None:
+def test_the_reminder_waits_for_a_working_tunnel_too() -> None:
     html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
     bar = html.split("function updateNagBar(){", 1)[1].split("\n  }", 1)[0]
-    assert "downloaded" in bar and "step>=3" in bar, "на шагах 1-2 не донимаем"
+    assert "tunnelUp" in bar, "полоска тоже ждёт подтверждённого туннеля"
     assert "channelTapped()" in bar, "нажал — полоска уходит"
 
 
-def test_every_channel_button_counts_as_tapped() -> None:
-    # Иначе человек подписывается со шага 3, а его продолжает догонять полоска.
+def test_the_import_step_speaks_to_the_device_in_hand() -> None:
+    """Step 1 has picked the platform since forever, but the import step was
+    written for Android only: "the + button at the bottom right" and "your
+    Downloads folder" are simply wrong on a computer."""
     html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
-    for btn in ("nag-go", "nag-bar-go", "import-channel-btn", "check-channel-btn"):
-        assert f'$("{btn}")' in html, btn
-    assert html.count("markChannelTapped") >= 5
+    step3 = html.split('id="view-3"', 1)[1].split('id="view-4"', 1)[0]
+    for plat in ("and", "ios", "win", "mac"):
+        assert f'data-plat="{plat}"' in step3, plat
+    assert "AmneziaVPN" in step3, "на macOS профиль открывает другой клиент"
+    # Один выбор платформы управляет обоими шагами.
+    assert "#import-how .platform" in html
+
+
+def test_the_wording_stays_out_of_the_way() -> None:
+    # «Тонна текста людям не упала» — они пришли за VPN, а не за чтением.
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    gate = html.split('id="nag-scrim"', 1)[1].split("</div>", 1)[0]
+    assert gate.count("<p>") <= 1, "в заслоне одна мысль, а не три абзаца"
 
 
 def test_a_failed_check_offers_a_different_port() -> None:
