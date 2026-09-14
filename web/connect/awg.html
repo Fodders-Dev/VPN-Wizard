@@ -15,6 +15,7 @@
      четырёх систем рисуются одновременно и шаг установки превращается
      в стопку почти одинаковых кнопок. */
   .platform{display:none}
+  details.platform.on{display:block}
   .platform.on{display:block}
   .plat-seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:4px}
   .plat-seg .seg__btn{min-height:46px}
@@ -39,9 +40,10 @@
 .nag-scrim{
   position:fixed;inset:0;z-index:60;display:none;
   align-items:center;justify-content:center;padding:18px;
-  /* Заслон прокручивается: в ландшафте и на коротких webview панель выше
-     экрана, а без прокрутки «Пропустить» оказывалась за нижним краем —
-     кнопка есть, но дотянуться до неё нечем. */
+  /* Заслон прокручивается. При системном укрупнении шрифта панель выше
+     экрана (360×400 и текст 200% дают 684px), а центрированный заслон без
+     прокрутки уносит «Пропустить» за нижний край: кнопка есть, но дотянуться
+     до неё нечем даже свайпом. */
   overflow-y:auto;-webkit-overflow-scrolling:touch;
   background:rgba(7,24,39,.78);
 }
@@ -288,51 +290,54 @@ body.has-nag-bar{padding-bottom:64px}
 
   <!-- =============================================== шаг 3 · импорт -->
   <section id="view-3" class="stack" hidden>
-    <h1 class="h1">Откройте профиль в AmneziaWG</h1>
-    <div class="card">
-      <!-- Живой прогон показал: «открыть файл из Загрузок» на части устройств
-           не предлагает AmneziaWG в списке приложений. Импорт из самого
-           приложения срабатывает всегда, поэтому он и является инструкцией. -->
-      <ol class="check-list">
-        <li><span>Откройте приложение <b>AmneziaWG</b> и нажмите кнопку
-          <b>«+»</b> в правом нижнем углу.</span></li>
-        <li><span>Выберите <b>«Импорт из файла или архива»</b> и нажмите на
-          скачанный файл — он лежит в папке <b>Загрузки</b>.</span></li>
-        <li><span><b>Включите переключатель</b> напротив профиля. Первый раз
-          система спросит разрешение — нажмите <b>ОК</b>.</span></li>
-      </ol>
+    <h1 class="h1">Откройте профиль в приложении</h1>
+    <!-- Шаг 1 давно различает платформы, а импорт был написан только под
+         Android: «кнопка + внизу справа» и «папка Загрузки» на компьютере
+         просто неверны. Панели переключаются тем же selectPlatform. -->
+    <div class="card" id="import-how">
+      <div class="platform on" data-plat="and">
+        <ol class="check-list">
+          <li><span>Откройте <b>AmneziaWG</b>, нажмите <b>«+»</b> внизу справа.</span></li>
+          <li><span><b>Импорт из файла</b> → выберите файл из <b>Загрузок</b>.</span></li>
+          <li><span>Включите <b>переключатель</b>. Система спросит разрешение — <b>ОК</b>.</span></li>
+        </ol>
+      </div>
+      <div class="platform" data-plat="ios">
+        <ol class="check-list">
+          <li><span>Откройте <b>AmneziaWG</b>, нажмите <b>«+»</b>.</span></li>
+          <li><span><b>Импорт из файла</b> → найдите файл в приложении <b>«Файлы»</b>,
+            папка <b>«Загрузки»</b>.</span></li>
+          <li><span>Включите <b>переключатель</b>. iOS попросит разрешить VPN — <b>Разрешить</b>.</span></li>
+        </ol>
+      </div>
+      <div class="platform" data-plat="win">
+        <ol class="check-list">
+          <li><span>Откройте <b>AmneziaWG</b>.</span></li>
+          <li><span>Нажмите <b>«Импортировать туннель из файла»</b> и выберите
+            скачанный <b>.conf</b> из <b>Загрузок</b>.</span></li>
+          <li><span>Нажмите <b>«Подключить»</b>. Windows спросит разрешение — <b>Да</b>.</span></li>
+        </ol>
+      </div>
+      <div class="platform" data-plat="mac">
+        <ol class="check-list">
+          <li><span>Откройте <b>AmneziaVPN</b>.</span></li>
+          <li><span>Добавьте подключение <b>из файла конфигурации</b> и выберите
+            скачанный <b>.conf</b>.</span></li>
+          <li><span>Нажмите <b>«Подключиться»</b>. macOS попросит разрешить VPN.</span></li>
+        </ol>
+      </div>
     </div>
 
-    <!-- Раньше призыв подписаться жил только на шаге 4 и только после успешной
-         проверки. Живой путь человека другой: скачал профиль, ушёл в AmneziaWG,
-         включил, и в браузер больше не вернулся. За неделю раздачи 85 профилей
-         принесли каналу 3 подписчика — призыв видели единицы. Здесь его видят все. -->
-    <section class="note note--warn" id="import-channel" style="margin-top:18px">
-      <svg class="i" aria-hidden="true"><use href="#i-shield-check"/></svg>
-      <div>
-        <h2 class="note__title">Подпишитесь, иначе однажды всё просто перестанет работать</h2>
-        <p class="note__body">22 августа адрес этого сервера заблокировали — профили
-          перестали работать у всех разом. Новый адрес мы объявили в канале
-          Fodder’s Dev: кто был подписан, переключился за минуту, остальные просто
-          остались без интернета и не поняли почему. Это повторится — вопрос только когда.</p>
-        <a class="btn btn--primary" id="import-channel-btn" style="margin-top:12px"
-           href="https://t.me/fodders_dev" target="_blank" rel="noopener noreferrer">
-          <span class="btn__label">Подписаться на Fodder’s Dev</span>
-        </a>
-      </div>
-    </section>
 
     <div class="note note--warn">
       <svg class="i" aria-hidden="true"><use href="#i-alert"/></svg>
       <div>
-        <div class="note__title">Скачали профиль несколько раз?</div>
-        <p class="note__body">Выбирайте файл <b>без цифры в скобках</b> —
-          например <b id="import-name">FVPN.conf</b>, а не FVPN(1).conf.
-          Файлы со скобками AmneziaWG открыть не может.</p>
+        <p class="note__body">Скачали несколько раз? Берите файл
+          <b id="import-name">FVPN.conf</b> — <b>без цифры в скобках</b>.</p>
       </div>
     </div>
 
-    <details class="disclosure" id="guide-shots">
+    <details class="disclosure platform on" data-plat="and" id="guide-shots">
       <summary>Показать, как это выглядит (Android)</summary>
       <div class="disclosure__body">
         <figure class="shot">
@@ -500,37 +505,6 @@ body.has-nag-bar{padding-bottom:64px}
 
 </main>
 
-<!-- Заслон показывается сразу после скачивания профиля: это единственный
-     момент, когда человек ещё на странице и уже получил своё.
-     Разметка обязана стоять ВЫШЕ инлайнового скрипта: обработчики вешаются на
-     эти кнопки в момент разбора, а не по DOMContentLoaded. Пока блок лежал
-     после </script>, getElementById возвращал null, addEventListener не
-     вызывался — и «Пропустить» не закрывала окно ни на одном устройстве,
-     молча, без ошибки в консоли. -->
-<div class="nag-scrim" id="nag-scrim" role="dialog" aria-modal="true" aria-labelledby="nag-title" hidden>
-  <div class="nag-modal">
-    <h2 id="nag-title">Профиль скачан. Остался один шаг</h2>
-    <p><span class="nag-strong">22 августа этот адрес заблокировали</span> — профили
-      перестали работать у всех разом.</p>
-    <p>Новый адрес мы объявляем только в канале. Кто подписан — переключается за
-      минуту. Кто нет — остаётся без интернета и не понимает почему.</p>
-    <p><span class="nag-strong">Это повторится. Вопрос только когда.</span></p>
-    <a class="btn btn--primary" id="nag-go" href="https://t.me/fodders_dev"
-       target="_blank" rel="noopener noreferrer">
-      <span class="btn__label">Подписаться на Fodder's Dev</span>
-    </a>
-    <button class="nag-skip" id="nag-skip" type="button" disabled>Пропустить можно через 5</button>
-  </div>
-</div>
-
-<div class="nag-bar" id="nag-bar">
-  <span>Вы ещё не подписаны — не узнаете, когда сменится адрес.</span>
-  <a class="btn btn--primary" id="nag-bar-go" href="https://t.me/fodders_dev"
-     target="_blank" rel="noopener noreferrer">
-    <span class="btn__label">Подписаться</span>
-  </a>
-</div>
-
 <script>
 (function(){
   "use strict";
@@ -583,8 +557,17 @@ body.has-nag-bar{padding-bottom:64px}
   /* -------------------------------------------------------- платформа */
   var pans={and:$("p-and"),ios:$("p-ios"),win:$("p-win"),mac:$("p-mac")};
   var platformTabs=document.querySelectorAll('[data-plat]');
+  // Панели импорта на шаге 3 переключаются тем же выбором платформы, что и
+  // установка на шаге 1: одна кнопка — один сценарий от начала до конца.
+  // Все панели, помеченные платформой, где бы они ни лежали: панели импорта
+  // внутри #import-how и галерея скриншотов рядом с ними. Селектор по
+  // контейнеру галерею не доставал, и Android-скриншоты висели у всех.
+  var importPans=document.querySelectorAll(".platform[data-plat]");
+
   function selectPlatform(name){
     for(var key in pans)pans[key].classList.toggle("on",key===name);
+    for(var q=0;q<importPans.length;q++)
+      importPans[q].classList.toggle("on",importPans[q].dataset.plat===name);
     for(var j=0;j<platformTabs.length;j++)
       platformTabs[j].setAttribute("aria-selected",platformTabs[j].dataset.plat===name?"true":"false");
   }
@@ -702,9 +685,10 @@ body.has-nag-bar{padding-bottom:64px}
     closeGate();
     updateNagBar();
   }
-  // Сколько осталось, считаем от метки времени, а не по числу тиков: webview,
-  // свёрнутый пока человек ставит AmneziaWG, замораживает таймеры, и отсчёт по
-  // тикам оставил бы «Пропустить» заблокированной после возвращения.
+  // Сколько осталось, считаем от метки времени, а не по числу тиков. Заслон
+  // поднимается уже поверх работающего VPN, то есть человек тут же уходит из
+  // браузера; свёрнутый webview замораживает таймер, и отсчёт по тикам оставил
+  // бы «Пропустить» заблокированной после возвращения.
   function syncSkip(){
     var skip=$("nag-skip");
     if(!skip)return;
@@ -728,9 +712,10 @@ body.has-nag-bar{padding-bottom:64px}
   function openGate(){
     var s=$("nag-scrim");
     if(!s||channelTapped())return;
-    // Кнопку «Скачать» жмут повторно — она сама это предлагает. Заслон, который
-    // уже висит, от этого не начинает отсчёт заново: иначе уже разблокированная
-    // «Пропустить» снова гасла, и это читалось как «кнопка не работает».
+    // Проверка держит несколько запросов в полёте разом, и успехом может
+    // завершиться не один: заслон, который уже висит, от второго не начинает
+    // отсчёт заново — иначе уже разблокированная «Пропустить» гасла обратно
+    // под пальцем, и это читалось как «кнопка не работает».
     var wasOpen=s.classList.contains("is-open");
     s.hidden=false;
     s.classList.add("is-open");
@@ -750,21 +735,21 @@ body.has-nag-bar{padding-bottom:64px}
     if(!bar)return;
     // Полоска висит с момента скачивания и до нажатия на канал. Шаги 1-2 не
     // трогаем: там человек ещё идёт за профилем, а не уходит с ним.
-    var show=downloaded&&!channelTapped()&&step>=3;
+    var show=tunnelUp&&!channelTapped();
     bar.classList.toggle("is-open",show);
     document.body.classList.toggle("has-nag-bar",show);
   }
 
-  var nagGo=$("nag-go"), nagBarGo=$("nag-bar-go"), nagSkip=$("nag-skip");
-  if(nagGo)nagGo.addEventListener("click",markChannelTapped);
-  if(nagBarGo)nagBarGo.addEventListener("click",markChannelTapped);
-  if(nagSkip)nagSkip.addEventListener("click",function(){ if(!this.disabled)closeGate(); });
-  var importBtn=$("import-channel-btn");
-  if(importBtn)importBtn.addEventListener("click",markChannelTapped);
-  var checkBtn=$("check-channel-btn");
-  if(checkBtn)checkBtn.addEventListener("click",markChannelTapped);
+  // Делегирование, а не прямая привязка: разметка заслона живёт ниже по
+  // документу, и на момент выполнения скрипта этих элементов ещё нет.
+  document.addEventListener("click",function(e){
+    var t=e.target&&e.target.closest?e.target.closest("#nag-skip,#nag-go,#nag-bar-go,#check-channel-btn"):null;
+    if(!t)return;
+    if(t.id==="nag-skip"){ if(!t.disabled)closeGate(); return; }
+    markChannelTapped();
+  });
 
-  var downloaded=false;
+  var downloaded=false, tunnelUp=false;
   function markDownloaded(){
     var done=$("dl-done"); if(done)done.hidden=false;
     var hint=$("dl-hint"); if(hint)hint.hidden=true;
@@ -773,9 +758,6 @@ body.has-nag-bar{padding-bottom:64px}
     $("dl").classList.remove("btn--primary");
     $("dl").classList.add("btn--secondary");
     downloaded=true;
-    // Пауза, чтобы браузер успел показать своё «файл скачан»: заслон поверх
-    // этого момента читается как «кнопка не сработала».
-    setTimeout(function(){ openGate(); updateNagBar(); },900);
   }
 
   $("qr-box").addEventListener("toggle",function(){
@@ -915,12 +897,7 @@ body.has-nag-bar{padding-bottom:64px}
   $("have-app").addEventListener("click",function(){go(2);});
   $("to-3").addEventListener("click",function(){go(3);});
   $("back-to-2").addEventListener("click",function(){go(2);});
-  $("to-4").addEventListener("click",function(){
-    // Профиль уже импортирован и включён — теперь увести человека в Telegram
-    // безопасно. Шагом раньше это оборвало бы установку на полпути.
-    try{ window.open("https://t.me/fodders_dev","_blank","noopener"); }catch(e){}
-    go(4);runCheck();
-  });
+  $("to-4").addEventListener("click",function(){go(4);runCheck();});
   $("row-country").addEventListener("click",function(){
     if(u.free)return;
     returnTo=step;go("country");
@@ -1187,6 +1164,10 @@ body.has-nag-bar{padding-bottom:64px}
     // Показываем всем, кто дошёл до работающего VPN. Раньше здесь стояло
     // `&& !u.web` — и призыв не видел ровно тот, ради кого он написан: 60 из 62
     // человек приходят по коду на сайте, без Telegram.
+    // Канал просим ТОЛЬКО когда туннель подтверждён. До этого у человека нет
+    // интернета в обход блокировок, а Telegram — ровно то, что без VPN и не
+    // открывается: мы просили невозможного и сами же роняли установку.
+    if(ok){ tunnelUp=true; setTimeout(function(){ openGate(); updateNagBar(); },600); }
     var pitchChannel=ok;
     $("check-channel").hidden=!pitchChannel;
     // Два призыва подписаться на одном экране обесценивают друг друга —
@@ -1238,10 +1219,6 @@ body.has-nag-bar{padding-bottom:64px}
     checkUntil=checkStart+CHECK_WINDOW;   // ограничено по времени, без вечного спиннера
     $("check-progress").hidden=false;
     $("check-bar").style.width="0%";
-    // Проверка занимает около двух минут. Это не пустое ожидание, а лучшее
-    // место для призыва: человек уже всё сделал и просто смотрит на экран.
-    $("check-channel").hidden=false;
-    if($("footer-channel"))$("footer-channel").hidden=true;
     tick();
     tickTimer=setInterval(tick,1000);
     pollOnce();
@@ -1295,5 +1272,27 @@ body.has-nag-bar{padding-bottom:64px}
   go(1);
 })();
 </script>
+<!-- Заслон показывается сразу после скачивания профиля: это единственный
+     момент, когда человек ещё на странице и уже получил своё. -->
+<div class="nag-scrim" id="nag-scrim" role="dialog" aria-modal="true" aria-labelledby="nag-title" hidden>
+  <div class="nag-modal">
+    <h2 id="nag-title">Работает. Остался один шаг</h2>
+    <p>Этот адрес однажды заблокируют — уже было 22 августа.
+      <span class="nag-strong">Новый мы даём только в канале.</span></p>
+    <a class="btn btn--primary" id="nag-go" href="https://t.me/fodders_dev"
+       target="_blank" rel="noopener noreferrer">
+      <span class="btn__label">Подписаться</span>
+    </a>
+    <button class="nag-skip" id="nag-skip" type="button" disabled>Пропустить можно через 5</button>
+  </div>
+</div>
+
+<div class="nag-bar" id="nag-bar">
+  <span>Не узнаете о смене адреса — останетесь без VPN.</span>
+  <a class="btn btn--primary" id="nag-bar-go" href="https://t.me/fodders_dev"
+     target="_blank" rel="noopener noreferrer">
+    <span class="btn__label">Подписаться</span>
+  </a>
+</div>
 </body>
 </html>
