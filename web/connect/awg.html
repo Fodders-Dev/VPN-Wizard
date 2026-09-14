@@ -15,6 +15,7 @@
      четырёх систем рисуются одновременно и шаг установки превращается
      в стопку почти одинаковых кнопок. */
   .platform{display:none}
+  details.platform.on{display:block}
   .platform.on{display:block}
   .plat-seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:4px}
   .plat-seg .seg__btn{min-height:46px}
@@ -282,7 +283,7 @@ body.has-nag-bar{padding-bottom:64px}
 
   <!-- =============================================== шаг 3 · импорт -->
   <section id="view-3" class="stack" hidden>
-    <h1 class="h1">Откройте профиль в AmneziaWG</h1>
+    <h1 class="h1">Откройте профиль в приложении</h1>
     <!-- Шаг 1 давно различает платформы, а импорт был написан только под
          Android: «кнопка + внизу справа» и «папка Загрузки» на компьютере
          просто неверны. Панели переключаются тем же selectPlatform. -->
@@ -329,7 +330,7 @@ body.has-nag-bar{padding-bottom:64px}
       </div>
     </div>
 
-    <details class="disclosure" id="guide-shots">
+    <details class="disclosure platform on" data-plat="and" id="guide-shots">
       <summary>Показать, как это выглядит (Android)</summary>
       <div class="disclosure__body">
         <figure class="shot">

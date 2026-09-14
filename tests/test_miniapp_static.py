@@ -608,6 +608,10 @@ def test_the_import_step_speaks_to_the_device_in_hand() -> None:
     for plat in ("and", "ios", "win", "mac"):
         assert f'data-plat="{plat}"' in step3, plat
     assert "AmneziaVPN" in step3, "на macOS профиль открывает другой клиент"
+    # Скриншоты сняты на Android: показывать их человеку за компьютером —
+    # значит сбивать его с толку ровно там, где он ищет помощи.
+    assert 'data-plat="and" id="guide-shots"' in step3
+    assert "details.platform.on{display:block}" in html
     # Один выбор платформы управляет обоими шагами.
     assert "#import-how .platform" in html
 
