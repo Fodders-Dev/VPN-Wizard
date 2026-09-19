@@ -138,6 +138,7 @@ body{
   filter:drop-shadow(0 2px 8px rgba(53,214,238,.35))}
 .tile__name{font-weight:700;font-size:15.5px}
 .tile__hint{font-size:12.5px;color:var(--ink-mute);line-height:1.35}
+.tile--wide{grid-column:1 / -1;min-height:94px}
 .tile__badge{position:absolute;margin:0}
 .tile--soon{position:relative;opacity:.86}
 .soon{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.6px;
@@ -275,6 +276,11 @@ a.rowline:active{opacity:.7}
         <span class="tile__name">Приставки<span class="soon" id="consoles-soon">скоро</span></span>
         <span class="tile__hint" id="t-consoles-hint">Прокси для PlayStation и Switch</span>
       </button>
+      <a class="glass tile tile--wide" id="wizard-link-main" href="/wizard/">
+        <span class="tile__icon">🛠️</span>
+        <span class="tile__name">Свой сервер</span>
+        <span class="tile__hint">Создать VPN-сервер и управлять профилями</span>
+      </a>
     </nav>
 
     <!-- страны -->
