@@ -40,11 +40,18 @@
 .nag-scrim{
   position:fixed;inset:0;z-index:60;display:none;
   align-items:center;justify-content:center;padding:18px;
+  /* Заслон прокручивается. При системном укрупнении шрифта панель выше
+     экрана (360×400 и текст 200% дают 684px), а центрированный заслон без
+     прокрутки уносит «Пропустить» за нижний край: кнопка есть, но дотянуться
+     до неё нечем даже свайпом. */
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
   background:rgba(7,24,39,.78);
 }
 .nag-scrim.is-open{display:flex}
 .nag-modal{
-  width:100%;max-width:460px;background:var(--surface);color:var(--text);
+  /* margin:auto вместо одного align-items: центрует, когда панель влезает, и
+     не срезает верх, когда не влезает. */
+  width:100%;max-width:460px;margin:auto;background:var(--surface);color:var(--text);
   border:1px solid var(--line-strong);border-radius:18px;padding:22px 20px 20px;
   box-shadow:0 24px 60px -20px rgba(7,24,39,.55);
   animation:nag-in .22s cubic-bezier(.2,.7,.3,1);
@@ -668,6 +675,7 @@ body.has-nag-bar{padding-bottom:64px}
      ───────────────────────────────────────────────────────────────────── */
   var NAG_KEY="fodders-channel-tapped";
   var SKIP_AFTER=5;
+  var skipTimer=null, skipAt=0;
 
   // В приватном окне localStorage бросает на чтении и записи, и человек,
   // который уже нажал, получал заслон снова при каждой проверке.
@@ -682,7 +690,25 @@ body.has-nag-bar{padding-bottom:64px}
     closeGate();
     updateNagBar();
   }
+  // Сколько осталось, считаем от метки времени, а не по числу тиков. Заслон
+  // поднимается уже поверх работающего VPN, то есть человек тут же уходит из
+  // браузера; свёрнутый webview замораживает таймер, и отсчёт по тикам оставил
+  // бы «Пропустить» заблокированной после возвращения.
+  function syncSkip(){
+    var skip=$("nag-skip");
+    if(!skip)return;
+    var left=Math.ceil((skipAt-Date.now())/1000);
+    if(left>0){
+      skip.disabled=true;
+      skip.textContent="Пропустить можно через "+left;
+      return;
+    }
+    if(skipTimer){clearInterval(skipTimer);skipTimer=null;}
+    skip.disabled=false;
+    skip.textContent="Всё равно пропустить";
+  }
   function closeGate(){
+    if(skipTimer){clearInterval(skipTimer);skipTimer=null;}
     var s=$("nag-scrim");
     if(!s)return;
     s.classList.remove("is-open");
@@ -691,23 +717,24 @@ body.has-nag-bar{padding-bottom:64px}
   function openGate(){
     var s=$("nag-scrim");
     if(!s||channelTapped())return;
+    // Проверка держит несколько запросов в полёте разом, и успехом может
+    // завершиться не один: заслон, который уже висит, от второго не начинает
+    // отсчёт заново — иначе уже разблокированная «Пропустить» гасла обратно
+    // под пальцем, и это читалось как «кнопка не работает».
+    var wasOpen=s.classList.contains("is-open");
     s.hidden=false;
     s.classList.add("is-open");
-    var skip=$("nag-skip"), left=SKIP_AFTER;
-    if(!skip)return;
-    skip.disabled=true;
-    skip.textContent="Пропустить можно через "+left;
-    var timer=setInterval(function(){
-      left-=1;
-      if(left<=0){
-        clearInterval(timer);
-        skip.disabled=false;
-        skip.textContent="Всё равно пропустить";
-      }else{
-        skip.textContent="Пропустить можно через "+left;
-      }
-    },1000);
+    if(wasOpen)return;
+    skipAt=Date.now()+SKIP_AFTER*1000;
+    if(skipTimer)clearInterval(skipTimer);
+    skipTimer=setInterval(syncSkip,250);
+    syncSkip();
   }
+  // Вернулись на страницу — пересчитываем сразу, не дожидаясь тика таймера,
+  // который всё это время мог стоять.
+  document.addEventListener("visibilitychange",function(){
+    if(!document.hidden&&skipTimer)syncSkip();
+  });
   function updateNagBar(){
     var bar=$("nag-bar");
     if(!bar)return;

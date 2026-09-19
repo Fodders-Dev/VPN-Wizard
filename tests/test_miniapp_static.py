@@ -699,3 +699,71 @@ def test_the_apk_fallback_is_not_a_year_out_of_date() -> None:
     html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
     assert "amneziawg-2.0.1.apk" not in html
     assert "releases/download/v3.1.20260814/AmneziaWG-3.1.202060814.apk" in html
+
+
+def test_nothing_is_wired_to_an_element_that_does_not_exist_yet() -> None:
+    """Заслон не закрывался ни на одном устройстве, потому что его разметка
+    лежит после </script>, а обработчик вешали в момент разбора: getElementById
+    отдавал null, addEventListener не вызывался, и `if(nagSkip)` глотал это без
+    единой ошибки в консоли.
+
+    Отсюда два правила, и оба проверяются здесь. Кнопки заслона ловим
+    делегированием — ему всё равно, где лежит разметка. А всё, что скрипт
+    достаёт на верхнем уровне напрямую, обязано быть в документе выше него."""
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    script_at = html.index("<script>\n(function(){")
+
+    delegated = html.split('document.addEventListener("click"', 1)[1].split("\n  });", 1)[0]
+    for element in ("nag-skip", "nag-go", "nag-bar-go"):
+        assert f"#{element}" in delegated, (
+            f"#{element} обязан ловиться делегированием: его разметка ниже скрипта"
+        )
+
+    wired = []
+    for line in html[script_at:].splitlines():
+        # Верхний уровень модуля — ровно два пробела отступа: всё, что глубже,
+        # лежит внутри функции и выполняется уже по готовому DOM.
+        if re.match(r"^  var \w+\s*=", line):
+            wired.extend(re.findall(r'\$\("([\w-]+)"\)', line))
+    assert wired, "тест потерял смысл: прямых обращений на верхнем уровне больше не находится"
+
+    for element in wired:
+        assert html.index(f'id="{element}"') < script_at, (
+            f"#{element} объявлен ниже скрипта, который вешает на него обработчик"
+        )
+
+
+def test_the_wait_survives_a_webview_that_froze() -> None:
+    """Заслон поднимается после проверки связи, то есть у человека уже есть
+    рабочий VPN и первое, что он делает, — уходит из браузера. Webview засыпает
+    вместе с таймером, и отсчёт по числу тиков оставил бы «Пропустить»
+    заблокированной после возвращения — окно снова было бы не закрыть."""
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    sync = html.split("function syncSkip(){", 1)[1].split("\n  }", 1)[0]
+    assert "skipAt-Date.now()" in sync, "остаток считается от метки времени, а не тиками"
+    assert 'if(!document.hidden&&skipTimer)syncSkip();' in html, (
+        "вернулись на страницу — пересчитать сразу, не дожидаясь тика"
+    )
+
+    # Проверка держит несколько запросов в полёте, и успехом может завершиться
+    # не один. Второй заслон поверх открытого не имеет права гасить уже
+    # разблокированную «Пропустить».
+    gate = html.split("function openGate(){", 1)[1].split("\n  }", 1)[0]
+    assert "wasOpen" in gate and "if(wasOpen)return;" in gate
+    assert "clearInterval" in html.split("function closeGate(){", 1)[1].split("\n  }", 1)[0], (
+        "закрыли заслон — таймер тоже гасим, иначе он правит подпись у скрытой кнопки"
+    )
+
+
+def test_the_gate_scrolls_so_the_way_out_is_always_reachable() -> None:
+    """Текст заслона стал короче, и на обычных настройках панель влезает всюду.
+    Но при системном укрупнении шрифта она снова выше экрана: замер на 360×400
+    с текстом 200% даёт панель 684px, и без этих двух строк «Пропустить»
+    не достать даже прокруткой — центрирование уносит её за нижний край."""
+    html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
+    scrim = html.split(".nag-scrim{", 1)[1].split("}", 1)[0]
+    assert "overflow-y:auto" in scrim
+    modal = html.split(".nag-modal{", 1)[1].split("}", 1)[0]
+    assert "margin:auto" in modal, (
+        "одного align-items:center мало: при переполнении он срезает верх панели"
+    )
