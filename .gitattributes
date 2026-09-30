@@ -1,0 +1,2 @@
+# Unified diffs represent an unchanged empty line with a single space.
+src/vpn_wizard/patches/*.patch whitespace=-blank-at-eol
