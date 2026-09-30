@@ -25,5 +25,8 @@
 - [x] Replace old `/miniapp` buttons with one unified managed-VPN portal
 - [x] Preserve the complete Fodders VPN 1 self-hosted flow at `/wizard` and `/vpn1`
 - [x] Add bidirectional portal/Wizard navigation and Telegram native BackButton support
+- [x] Reject partial AmneziaWG installs and failed runtime checks before issuing profiles
+- [x] Cover missing kernel modules and readiness failures with regression tests
+- [x] Recover the Ubuntu 5.15.0-43 self-hosted VPS and verify handshake, DNS and HTTPS egress
 
-Next: Провести реальную покупку Telegram Stars и проверить полный цикл «оплата → продление → вывод».
+Next: Подтвердить подключение Ильи с прежним конфигом на его устройстве; затем вернуться к циклу Telegram Stars.

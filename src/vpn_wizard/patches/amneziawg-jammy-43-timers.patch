@@ -1,0 +1,18 @@
+--- a/compat/compat.h
++++ b/compat/compat.h
+@@ -9,4 +9,15 @@
+ #include <linux/kconfig.h>
+ #include <linux/version.h>
+ #include <linux/types.h>
+ #include <generated/utsrelease.h>
++
++/* Fodder repair: Ubuntu 22.04's original 5.15.0-43 lacks timer_delete.
++ * Restrict the aliases to this exact ABI; newer Ubuntu kernels backport
++ * the new names and must keep their own declarations unchanged.
++ */
++#if LINUX_VERSION_CODE == KERNEL_VERSION(5, 15, 39) && \
++    defined(UTS_UBUNTU_RELEASE_ABI) && UTS_UBUNTU_RELEASE_ABI == 43
++#include <linux/timer.h>
++#define timer_delete del_timer
++#define timer_delete_sync del_timer_sync
++#endif

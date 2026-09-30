@@ -86,7 +86,7 @@ def provision(
     mtu: Optional[int] = typer.Option(None, help="WireGuard MTU (0 disables)"),
     auto_mtu: bool = typer.Option(True, "--auto-mtu/--no-auto-mtu", help="Auto-detect MTU"),
     tune: bool = typer.Option(True, "--tune/--no-tune", help="Enable network tuning"),
-    check: bool = typer.Option(True, "--check/--no-check", help="Post-provision checks"),
+    check: bool = typer.Option(True, "--check/--no-check", help="Show required post-provision readiness checks"),
     precheck: bool = typer.Option(True, "--precheck/--no-precheck", help="Pre-provision checks"),
     protocol: str = typer.Option("amneziawg", help="Protocol (amneziawg or wireguard)"),
     quiet: bool = typer.Option(False, help="Less output"),
@@ -115,12 +115,10 @@ def provision(
             if _has_critical_fail(checks):
                 typer.echo("Precheck failed.")
                 raise typer.Exit(code=1)
-        prov.provision()
+        results = prov.provision()
         if check:
-            results = prov.post_check()
-            ok = all(item.get("ok") for item in results)
             _print_checks(results)
-            typer.echo("Checks: OK" if ok else "Checks: FAIL")
+            typer.echo("Checks: OK")
         typer.echo("Provisioned.")
     finally:
         prov.ssh.close()

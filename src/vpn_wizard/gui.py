@@ -55,9 +55,8 @@ class ProvisionWorker(QtCore.QThread):
                 critical = {"os_supported", "sudo", "port_available"}
                 if any(item.get("name") in critical and not item.get("ok") for item in checks):
                     raise RuntimeError("Precheck failed.")
-                prov.provision()
+                checks = prov.provision()
                 config = prov.export_client_config()
-                checks = prov.post_check()
             self.done.emit(config, checks)
         except Exception as exc:
             self.error.emit(str(exc))

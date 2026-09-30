@@ -3,10 +3,12 @@ from __future__ import annotations
 import hashlib
 import hmac
 import paramiko
+import pytest
 import time
 from contextlib import contextmanager
 
 from fastapi.testclient import TestClient
+from vpn_wizard.core import ProvisioningNotReady
 
 import vpn_wizard.server as server_module
 from vpn_wizard.server import (
@@ -52,6 +54,89 @@ def test_job_store_create_update_and_progress() -> None:
     assert stored.status == "running"
     assert stored.progress == ["step 1"]
     assert stored.alternatives is None
+
+
+@pytest.mark.parametrize("display_checks", [True, False])
+def test_failed_provision_never_exports_a_profile(monkeypatch, display_checks: bool) -> None:
+    failed = [{"name": "service_active", "ok": False, "details": "failed"}]
+
+    class BrokenProvisioner:
+        def __init__(self, ssh, **kwargs):
+            pass
+
+        def pre_check(self):
+            return [{"name": "os_supported", "ok": True}]
+
+        def provision(self):
+            raise ProvisioningNotReady(failed)
+
+        def export_client_config(self):
+            pytest.fail("A failed server must never produce a download")
+
+    @contextmanager
+    def fake_connection(*args, **kwargs):
+        yield object(), None
+
+    monkeypatch.setattr(server_module, "_ssh_connection", fake_connection)
+    monkeypatch.setattr(server_module, "WireGuardProvisioner", BrokenProvisioner)
+    job = server_module.JOB_STORE.create()
+    payload = ProvisionRequest(options={"protocol": "amneziawg", "check": display_checks})
+    server_module._run_provision(job.job_id, payload, None)
+    result = server_module.JOB_STORE.get(job.job_id)
+    assert result.status == "error"
+    assert result.checks == failed
+    assert result.config is None
+    assert result.download_id is None
+    assert result.qr_png_base64 is None
+
+
+def test_existing_config_does_not_report_broken_server_as_ready(monkeypatch) -> None:
+    class ConfigOnlySSH:
+        def run(self, command, **kwargs):
+            if "test -f /etc/amnezia/amneziawg/awg0.conf" in command:
+                return "yes"
+            if "test -f /etc/wireguard/wg0.conf" in command:
+                return "no"
+            if "ListenPort" in command:
+                return "3478"
+            return ""
+
+    failed = [{"name": "interface", "ok": False, "details": "missing"}]
+    monkeypatch.setattr(server_module.WireGuardProvisioner, "post_check", lambda self: failed)
+    with pytest.raises(ProvisioningNotReady):
+        server_module._detect_server_status(ConfigOnlySSH())
+
+
+def test_verified_provision_publishes_profile_with_checks_disabled(monkeypatch) -> None:
+    checks = [{"name": "service_active", "ok": True, "details": "active"}]
+
+    class ReadyProvisioner:
+        def __init__(self, ssh, **kwargs):
+            pass
+
+        def pre_check(self):
+            return [{"name": "os_supported", "ok": True}]
+
+        def provision(self):
+            return checks
+
+        def export_client_config(self):
+            return "VERIFIED_CONFIG"
+
+    @contextmanager
+    def fake_connection(*args, **kwargs):
+        yield object(), None
+
+    monkeypatch.setattr(server_module, "_ssh_connection", fake_connection)
+    monkeypatch.setattr(server_module, "WireGuardProvisioner", ReadyProvisioner)
+    monkeypatch.setattr(server_module, "_build_qr_png", lambda _: b"test-qr")
+    job = server_module.JOB_STORE.create()
+    server_module._run_provision(job.job_id, ProvisionRequest(options={"check": False}), None)
+    result = server_module.JOB_STORE.get(job.job_id)
+    assert result.status == "done"
+    assert result.checks == checks
+    assert result.config == "VERIFIED_CONFIG"
+    assert result.download_id is not None
 
 
 def test_download_config_returns_attachment(monkeypatch, tmp_path) -> None:

@@ -21,6 +21,15 @@ Telegram Stars stay on the Telegram bot balance.
   - ShadowTLS default: single TCP port (prefer 443) + pinned routing (no urltest auto-failover by default)
   - legacy fallback: VLESS Reality (Xray)
 - core: optional network tuning (BBR, buffers) and MTU default for speed/stability
+- self-hosted AWG setup verifies a usable kernel/userspace backend, not merely
+  the presence of `awg`; an incomplete DKMS install is repaired or reported as an error
+- self-hosted AWG repairs the confirmed timer API incompatibility on the original
+  Ubuntu `5.15.0-43-generic` kernel with an ABI-restricted, backed-up source patch;
+  no kernel replacement, reboot or key rotation is performed automatically
+- WG/AWG setup always requires a running service, interface, forwarding and UDP
+  listener before publishing a profile/QR, including with optional checks disabled
+- self-hosted server status checks runtime readiness; a leftover config file
+  must not report a failed installation as ready
 - cli: `provision`, `export`, `status`
 - gui: wizard flow (server access -> configure -> progress -> download config + QR)
 - self-hosted wizard (`/wizard/`): RU/EN локализация (RU по умолчанию), быстрый чек статуса сервера, выбор UDP порта, локальный список недавних серверов (без паролей)

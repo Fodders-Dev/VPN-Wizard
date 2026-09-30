@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from vpn_wizard.core import SSHConfig, WireGuardProvisioner
+import pytest
+
+from vpn_wizard.core import ProvisioningNotReady, RemoteCommandError, SSHConfig, WireGuardProvisioner
 
 
 class FakeSSH:
@@ -58,6 +60,129 @@ def test_install_wireguard_rhel() -> None:
     prov = WireGuardProvisioner(ssh)
     prov.install_wireguard({"ID": "centos", "ID_LIKE": "rhel"})
     assert _has_command(ssh.commands, "dnf install -y wireguard-tools")
+
+
+def test_amneziawg_does_not_skip_tools_without_working_module() -> None:
+    ssh = FakeSSH({
+        "which awg": "/usr/bin/awg\ninstalled",
+        "uname -r": "5.15.0-43-generic",
+        "find /var/lib/dkms": "error: implicit declaration of function timer_delete",
+    })
+    prov = WireGuardProvisioner(ssh)
+    with pytest.raises(RuntimeError, match="installation is incomplete") as error:
+        prov.install_amneziawg({"ID": "ubuntu"})
+    assert "5.15.0-43-generic" in str(error.value)
+    assert "timer_delete" in str(error.value)
+    assert _has_command(ssh.commands, "dkms autoinstall")
+    assert not _has_command(ssh.commands, "apt-get")
+
+
+@pytest.mark.parametrize("backend", ["kernel", "userspace"])
+def test_amneziawg_skips_only_a_working_backend(backend: str) -> None:
+    ssh = FakeSSH({"which awg": "installed", "echo kernel": backend})
+    WireGuardProvisioner(ssh).install_amneziawg({"ID": "ubuntu"})
+    assert not _has_command(ssh.commands, "dkms autoinstall")
+    assert not _has_command(ssh.commands, "apt-get")
+
+
+def test_amneziawg_recovers_existing_dkms_install() -> None:
+    class RepairSSH(FakeSSH):
+        repaired = False
+
+        def run(self, command, **kwargs):
+            result = super().run(command, **kwargs)
+            if "dkms autoinstall" in command:
+                self.repaired = True
+                return "vpnw_dkms_repaired"
+            if "echo kernel" in command:
+                return "kernel" if self.repaired else ""
+            return result
+
+    ssh = RepairSSH({"which awg": "installed"})
+    WireGuardProvisioner(ssh).install_amneziawg({"ID": "ubuntu"})
+    assert ssh.repaired
+
+
+@pytest.mark.parametrize("kernel", ["5.15.0-43-generic", "5.15.0-194-generic"])
+def test_timer_repair_is_restricted_to_the_confirmed_old_kernel(kernel: str) -> None:
+    class RepairSSH(FakeSSH):
+        repaired = False
+
+        def run(self, command, **kwargs):
+            result = super().run(command, **kwargs)
+            if "dkms autoinstall" in command:
+                self.repaired = True
+                return "vpnw_dkms_repaired"
+            if "echo kernel" in command:
+                return "kernel" if self.repaired else ""
+            return result
+
+    ssh = RepairSSH({"which awg": "installed", "uname -r": kernel})
+    WireGuardProvisioner(ssh).install_amneziawg({"ID": "ubuntu"})
+    assert _has_command(ssh.commands, "VPNW_TIMER_PATCH") == (kernel == "5.15.0-43-generic")
+    assert _has_command(ssh.commands, "dpkg --configure amneziawg-dkms amneziawg")
+
+
+def test_amneziawg_recovers_partial_fresh_install(monkeypatch) -> None:
+    class FreshInstallSSH(FakeSSH):
+        repaired = False
+
+        def run(self, command, **kwargs):
+            if "install -y amneziawg" in command:
+                raise RemoteCommandError("Command failed (100): DKMS build failed")
+            result = super().run(command, **kwargs)
+            if "dkms autoinstall" in command:
+                self.repaired = True
+                return "vpnw_dkms_repaired"
+            if "echo kernel" in command:
+                return "kernel" if self.repaired else ""
+            return result
+
+    ssh = FreshInstallSSH({"uname -r": "5.15.0-43-generic"})
+    prov = WireGuardProvisioner(ssh)
+    monkeypatch.setattr(prov, "_release_apt_locks", lambda: None)
+    monkeypatch.setattr(prov, "_clean_boot_partition", lambda: None)
+    prov.install_amneziawg({"ID": "ubuntu"})
+    assert ssh.repaired
+    assert _has_command(ssh.commands, "VPNW_TIMER_PATCH")
+
+
+def test_amneziawg_package_error_does_not_issue_false_success(monkeypatch) -> None:
+    class PackageFailureSSH(FakeSSH):
+        def run(self, command, **kwargs):
+            if "install -y amneziawg" in command:
+                raise RemoteCommandError("Command failed (100): apt-get install")
+            return super().run(command, **kwargs)
+
+    ssh = PackageFailureSSH({"uname -r": "5.15.0-43-generic"})
+    prov = WireGuardProvisioner(ssh)
+    monkeypatch.setattr(prov, "_release_apt_locks", lambda: None)
+    monkeypatch.setattr(prov, "_clean_boot_partition", lambda: None)
+    with pytest.raises(RuntimeError, match="installation is incomplete"):
+        prov.install_amneziawg({"ID": "ubuntu"})
+
+
+@pytest.mark.parametrize("failed_check", ["service_active", "interface", "ip_forward", "udp_listen"])
+def test_provision_rejects_failed_readiness(monkeypatch, failed_check: str) -> None:
+    prov = WireGuardProvisioner(FakeSSH())
+    monkeypatch.setattr(prov, "detect_os", lambda: {"ID": "ubuntu"})
+    for step in ("install_amneziawg", "configure_sysctl", "setup_amneziawg", "enable_firewall", "start_awg_service"):
+        monkeypatch.setattr(prov, step, lambda *args: None)
+    checks = [{"name": failed_check, "ok": False, "details": "missing"}]
+    monkeypatch.setattr(prov, "post_check", lambda: checks)
+    with pytest.raises(ProvisioningNotReady) as error:
+        prov.provision()
+    assert error.value.checks == checks
+
+
+def test_provision_returns_verified_checks(monkeypatch) -> None:
+    prov = WireGuardProvisioner(FakeSSH())
+    monkeypatch.setattr(prov, "detect_os", lambda: {"ID": "ubuntu"})
+    for step in ("install_amneziawg", "configure_sysctl", "setup_amneziawg", "enable_firewall", "start_awg_service"):
+        monkeypatch.setattr(prov, step, lambda *args: None)
+    checks = [{"name": "service_active", "ok": True, "details": "active"}]
+    monkeypatch.setattr(prov, "post_check", lambda: checks)
+    assert prov.provision() == checks
 
 
 def test_configure_sysctl_tuning_enabled() -> None:

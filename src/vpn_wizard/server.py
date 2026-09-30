@@ -39,7 +39,7 @@ from vpn_wizard.account import (
     verify_telegram_login,
     verify_telegram_webapp_init_data,
 )
-from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
+from vpn_wizard.core import ProvisioningNotReady, SSHConfig, SSHRunner, WireGuardProvisioner
 from vpn_wizard.awg_fallback import (
     MAX_DEVICE_SLOT,
     AwgFallbackConfig,
@@ -1909,9 +1909,8 @@ def _run_provision(
                 if any(item.get("name") in critical and not item.get("ok") for item in pre_checks):
                     JOB_STORE.update(job_id, status="error", error="Precheck failed.", checks=pre_checks)
                     return
-                prov.provision()
+                checks = prov.provision()
                 config = prov.export_client_config()
-                checks = prov.post_check() if opts.check else []
 
         # QR:
         # - WG / vless: QR encodes the config payload (small enough, import-friendly).
@@ -1971,6 +1970,8 @@ def _run_provision(
             checks=checks,
             error=None,
         )
+    except ProvisioningNotReady as exc:
+        JOB_STORE.update(job_id, status="error", error=_error_message(exc), checks=exc.checks)
     except Exception as exc:
         JOB_STORE.update(job_id, status="error", error=_error_message(exc))
 
@@ -2711,6 +2712,12 @@ def _detect_server_status(ssh: SSHRunner) -> dict:
         check=False,
     ).strip()
     tyumen_port = int(tyumen_port_raw) if tyumen_port_raw.isdigit() else None
+
+    # An existing .conf is not a healthy server (e.g. a failed DKMS install).
+    prov = WireGuardProvisioner(ssh, protocol=protocol, listen_port=listen_port or 3478)
+    checks = prov.post_check()
+    if any(not item.get("ok") for item in checks):
+        raise ProvisioningNotReady(checks)
 
     return {
         "configured": True,

@@ -116,6 +116,24 @@ Client config expectations:
 - `Address = 10.11.0.x/24`
 
 ## Notes
+- A successful WG/AWG setup now requires all runtime readiness checks to pass.
+  `--no-check` only hides the CLI check report; it cannot bypass service,
+  interface, IP forwarding or UDP listener validation. Failed API jobs retain
+  their checks and do not publish a config download or QR.
+- If `awg` exists but the module is missing, Wizard attempts `dkms autoinstall`
+  and package configuration for the running kernel, then verifies the backend.
+  For the confirmed Ubuntu `5.15.0-43-generic` timer API incompatibility, it
+  backs up and repairs the module's compatibility header before rebuilding.
+  The repair is restricted to that exact ABI. Remaining failures
+  report the kernel and bounded DKMS build diagnostics instead of claiming success.
+- Incident recovery for the original Ubuntu 22.04 kernel `5.15.0-43-generic`:
+  copy both files from `deploy/scripts/repair-amneziawg-jammy-43.sh` and
+  `src/vpn_wizard/patches/amneziawg-jammy-43-timers.patch` into one directory on the VPS,
+  then run the shell script as root. It backs up configs and the module's
+  compatibility header under `/root/fodder-awg-repair.*`, adds timer aliases
+  restricted to that exact kernel ABI, rebuilds/configures DKMS and starts AWG.
+  Existing client keys/configs are retained. This is an incident-specific repair,
+  not a general kernel upgrade or a patch for newer kernels.
 - Use `--key` instead of `--password` for key auth.
 - Server configs stored under `/etc/wireguard/`.
 - Disable tuning with `--no-tune`, disable MTU with `--mtu 0`, disable auto-MTU with `--no-auto-mtu`.

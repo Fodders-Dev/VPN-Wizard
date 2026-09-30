@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from importlib.resources import files
 import ipaddress
 import os
 import re
@@ -16,6 +17,18 @@ SAFE_TUNNEL_TCP_MSS = 1160
 
 class RemoteCommandError(RuntimeError):
     pass
+
+
+class ProvisioningNotReady(RuntimeError):
+    """Keep failed checks available to callers without exporting a profile."""
+
+    def __init__(self, checks: list[dict]) -> None:
+        self.checks = checks
+        failed = "; ".join(
+            f"{item['name']}: {item.get('details', 'failed')}"
+            for item in checks if not item.get("ok")
+        )
+        super().__init__(f"VPN is not ready. {failed}. Repair the server before using its profiles.")
 
 
 @dataclass
@@ -205,7 +218,7 @@ class WireGuardProvisioner:
 
     # ... (omitted) ...
 
-    def provision(self) -> None:
+    def provision(self) -> list[dict]:
         self.progress("Detecting OS")
         os_info = self.detect_os()
         
@@ -231,6 +244,14 @@ class WireGuardProvisioner:
             self.enable_firewall()
             self.progress("Starting service")
             self.start_service()
+
+        # Readiness is mandatory even when a caller disables the optional
+        # diagnostic display. A config file alone does not mean a tunnel works.
+        self.progress("Checking VPN readiness")
+        checks = self.post_check()
+        if any(not item.get("ok") for item in checks):
+            raise ProvisioningNotReady(checks)
+        return checks
 
     def _classify_os(self, os_info: dict) -> tuple[bool, bool, str, str]:
         distro = os_info.get("ID", "").lower()
@@ -332,12 +353,17 @@ class WireGuardProvisioner:
 
     def install_amneziawg(self, os_info: dict) -> None:
         """Install AmneziaWG kernel module and tools via PPA."""
-        # Check if AmneziaWG tools are already installed
         awg_check = self.ssh.run("which awg 2>/dev/null && echo 'installed' || echo 'missing'", check=False)
         if "installed" in awg_check:
-            self.progress("AmneziaWG already installed, skipping...")
-            self.ssh.run("modprobe amneziawg 2>/dev/null || true", sudo=True, check=False)
-            return
+            if self._amneziawg_backend_ready():
+                self.progress("AmneziaWG tools and tunnel backend are ready")
+                return
+            # PPA installs can leave awg present while DKMS failed to build
+            # the running kernel's module. Do not skip this broken install.
+            self.progress("Repairing the AmneziaWG module for the running kernel")
+            if self._repair_amneziawg_install():
+                return
+            raise RuntimeError(self._amneziawg_install_error())
         
         is_deb, is_rhel, distro, _ = self._classify_os(os_info)
         
@@ -378,25 +404,85 @@ class WireGuardProvisioner:
             self.progress("Installing AmneziaWG...")
             try:
                 self.ssh.run(f"{apt} install -y amneziawg", sudo=True)
-            except RemoteCommandError as e:
-                # DKMS/initramfs failure - try to force load module
-                if "mkinitrd" in str(e) or "initramfs" in str(e) or "exit status" in str(e):
-                    self.progress("DKMS failed, loading module manually...")
-                    self.ssh.run("dpkg --configure -a --force-confdef || true", sudo=True, check=False)
-                    self.ssh.run("modprobe amneziawg || true", sudo=True, check=False)
-                    if "not_found" in self.ssh.run("which awg || echo 'not_found'", check=False):
-                        raise RuntimeError("AmneziaWG tools not installed. Try reinstalling VPS.")
-                else:
-                    raise e
+            except RemoteCommandError as exc:
+                if not self._repair_amneziawg_install():
+                    raise RuntimeError(self._amneziawg_install_error()) from exc
+            if not self._amneziawg_backend_ready():
+                raise RuntimeError(self._amneziawg_install_error())
             return
         
         if is_rhel:
             pm = self.ssh.run("command -v dnf >/dev/null && echo dnf || echo yum", check=False).strip() or "yum"
             self.ssh.run(f"{pm} copr enable -y amneziavpn/amneziawg || true", sudo=True, check=False)
             self.ssh.run(f"{pm} install -y amneziawg-dkms amneziawg-tools qrencode curl", sudo=True)
+            if not self._amneziawg_backend_ready():
+                raise RuntimeError(self._amneziawg_install_error())
             return
         
         raise RuntimeError(f"Unsupported distro for AmneziaWG: {distro}")
+
+    def _repair_amneziawg_install(self) -> bool:
+        kernel = self.ssh.run("uname -r", check=False).strip()
+        if kernel == "5.15.0-43-generic":
+            # The current PPA dropped the old timer aliases, but Ubuntu's
+            # original Jammy kernel predates timer_delete. Only patch the
+            # confirmed ABI; newer kernels must retain their backported APIs.
+            self.progress("Restoring AmneziaWG timer compatibility for Ubuntu 5.15.0-43")
+            patch = files("vpn_wizard").joinpath("patches/amneziawg-jammy-43-timers.patch").read_text()
+            self.ssh.run(
+                "set -e\n"
+                "source_dir=/usr/src/amneziawg-1.0.0\n"
+                "test -f \"$source_dir/compat/compat.h\"\n"
+                "if ! grep -q 'Fodder repair: Ubuntu' \"$source_dir/compat/compat.h\"; then\n"
+                "  cp -a --backup=numbered \"$source_dir/compat/compat.h\" \"$source_dir/compat/compat.h.vpnw-backup\"\n"
+                "  patch --forward -d \"$source_dir\" -p1 <<'VPNW_TIMER_PATCH'\n"
+                + patch + "\nVPNW_TIMER_PATCH\n"
+                "fi",
+                sudo=True,
+                check=False,
+            )
+        repaired = self.ssh.run(
+            'if command -v dkms >/dev/null && dkms autoinstall -k "$(uname -r)"; then\n'
+            '  if command -v dpkg >/dev/null; then\n'
+            '    DEBIAN_FRONTEND=noninteractive dpkg --configure amneziawg-dkms amneziawg || exit 1\n'
+            '  fi\n'
+            '  echo vpnw_dkms_repaired\n'
+            'fi',
+            sudo=True,
+            check=False,
+        )
+        return "vpnw_dkms_repaired" in repaired.splitlines() and self._amneziawg_backend_ready()
+
+    def _amneziawg_backend_ready(self) -> bool:
+        backend = self.ssh.run(
+            "if command -v awg >/dev/null && command -v awg-quick >/dev/null; then\n"
+            "  if [ -d /sys/module/amneziawg ] || modprobe amneziawg >/dev/null 2>&1; then\n"
+            "    echo kernel\n"
+            "  elif command -v amneziawg-go >/dev/null && [ -c /dev/net/tun ]; then\n"
+            "    echo userspace\n"
+            "  fi\n"
+            "fi",
+            sudo=True,
+            check=False,
+        ).strip()
+        return backend in {"kernel", "userspace"}
+
+    def _amneziawg_install_error(self) -> str:
+        kernel = self.ssh.run("uname -r", check=False).strip() or "unknown"
+        diagnostics = self.ssh.run(
+            "modprobe amneziawg 2>&1 || true; "
+            "find /var/lib/dkms/amneziawg -type f -name make.log "
+            "-exec tail -n 15 {} \\; 2>/dev/null | tail -n 25",
+            sudo=True,
+            check=False,
+        ).strip()
+        return (
+            f"AmneziaWG installation is incomplete for kernel {kernel}. "
+            "The awg tools alone are not enough: a working kernel module or "
+            "amneziawg-go is required. Repair DKMS or use a supported kernel, "
+            "then retry setup. No ready profile has been issued. "
+            + diagnostics[-2500:]
+        ).strip()
 
     def pre_check(self) -> list[dict]:
         checks: list[dict] = []
