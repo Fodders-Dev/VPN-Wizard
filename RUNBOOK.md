@@ -24,6 +24,8 @@ Set `VPNW_SUPPORT_DETAILS` to owner-approved public bank/card/SBP details and/or
 `VPNW_SUPPORT_URL` to an HTTPS donation link, then restart `vpn-wizard`. Empty
 details produce an honest placeholder, not a fake payment number. The support
 block appears below the portal and profile page and never gates downloads.
+On the public `join.html` page it sits before server selection, with compact
+mobile actions and collapsed payment/cost details; the server skip link bypasses it.
 
 The 2026-10-03 catalogue was deployed directly to NL after 426 tests and mobile
 browser verification. Original sources and environment are retained in

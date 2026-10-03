@@ -15,6 +15,9 @@
 - Public support offers prominent channel/donation actions and a collapsed
   explanation of website, server and monitoring costs. A configured card number
   can be copied without exposing any payment credentials or gating downloads.
+- On the public page, compact voluntary support appears below the main heading
+  and before server downloads in DOM order. The skip link still goes directly
+  to server selection; donation details and costs stay collapsed by default.
 
 ## Goal
 Turn a rented VPS into a fast VPN and anti-block proxy with ready configs/links/QR codes.

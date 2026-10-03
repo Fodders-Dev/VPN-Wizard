@@ -49,6 +49,17 @@ def test_public_page_keeps_server_choice_and_collapsed_helpers() -> None:
     assert 'name="referrer" content="no-referrer"' in html
 
 
+def test_support_precedes_server_downloads_without_blocking_skip_link() -> None:
+    html = (WEB / "join.html").read_text(encoding="utf-8")
+    assert html.count('id="support-slot"') == 1
+    assert html.index('id="servers-title"') < html.index('id="support-slot"')
+    assert html.index('id="support-slot"') < html.index('<section id="servers"')
+    assert html.index('<section id="servers"') < html.index('id="server-grid"')
+    assert 'href="#servers"' in html
+    assert 'aria-labelledby="server-choice-title"' in html
+    assert 'id="server-choice-title"' in html
+
+
 def test_public_download_keeps_private_posts_and_independent_devices() -> None:
     script = (WEB / "public-vpn.js").read_text(encoding="utf-8")
     assert "/api/public/awg/device" in script
