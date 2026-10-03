@@ -166,6 +166,10 @@ Client config expectations:
   Recent handshakes count peers, not unique people. Interface byte counters
   reset on peer removal/restart and are not lifetime traffic or availability.
 - Exact support text/link: `VPNW_SUPPORT_DETAILS` / `VPNW_SUPPORT_URL` (HTTPS).
+  Public card-only support can be supplied as `Карта: 0000 0000 0000 0000` in
+  `VPNW_SUPPORT_DETAILS`; the UI extracts only the 16 digits for copying. Keep
+  real payment details in deployment settings, not in Git; never store CVV,
+  expiration dates, bank credentials or confirmation codes here.
   If absent, the page honestly shows pending details and the voluntary channel
   link. Never invent donation totals, payment information or fundraising progress.
 - Public UI regression checks: `python -m pytest tests/test_public_vpn_ui.py

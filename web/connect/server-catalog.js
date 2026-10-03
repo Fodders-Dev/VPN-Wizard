@@ -74,20 +74,20 @@
 
       var content = el("div", "project-support__content");
       var kicker = el("p", "project-support__kicker", "НЕОБЯЗАТЕЛЬНО И ОТ СЕРДЦА");
-      var title = el("h2", "", minimal ? "Оставим VPN бесплатным" : "Поддержать Fodder VPN");
+      var title = el("h2", "", minimal ? "Помогите VPN оставаться бесплатным" : "Поддержать Fodder VPN");
       title.id = "support-title";
-      var copy = el("p", "project-support__copy", minimal ? "Помочь с серверами можно по желанию." : "Если проект вам полезен, можно помочь с расходами на серверы. Это полностью добровольно: скачивание профилей не зависит от пожертвования или подписки на канал.");
+      var copy = el("p", "project-support__copy", minimal ? "Подпиской на канал или небольшим донатом ♥" : "Если проект вам полезен, можно помочь с расходами на серверы. Это полностью добровольно: скачивание профилей не зависит от пожертвования или подписки на канал.");
       var details = el("p", "support-details", "Реквизиты скоро появятся");
       details.id = "support-details";
       details.setAttribute("aria-live", "polite");
 
       var actions = el("div", "project-support__actions");
-      var channel = el("a", "project-support__channel", "Канал проекта");
+      var channel = el("a", "project-support__channel", minimal ? "Подписаться на канал ↗" : "Канал проекта");
       channel.href = "https://t.me/fodders_dev";
       channel.target = "_blank";
       channel.rel = "noopener noreferrer";
-      var payment = el("a", "project-support__payment", minimal ? "Поддержать ↗" : "Реквизиты для поддержки");
-      if (minimal) compactSupportLabel(payment, "Поддержать ↗");
+      var payment = el("a", "project-support__payment", minimal ? "Поддержать донатом ↗" : "Реквизиты для поддержки");
+      if (minimal) compactSupportLabel(payment, "Поддержать донатом ↗");
       payment.id = "support-link";
       payment.target = "_blank";
       payment.rel = "noopener noreferrer";
@@ -110,11 +110,37 @@
       if (minimal) {
         var disclosure = el("details", "support-disclosure");
         disclosure.id = "support-disclosure";
-        disclosure.appendChild(el("summary", "", "Поддержать"));
-        disclosure.appendChild(details);
+        disclosure.appendChild(el("summary", "", "Поддержать донатом"));
+        var panel = el("div", "support-payment-panel");
+        panel.appendChild(details);
+        var copyButton = el("button", "support-copy", "Скопировать номер карты");
+        copyButton.id = "support-copy";
+        copyButton.type = "button";
+        copyButton.hidden = true;
+        var copyStatus = el("p", "support-copy-status");
+        copyStatus.id = "support-copy-status";
+        copyStatus.setAttribute("role", "status");
+        copyButton.addEventListener("click", async function () {
+          copyStatus.textContent = "";
+          try {
+            await navigator.clipboard.writeText(copyButton.dataset.card);
+            copyStatus.textContent = "Номер карты скопирован";
+          } catch (error) {
+            copyStatus.textContent = "Выделите номер карты выше и скопируйте вручную.";
+          }
+        });
+        panel.appendChild(copyButton);
+        panel.appendChild(copyStatus);
+        disclosure.appendChild(panel);
         actions.appendChild(disclosure);
       } else content.appendChild(details);
       content.appendChild(actions);
+      if (minimal) {
+        var purpose = el("details", "support-purpose");
+        purpose.appendChild(el("summary", "", "На что идут деньги?"));
+        purpose.appendChild(el("p", "", "На содержание сайта, оплату VPN-серверов, мониторинг и стабильную работу. Поддержка добровольная: все профили доступны и без доната или подписки."));
+        content.appendChild(purpose);
+      }
       if (!minimal) {
         content.appendChild(motion);
         section.appendChild(art);
@@ -138,6 +164,12 @@
     var detailsNode = document.getElementById("support-details");
     var detailsText = typeof data.details === "string" ? data.details.trim() : "";
     detailsNode.textContent = detailsText || (minimal ? "Реквизиты пока не добавлены. Поддержать проект можно подпиской на канал." : "Реквизиты скоро появятся");
+    var copyButton = document.getElementById("support-copy");
+    if (copyButton) {
+      var card = detailsText.match(/\b(?:\d[ -]?){15}\d\b/);
+      copyButton.hidden = !card;
+      copyButton.dataset.card = card ? card[0].replace(/\D/g, "") : "";
+    }
 
     var paymentLink = document.getElementById("support-link");
     var url = typeof data.url === "string" ? data.url.trim() : "";
@@ -151,7 +183,7 @@
     var donationDetails = document.getElementById("support-disclosure");
     if (donationDetails) {
       donationDetails.hidden = !paymentLink.hidden && !detailsText;
-      compactSupportLabel(donationDetails.querySelector("summary"), paymentLink.hidden ? "Поддержать" : "Реквизиты");
+      compactSupportLabel(donationDetails.querySelector("summary"), paymentLink.hidden ? "Поддержать донатом" : "Реквизиты");
     }
     syncSupportMotion();
   }

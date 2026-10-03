@@ -12,6 +12,9 @@
   regional reachability is explicitly marked and never promised for every ISP.
 - Support details are voluntary, publicly configured by the owner, and do not
   replace subscriptions. Never publish invented payment details.
+- Public support offers prominent channel/donation actions and a collapsed
+  explanation of website, server and monitoring costs. A configured card number
+  can be copied without exposing any payment credentials or gating downloads.
 
 ## Goal
 Turn a rented VPS into a fast VPN and anti-block proxy with ready configs/links/QR codes.

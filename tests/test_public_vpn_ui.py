@@ -72,3 +72,14 @@ def test_shared_support_stays_voluntary_and_motion_respects_preferences() -> Non
     assert '"aria-pressed"' in script
     assert "Реквизиты скоро появятся" in script
     assert 'paymentLink.hidden = true' in script
+
+
+def test_support_has_explicit_actions_copy_and_collapsed_cost_explanation() -> None:
+    script = (WEB / "server-catalog.js").read_text(encoding="utf-8")
+    assert "Подписаться на канал" in script
+    assert "Поддержать донатом" in script
+    assert "На что идут деньги?" in script
+    assert "support-payment-panel" in script
+    assert 'navigator.clipboard.writeText(copyButton.dataset.card)' in script
+    assert "Выделите номер карты выше" in script
+    assert "все профили доступны и без доната или подписки" in script
