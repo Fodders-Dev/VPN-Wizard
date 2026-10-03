@@ -469,7 +469,7 @@
 .vpn-minimal .project-support__content { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .vpn-minimal .project-support__actions { grid-column: 1; grid-row: auto; margin-top: 10px; gap: 12px; align-items: flex-start; }
 .vpn-minimal .project-support__actions a, .vpn-minimal .support-disclosure > summary { padding: 12px 18px; min-height: 46px; border-radius: 8px; font-size: .8125rem; font-weight: 600; }
-.vpn-minimal .project-support__channel { border: 1px solid #a0b493 !important; color: #eef5e8; background: #263121 !important; }
+.vpn-minimal .project-support__actions .project-support__channel { border: 1px solid #a0b493 !important; color: #eef5e8; background: #263121 !important; }
 .vpn-minimal .project-support__payment, .vpn-minimal .support-disclosure > summary { background: #dce9c9 !important; color: #182016; }
 .vpn-minimal .project-support__actions a:hover, .vpn-minimal .support-disclosure > summary:hover { filter: brightness(1.08); }
 .vpn-minimal .support-disclosure { min-width: 0; }
