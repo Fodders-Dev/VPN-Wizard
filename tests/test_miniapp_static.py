@@ -175,7 +175,10 @@ def test_connect_pages_share_one_design_system() -> None:
         html = (ROOT / "web" / "connect" / page).read_text(encoding="utf-8")
         assert '<link rel="stylesheet" href="atlas.css">' in html, page
         assert '<script src="atlas.js"></script>' in html, page
-        assert 'name="color-scheme" content="light dark"' in html, page
+        # The anonymous catalogue has a deliberate dark art direction; signed
+        # legacy pages still follow the shared light/dark OS preference.
+        scheme = "dark" if page == "join.html" else "light dark"
+        assert f'name="color-scheme" content="{scheme}"' in html, page
         # Glass was replaced deliberately: text over a blurred backdrop is the
         # thing people with low vision cannot read, and it read as cheap.
         assert "backdrop-filter" not in html, page
@@ -444,7 +447,7 @@ def test_website_grace_hands_the_same_profile_to_telegram() -> None:
     # Legacy invite APIs remain compatible, but the public entry no longer
     # consumes a code or ties anonymous visitors to a temporary bridge.
     assert 'public-vpn.js' in join
-    assert 'Без регистрации, кодов и лимита устройств' in join
+    assert 'vpn-minimal' in join
     assert 'id="code"' not in join
     assert 'id="grace-countdown" role="timer" aria-live="off"' in installer
     assert 'id="grace-actions" hidden' in installer

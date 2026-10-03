@@ -168,6 +168,12 @@ Client config expectations:
 - Exact support text/link: `VPNW_SUPPORT_DETAILS` / `VPNW_SUPPORT_URL` (HTTPS).
   If absent, the page honestly shows pending details and the voluntary channel
   link. Never invent donation totals, payment information or fundraising progress.
+- Public UI regression checks: `python -m pytest tests/test_public_vpn_ui.py
+  tests/test_miniapp_static.py tests/test_public_access_routes.py -q`.
+  Before deploying visual changes, verify desktop and 320/390px mobile widths,
+  collapsed help/alternate ports, disabled unavailable exits, repeated downloads,
+  explicit independent-device creation and reduced-motion support. Use mock
+  configuration downloads for screenshots; never capture real private keys.
 - A successful WG/AWG setup now requires all runtime readiness checks to pass.
   `--no-check` only hides the CLI check report; it cannot bypass service,
   interface, IP forwarding or UDP listener validation. Failed API jobs retain

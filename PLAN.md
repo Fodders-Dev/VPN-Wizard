@@ -38,4 +38,6 @@
 - [x] Open public anonymous profiles without codes or device limits
 - [x] Verify public download/reuse, monitoring, donation UX and deploy final release
 
+- [x] Переработать публичный интерфейс с Astra: минимальная копия, выразительный дизайн и проверка mobile/desktop перед публикацией
+
 Next: Опубликовать точные реквизиты поддержки после ответа владельца.

@@ -87,6 +87,11 @@ Telegram Stars stay on the Telegram bot balance.
 
 ## Constraints
 - Public VPN entry: no invite, login, channel membership or device-count cap.
+- Public entry layout is intentionally compact: primary exits first, one download
+  action per card; alternative ports, extra-device issuance and install steps are
+  collapsed by default. Donation copy stays optional and short.
+- The anonymous catalogue has a restrained dark visual theme; the shared signed
+  legacy pages retain their existing system light/dark preference.
   Each browser obtains independent encrypted profiles per enabled exit. Explicit
   additional profiles remain independent; repeat downloads reuse the same keys.
   Anonymous storage is separate from paid entitlement reconciliation. Donations

@@ -1,50 +1,57 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" class="vpn-public">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#101312">
 <meta name="referrer" content="no-referrer">
 <link rel="icon" href="data:,">
-<title>Выбрать сервер — Fodder VPN</title>
-<meta name="description" content="Бесплатный Fodder VPN: выбор сервера и личные профили AmneziaWG без кодов и регистрации.">
+<title>Fodder VPN — серверы</title>
+<meta name="description" content="Личные профили AmneziaWG без кодов и регистрации.">
 <link rel="stylesheet" href="atlas.css">
 <link rel="stylesheet" href="server-catalog.css">
 </head>
 <body>
 <script src="atlas.js"></script>
-<a class="skip-link" href="#servers">Перейти к серверам</a>
-<main class="app app--plain vpn-home">
+<a class="skip-link" href="#servers">К серверам</a>
+<main class="app app--plain vpn-home vpn-minimal">
   <header class="vpn-hero">
-    <img class="head__crest head__crest--lg" src="assets/crest.svg" alt="">
-    <p class="vpn-kicker">Fodder VPN · открыт для всех</p>
-    <h1>Интернет без лишних шагов.</h1>
-    <p class="t dim">Выберите сервер и скачайте личный профиль AmneziaWG. Если один не подключается — попробуйте другой. Это бесплатно.</p>
-    <div class="vpn-actions"><a class="btn btn--primary" href="#servers">Выбрать сервер</a><a class="btn btn--secondary" href="#how">Как подключиться</a></div>
-    <p class="t-sm mute">Без регистрации, кодов и лимита устройств. Подписка на канал и поддержка — по желанию.</p>
+    <a class="vpn-brand" href="join.html" aria-label="Fodder VPN — главная"><img src="assets/crest.svg" alt="" width="36" height="36"><span>Fodder<span class="vpn-wordmark-suffix"> VPN</span></span></a>
+    <span class="vpn-free">Бесплатно, для всех</span>
   </header>
-  <section class="vpn-stats" id="network-stats" aria-label="Состояние сети"><p class="dim">Получаем состояние серверов…</p></section>
-  <section id="servers" tabindex="-1">
-    <div class="vpn-server__head"><h2>Выберите свой маршрут</h2><button class="btn btn--secondary" id="refresh" type="button">Обновить</button></div>
-    <p class="t-sm dim" id="monitor-note">Проверяем работу VPN на серверах. Доступность у вашего оператора может отличаться.</p>
+  <section id="servers" tabindex="-1" aria-labelledby="servers-title">
+    <div class="vpn-intro"><div><p class="vpn-eyebrow">AmneziaWG · личный профиль</p><h1 id="servers-title">Куда подключимся?</h1><p class="vpn-intro-copy">Выберите сервер. Скачайте. Подключайтесь.</p></div><a class="vpn-help-link" href="#how">Первый раз? <span aria-hidden="true">↗</span></a></div>
+    <div class="vpn-server__head"><h2>Выберите сервер</h2><div class="vpn-catalog-tools"><span id="network-stats">Проверяем состояние</span><button id="refresh" type="button" aria-label="Обновить состояние серверов"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 6.6M20 4v7h-7"/></svg><span>Обновить</span></button></div></div>
     <p class="note" id="catalog-error" role="status" hidden></p>
-    <ul class="vpn-grid" id="server-grid" role="list"></ul>
+    <ul class="vpn-grid" id="server-grid" role="list" aria-busy="true"></ul>
+    <div class="vpn-measurement-note"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v6M12 7h.01"/></svg><p id="monitor-note">Задержка — от монитора в NL, не с вашего устройства.</p></div>
     <p class="note" id="download-status" role="status" hidden></p>
+    <details class="vpn-extras">
+      <summary><span>Другие варианты подключения</span><span class="vpn-summary-hint">Порты и устройства</span></summary>
+      <p class="vpn-disclosure-copy">Другой порт того же сервера может помочь, если сеть блокирует соединение.</p>
+      <ul class="vpn-grid" id="alternate-grid" role="list"></ul>
+      <div class="vpn-extra-device">
+        <div><label for="extra-server">Ещё одно устройство?</label><p id="extra-device-hint">Создайте отдельный профиль. Старый продолжит работать.</p></div>
+        <select id="extra-server" aria-describedby="extra-device-hint"></select>
+        <button class="btn btn--secondary" id="extra-profile" type="button">Создать профиль</button>
+      </div>
+    </details>
   </section>
-  <section class="card stack vpn-how" id="how">
-    <h2>Три шага — и вы на связи</h2>
-    <ol class="t dim"><li>Установите AmneziaWG для вашего устройства по ссылкам ниже.</li><li>Скачайте профиль сервера выше. Импортируйте файл <code>.conf</code> в AmneziaWG и включите туннель.</li><li>Проверьте сайты. Нет соединения? Выключите туннель и скачайте профиль другого сервера.</li></ol>
+  <details class="vpn-how" id="how">
+    <summary><span>Как подключиться</span><span class="vpn-summary-hint">Три простых шага</span></summary>
+    <ol><li>Установите <strong>AmneziaWG</strong>.</li><li>Откройте в нём скачанный <code>.conf</code>.</li><li>Включите VPN. Нет соединения? Попробуйте другой сервер.</li></ol>
     <div class="vpn-actions">
       <a href="https://github.com/amnezia-vpn/amneziawg-windows-client/releases/latest" target="_blank" rel="noopener noreferrer">Windows</a>
       <a href="https://play.google.com/store/apps/details?id=org.amnezia.awg" target="_blank" rel="noopener noreferrer">Android</a>
       <a href="https://apps.apple.com/app/amneziawg/id6478942365" target="_blank" rel="noopener noreferrer">iPhone / macOS</a>
-      <a href="https://docs.amnezia.org/ru/documentation/instructions/use-amneziawg-app/" target="_blank" rel="noopener noreferrer">Инструкция AmneziaWG</a>
     </div>
-    <p class="t-sm mute">Для каждого устройства нужен отдельный профиль: скачивайте его на самом устройстве. Можно сохранить несколько серверов; включайте только один туннель одновременно. Не публикуйте файл — внутри ваш приватный ключ.</p>
-    <p class="t-sm dim">Нужен профиль для другого устройства? Нажмите «Создать отдельный профиль» на карточке и передайте его лично. Лимита устройств нет.</p>
-    <a href="https://t.me/foddervpnbot" target="_blank" rel="noopener noreferrer">Связаться с нами</a>
-  </section>
-  <noscript><p class="note">Включите JavaScript для просмотра состояния и получения личного профиля. Помощь: @foddervpnbot.</p></noscript>
+    <p class="vpn-key-note">Не делитесь файлом: внутри ваш личный ключ.</p>
+    <a class="vpn-help-link" href="https://t.me/foddervpnbot" target="_blank" rel="noopener noreferrer">Нужна помощь <span aria-hidden="true">↗</span></a>
+  </details>
+  <div id="support-slot"></div>
+  <footer class="vpn-footer"><span>Fodder VPN</span><span>Без регистрации. Без лишнего.</span></footer>
+  <noscript><p>Для скачивания включите JavaScript.</p></noscript>
 </main>
 <script src="server-catalog.js"></script>
 <script src="public-vpn.js"></script>

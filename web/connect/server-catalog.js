@@ -36,14 +36,33 @@
     return node;
   }
 
+  function compactSupportLabel(node, text) {
+    var label = node.querySelector(".support-cta-label");
+    if (!label) {
+      var heart = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      heart.setAttribute("class", "support-heart");
+      heart.setAttribute("viewBox", "0 0 24 24");
+      heart.setAttribute("aria-hidden", "true");
+      heart.setAttribute("focusable", "false");
+      var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", "M12 20S3 14.5 3 8.5C3 3 9 2 12 6c3-4 9-3 9 2.5C21 14.5 12 20 12 20Z");
+      heart.appendChild(path);
+      label = el("span", "support-cta-label");
+      node.replaceChildren(heart, label);
+    }
+    label.textContent = text;
+  }
+
   function support(data) {
     var main = document.querySelector("main");
     if (!main) return;
+    var minimal = main.classList.contains("vpn-minimal");
 
     var section = document.getElementById("project-support");
     if (!section) {
       section = el("section", "project-support");
       section.id = "project-support";
+      if (minimal) section.classList.add("project-support--compact");
       section.setAttribute("aria-labelledby", "support-title");
 
       var art = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -55,9 +74,9 @@
 
       var content = el("div", "project-support__content");
       var kicker = el("p", "project-support__kicker", "НЕОБЯЗАТЕЛЬНО И ОТ СЕРДЦА");
-      var title = el("h2", "", "Поддержать Fodder VPN");
+      var title = el("h2", "", minimal ? "Оставим VPN бесплатным" : "Поддержать Fodder VPN");
       title.id = "support-title";
-      var copy = el("p", "project-support__copy", "Если проект вам полезен, можно помочь с расходами на серверы. Это полностью добровольно: скачивание профилей не зависит от пожертвования или подписки на канал.");
+      var copy = el("p", "project-support__copy", minimal ? "Помочь с серверами можно по желанию." : "Если проект вам полезен, можно помочь с расходами на серверы. Это полностью добровольно: скачивание профилей не зависит от пожертвования или подписки на канал.");
       var details = el("p", "support-details", "Реквизиты скоро появятся");
       details.id = "support-details";
       details.setAttribute("aria-live", "polite");
@@ -67,7 +86,8 @@
       channel.href = "https://t.me/fodders_dev";
       channel.target = "_blank";
       channel.rel = "noopener noreferrer";
-      var payment = el("a", "project-support__payment", "Реквизиты для поддержки");
+      var payment = el("a", "project-support__payment", minimal ? "Поддержать ↗" : "Реквизиты для поддержки");
+      if (minimal) compactSupportLabel(payment, "Поддержать ↗");
       payment.id = "support-link";
       payment.target = "_blank";
       payment.rel = "noopener noreferrer";
@@ -87,12 +107,20 @@
       content.appendChild(kicker);
       content.appendChild(title);
       content.appendChild(copy);
-      content.appendChild(details);
+      if (minimal) {
+        var disclosure = el("details", "support-disclosure");
+        disclosure.id = "support-disclosure";
+        disclosure.appendChild(el("summary", "", "Поддержать"));
+        disclosure.appendChild(details);
+        actions.appendChild(disclosure);
+      } else content.appendChild(details);
       content.appendChild(actions);
-      content.appendChild(motion);
-      section.appendChild(art);
+      if (!minimal) {
+        content.appendChild(motion);
+        section.appendChild(art);
+      }
       section.appendChild(content);
-      main.appendChild(section);
+      (document.getElementById("support-slot") || main).appendChild(section);
       supportSection = section;
 
       if ("IntersectionObserver" in window) {
@@ -109,7 +137,7 @@
     data = data || {};
     var detailsNode = document.getElementById("support-details");
     var detailsText = typeof data.details === "string" ? data.details.trim() : "";
-    detailsNode.textContent = detailsText || "Реквизиты скоро появятся";
+    detailsNode.textContent = detailsText || (minimal ? "Реквизиты пока не добавлены. Поддержать проект можно подпиской на канал." : "Реквизиты скоро появятся");
 
     var paymentLink = document.getElementById("support-link");
     var url = typeof data.url === "string" ? data.url.trim() : "";
@@ -120,17 +148,23 @@
       paymentLink.hidden = true;
       paymentLink.removeAttribute("href");
     }
+    var donationDetails = document.getElementById("support-disclosure");
+    if (donationDetails) {
+      donationDetails.hidden = !paymentLink.hidden && !detailsText;
+      compactSupportLabel(donationDetails.querySelector("summary"), paymentLink.hidden ? "Поддержать" : "Реквизиты");
+    }
     syncSupportMotion();
   }
 
   function syncSupportMotion() {
     if (!supportSection) return;
     var button = supportSection.querySelector(".project-support__motion");
+    if (!button) return; // Compact CTA motion is finite, interaction-only, and controlled by CSS.
     var prefersReduced = !!(reducedMotion && reducedMotion.matches);
     var paused = userPausedMotion || document.hidden || !sectionInView || prefersReduced;
     button.hidden = prefersReduced;
     supportSection.classList.toggle("motion-paused", paused);
-    button.textContent = userPausedMotion ? "Включить анимацию" : "Остановить анимацию";
+    button.textContent = supportSection.classList.contains("project-support--compact") ? (userPausedMotion ? "▶" : "Ⅱ") : (userPausedMotion ? "Включить анимацию" : "Остановить анимацию");
     button.setAttribute("aria-pressed", String(userPausedMotion));
     button.setAttribute("aria-label", userPausedMotion ? "Включить декоративную анимацию" : "Остановить декоративную анимацию");
   }
