@@ -74,6 +74,33 @@ def test_public_download_keeps_private_posts_and_independent_devices() -> None:
     assert "PrivateKey" not in script
 
 
+def test_public_qr_uses_private_post_and_revokes_image_on_close() -> None:
+    html = (WEB / "join.html").read_text(encoding="utf-8")
+    script = (WEB / "public-vpn.js").read_text(encoding="utf-8")
+    assert 'id="profile-qr-dialog"' in html
+    assert 'closedby="any"' in html
+    assert 'aria-labelledby="profile-qr-title"' in html
+    assert "qrDialog.showModal()" in script
+    assert "'/api/public/awg/qr'" in script
+    assert "URL.revokeObjectURL(qrUrl)" in script
+    assert "qrImage.removeAttribute('src')" in script
+    assert "HTMLDialogElement.prototype" in script  # Safari light-dismiss fallback
+
+
+def test_public_outage_warning_precedes_any_profile_request() -> None:
+    script = (WEB / "public-vpn.js").read_text(encoding="utf-8")
+    style = (WEB / "server-catalog.css").read_text(encoding="utf-8")
+    assert "degraded:'Не рекомендуем'" in script
+    assert "unavailable:'Не работает'" in script
+    assert "vpn-server-warning" in script
+    action = script[script.index("async function download"):]
+    assert action.index("window.confirm(country(server)") < action.index("fetch('/api/public/awg/device'")
+    assert "!catalog.selectable(server)" in action
+    assert "healthRank[stateOf(a)]" in script
+    assert "[data-state='degraded']" in style
+    assert "[data-state='unavailable']" in style
+
+
 def test_shared_support_stays_voluntary_and_motion_respects_preferences() -> None:
     script = (WEB / "server-catalog.js").read_text(encoding="utf-8")
     assert "https://t.me/fodders_dev" in script

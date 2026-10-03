@@ -28,12 +28,13 @@ def public_client(monkeypatch):
     return TestClient(server.app, base_url="https://vpn.example"), stub
 
 
-def test_public_config_requires_same_origin_and_bootstrap(public_client):
+@pytest.mark.parametrize("format", ["config", "qr"])
+def test_public_config_requires_same_origin_and_bootstrap(public_client, format):
     client, stub = public_client
-    assert client.post("/api/public/awg/config", json={"server_id": "nl"}).status_code == 403
-    assert client.post("/api/public/awg/config", json={"server_id": "nl"},
+    assert client.post(f"/api/public/awg/{format}", json={"server_id": "nl"}).status_code == 403
+    assert client.post(f"/api/public/awg/{format}", json={"server_id": "nl"},
                        headers={"Origin": "https://evil.example"}).status_code == 403
-    assert client.post("/api/public/awg/config", json={"server_id": "nl"},
+    assert client.post(f"/api/public/awg/{format}", json={"server_id": "nl"},
                        headers={"Origin": "https://vpn.example"}).status_code == 428
     assert not stub.requests
 
@@ -54,28 +55,69 @@ def test_anonymous_download_is_private_and_does_not_need_code_or_account(public_
     assert stub.requests[0]["device_token"] == stub.requests[1]["device_token"]
 
 
-def test_public_rate_limit_and_failures_do_not_leak_secrets(public_client, monkeypatch):
+def test_public_qr_returns_private_png_for_same_device_profile(public_client, monkeypatch):
+    client, stub = public_client
+    headers = {"Origin": "https://vpn.example"}
+    client.post("/api/public/awg/device", json={}, headers=headers)
+    generated = []
+    config_response = client.post("/api/public/awg/config", json={"server_id": "nl"}, headers=headers)
+
+    def build_png(config):
+        generated.append(config)
+        return b"\x89PNG\r\n\x1a\nfixture"
+
+    monkeypatch.setattr(server, "_build_qr_png", build_png)
+    response = client.post("/api/public/awg/qr", json={"server_id": "nl"}, headers=headers)
+    assert response.status_code == 200
+    assert response.content == b"\x89PNG\r\n\x1a\nfixture"
+    assert response.headers["content-type"] == "image/png"
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert "privatekey" not in response.text.lower()
+    assert generated == [config_response.text]
+    assert len(stub.requests) == 2
+    assert stub.requests[0]["device_token"] == stub.requests[1]["device_token"]
+    assert stub.requests[0]["server_id"] == "nl"
+    assert stub.requests[0]["device_token"] == client.cookies[server.PUBLIC_DEVICE_COOKIE]
+
+
+def test_public_qr_rejects_bad_origin_and_unknown_server(public_client):
+    client, stub = public_client
+    headers = {"Origin": "https://vpn.example"}
+    assert client.post("/api/public/awg/qr", json={"server_id": "nl"}).status_code == 403
+    assert client.post("/api/public/awg/qr", json={"server_id": "nl"},
+                       headers={"Origin": "https://evil.example"}).status_code == 403
+    client.post("/api/public/awg/device", json={}, headers=headers)
+    response = client.post("/api/public/awg/qr", json={"server_id": "missing"}, headers=headers)
+    assert response.status_code == 503
+    assert not stub.requests
+
+
+@pytest.mark.parametrize("format", ["config", "qr"])
+def test_public_rate_limit_and_failures_do_not_leak_secrets(public_client, monkeypatch, format):
     client, stub = public_client
     headers = {"Origin": "https://vpn.example"}
     client.post("/api/public/awg/device", json={}, headers=headers)
     def limited(**kwargs):
         raise RateLimitExceeded(15)
     monkeypatch.setattr(stub, "issue", limited)
-    response = client.post("/api/public/awg/config", json={"server_id": "nl"}, headers=headers)
+    response = client.post(f"/api/public/awg/{format}", json={"server_id": "nl"}, headers=headers)
     assert response.status_code == 429 and response.headers["retry-after"] == "15"
     def failure(**kwargs):
         raise RuntimeError("PrivateKey = do-not-expose")
     monkeypatch.setattr(stub, "issue", failure)
-    response = client.post("/api/public/awg/config", json={"server_id": "nl"}, headers=headers)
+    response = client.post(f"/api/public/awg/{format}", json={"server_id": "nl"}, headers=headers)
     assert response.status_code == 502
     assert "PrivateKey" not in response.text
 
 
-def test_new_device_and_disabled_servers_cannot_bypass_bootstrap(public_client):
+@pytest.mark.parametrize("format", ["config", "qr"])
+def test_new_device_and_disabled_servers_cannot_bypass_bootstrap(public_client, format):
     client, _ = public_client
     headers = {"Origin": "https://vpn.example"}
     client.post("/api/public/awg/device", json={}, headers=headers)
-    assert client.post("/api/public/awg/config", json={"server_id": "nl", "new_device": True},
+    assert client.post(f"/api/public/awg/{format}", json={"server_id": "nl", "new_device": True},
                        headers=headers).status_code == 400
-    assert client.post("/api/public/awg/config", json={"server_id": "off"}, headers=headers).status_code == 503
+    assert client.post(f"/api/public/awg/{format}", json={"server_id": "off"}, headers=headers).status_code == 503
     assert client.post("/api/public/awg/device", json={}, headers={**headers, "Sec-Fetch-Site": "cross-site"}).status_code == 403

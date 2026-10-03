@@ -97,8 +97,8 @@ Telegram Stars stay on the Telegram bot balance.
 
 ## Constraints
 - Public VPN entry: no invite, login, channel membership or device-count cap.
-- Public entry layout is intentionally compact: primary exits first, one download
-  action per card; alternative ports, extra-device issuance and install steps are
+- Public entry layout is intentionally compact: healthy primary exits first,
+  download and QR actions per card; alternative ports, extra-device issuance and install steps are
   collapsed by default. Donation copy stays optional and short.
 - The anonymous catalogue has a restrained dark visual theme; the shared signed
   legacy pages retain their existing system light/dark preference.
@@ -108,6 +108,11 @@ Telegram Stars stay on the Telegram bot balance.
   and channel subscriptions are optional, never prerequisites for download.
 - Server status includes measurement age, partial-network notices and honestly
   labelled monitor-side latency; it never claims to be a visitor's own ping.
+- Degraded/unknown exits show an always-visible recommendation to use another
+  server and require explicit confirmation before config or QR issuance.
+  Unavailable/disabled exits show conspicuous outage text and disabled actions.
+  QR uses the same private POST/cookie flow and personal peer as config downloads;
+  images stay in memory only and are removed/revoked when the dialog closes.
 - Systemd required for `wg-quick@wg0`
 - Distros: Debian/Ubuntu and RHEL-like (CentOS/Rocky/Alma/Fedora)
 - Default UDP port: 3478 (configurable per server)

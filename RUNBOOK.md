@@ -163,6 +163,16 @@ Client config expectations:
   cookie is never placed in URLs/JS storage. A retry reuses the same keys;
   explicit `new_device` at bootstrap generates independent profiles without
   disabling earlier ones. HTTPS is required.
+- The public QR button instead POSTs to `/api/public/awg/qr` with the same
+  identity and `server_id`; it reuses the personal peer and returns private PNG
+  with `no-store` headers. No config/key is sent to a third-party QR service.
+  Closing the modal clears the image and revokes its in-memory object URL.
+  Degraded/unknown exits require a warning confirmation for both download and
+  QR; unavailable/disabled exits cannot issue either. Healthy exits sort first.
+  Deployed 2026-10-03 after 541 tests and desktop/320/390px browser checks.
+  Live HTTPS verification proved QR/config equality, repeated-config reuse,
+  private image headers and bad-origin rejection. Source rollback backup:
+  `/opt/vpn-wizard/shared/backups/public-qr-20261003-210900/`.
 - There is no account/device-count cap for public profiles. Burst/hour request
   throttles and bounded SSH concurrency protect the service; current limiter and
   allocation locks require the existing single API worker. Keep paid entitlement

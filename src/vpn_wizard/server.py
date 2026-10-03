@@ -4206,6 +4206,37 @@ def public_awg_config(payload: PublicProfileRequest, request: Request) -> Respon
         _public_failure(exc)
 
 
+@app.post("/api/public/awg/qr")
+def public_awg_qr(payload: PublicProfileRequest, request: Request) -> Response:
+    ip = _public_origin(request)
+    cookie = request.cookies.get(PUBLIC_DEVICE_COOKIE)
+    if not cookie:
+        raise HTTPException(428, "Обновите страницу перед скачиванием.")
+    try:
+        service = _public_service()
+        selected = service.registry.get_server(payload.server_id)
+        if selected is None or selected not in service.registry.offerable:
+            raise UnknownServer()
+        if payload.new_device:
+            raise HTTPException(400, "Сначала создайте отдельный профиль.")
+        issue = service.issue(device_token=cookie, client_ip=ip, server_id=selected.id)
+        response = Response(
+            content=_build_qr_png(issue.config),
+            media_type="image/png",
+            headers={
+                "Cache-Control": "no-store",
+                "Referrer-Policy": "no-referrer",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+        set_public_device_cookie(response, issue.device_cookie)
+        return response
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _public_failure(exc)
+
+
 PORTAL_ENTRY_URL = "/portal/"
 STATIC_ENTRY_HEADERS = {
     "Cache-Control": "no-store, max-age=0",

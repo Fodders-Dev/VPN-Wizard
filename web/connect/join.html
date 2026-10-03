@@ -41,7 +41,7 @@
   </section>
   <details class="vpn-how" id="how">
     <summary><span>Как подключиться</span><span class="vpn-summary-hint">Три простых шага</span></summary>
-    <ol><li>Установите <strong>AmneziaWG</strong>.</li><li>Откройте в нём скачанный <code>.conf</code>.</li><li>Включите VPN. Нет соединения? Попробуйте другой сервер.</li></ol>
+    <ol><li>Установите <strong>AmneziaWG</strong>.</li><li>Откройте скачанный <code>.conf</code> или отсканируйте QR-код.</li><li>Включите VPN. Нет соединения? Попробуйте другой сервер.</li></ol>
     <div class="vpn-actions">
       <a href="https://github.com/amnezia-vpn/amneziawg-windows-client/releases/latest" target="_blank" rel="noopener noreferrer">Windows</a>
       <a href="https://play.google.com/store/apps/details?id=org.amnezia.awg" target="_blank" rel="noopener noreferrer">Android</a>
@@ -53,6 +53,12 @@
   <footer class="vpn-footer"><span>Fodder VPN</span><span>Без регистрации. Без лишнего.</span></footer>
   <noscript><p>Для скачивания включите JavaScript.</p></noscript>
 </main>
+<dialog class="vpn-qr-dialog" id="profile-qr-dialog" closedby="any" aria-labelledby="profile-qr-title">
+  <form method="dialog" class="vpn-qr-head"><h2 id="profile-qr-title">QR-код профиля</h2><button class="vpn-qr-close" type="submit" aria-label="Закрыть QR-код" autofocus>×</button></form>
+  <p id="profile-qr-status" role="status"></p>
+  <img id="profile-qr" class="vpn-profile-qr" alt="Личный QR-код для AmneziaWG" referrerpolicy="no-referrer" hidden>
+  <p class="vpn-qr-private">Не пересылайте QR: внутри ваш личный ключ.</p>
+</dialog>
 <script src="server-catalog.js"></script>
 <script src="public-vpn.js"></script>
 </body>
