@@ -26,6 +26,10 @@ details produce an honest placeholder, not a fake payment number. The support
 block appears below the portal and profile page and never gates downloads.
 On the public `join.html` page it sits before server selection, with compact
 mobile actions and collapsed payment/cost details; the server skip link bypasses it.
+The Telegram `/portal/` entry uses `web/connect/next.html` and `portal.css`.
+Verify signed-in free/paid states, anonymous fallback, narrow widths, disclosure
+navigation and Telegram SDK link handling with mock credentials before rollout.
+No paid entitlement or VPN-interface changes are needed for this redesign.
 
 The 2026-10-03 catalogue was deployed directly to NL after 426 tests and mobile
 browser verification. Original sources and environment are retained in

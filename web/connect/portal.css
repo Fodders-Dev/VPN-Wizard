@@ -1,0 +1,97 @@
+/* Telegram cabinet shares the public catalogue's palette and compact support. */
+@font-face { font-family: Onest; src: url(fonts/onest-cyrillic.woff2) format('woff2'); unicode-range: U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116; font-display: swap; font-weight: 100 900; }
+@font-face { font-family: Onest; src: url(fonts/onest-latin.woff2) format('woff2'); unicode-range: U+0000-00FF; font-display: swap; font-weight: 100 900; }
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { min-height: 100vh; min-height: 100dvh; font: 1rem/1.55 Onest, system-ui, sans-serif; color: var(--text); -webkit-font-smoothing: antialiased; }
+:root { --ink: var(--text); --ink-dim: var(--text-dim); --ink-mute: var(--text-mute); --gold: var(--warn-text); }
+[hidden] { display: none !important; }
+.vpn-minimal.vpn-portal.app { max-width: 760px; margin: 0 auto; padding: calc(18px + env(safe-area-inset-top, 0px)) 24px calc(28px + env(safe-area-inset-bottom, 0px)); }
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-bottom: 22px; border-bottom: 1px solid var(--line); }
+.top img { width: 34px; height: 34px; }
+.top__name { font-size: 1.125rem; font-weight: 650; letter-spacing: -.045em; }
+.top__name span { font-weight: 400; color: var(--text-dim); }
+.top__sub { margin-top: 1px; font-size: .6875rem; color: var(--text-mute); }
+.top__spacer { flex: 1; }
+.chip { max-width: 45%; padding: 5px 9px; border: 1px solid var(--line); border-radius: 6px; font-size: .625rem; text-align: center; color: var(--text-dim); }
+.portal-intro { padding: 26px 0 22px; }
+.portal-intro p { margin: 0 0 8px; font-size: .6875rem; color: var(--text-mute); }
+.vpn-portal .portal-intro h1 { font-size: clamp(1.9rem, 1.4rem + 2vw, 2.35rem); }
+.vpn-portal .project-support { margin-bottom: 16px; padding: 16px 18px; }
+.vpn-portal .project-support__content { display: grid; grid-template-columns: minmax(0, 1fr); }
+.vpn-portal .project-support h2 { font-size: 1rem; }
+.vpn-portal .project-support__actions { grid-column: 1; grid-row: auto; margin-top: 10px; gap: 8px; }
+.vpn-portal .support-purpose { margin-top: 0; }
+.portal-public { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; padding: 18px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); text-decoration: none; }
+.portal-public > span { display: grid; gap: 4px; }
+.portal-public strong { font-size: 1.0625rem; font-weight: 600; }
+.portal-public span span { font-size: .75rem; }
+.portal-public:hover { background: #eef5e3; }
+.portal-public svg { width: 22px; height: 22px; }
+.glass { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.hero { padding: 20px; }
+.hero__status { display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: .6875rem; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+.dot--off { background: var(--text-mute); }
+.dot--warn { background: var(--warn-text); }
+.hero__title { margin: 10px 0 6px; font-size: 1.5rem; line-height: 1.25; font-weight: 500; letter-spacing: -.045em; }
+.hero__meta { margin: 0; font-size: .8125rem; color: var(--text-dim); }
+.hero__facts { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 14px 0 0; }
+.fact { font-size: .6875rem; color: var(--text-mute); }
+.fact b { font-weight: 500; color: var(--text-dim); }
+.btn { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; min-height: 44px; padding: 11px 14px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface-2); color: var(--text); font: inherit; font-size: .8125rem; font-weight: 500; text-decoration: none; text-align: center; cursor: pointer; }
+.btn--primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn:hover:not(:disabled) { filter: brightness(1.08); }
+.btn:disabled { opacity: .6; cursor: wait; }
+.hero .btn { margin-top: 18px; justify-content: space-between; }
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.tile { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 4px 10px; min-height: 88px; padding: 14px; font: inherit; color: var(--text); text-decoration: none; text-align: left; cursor: pointer; }
+.tile:hover, .tile[aria-expanded='true'] { border-color: var(--line-strong); background: var(--surface-2); }
+.vpn-portal .tile__icon { grid-column: 1; grid-row: 1 / 3; width: 20px; height: 20px; color: var(--text-dim); }
+.tile__name { min-width: 0; font-size: .8125rem; font-weight: 500; overflow-wrap: anywhere; }
+.tile__hint { grid-column: 2; font-size: .6875rem; color: var(--text-mute); line-height: 1.5; }
+.tile--wide { grid-column: 1 / -1; min-height: 76px; }
+.soon { display: inline-block; margin-left: 5px; font-size: .5625rem; color: var(--warn-text); }
+.portal-options { margin-top: 16px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.portal-options > summary { display: flex; align-items: center; justify-content: space-between; min-height: 52px; font-size: .8125rem; color: var(--text-dim); list-style: none; cursor: pointer; }
+.portal-options > summary::-webkit-details-marker { display: none; }
+.portal-options[open] > summary > span { transform: rotate(180deg); }
+.portal-options .tiles { margin: 0 0 16px; }
+.section { margin-top: 14px; padding: 18px; }
+.section h2, .offer h2, .locked h2 { margin: 0 0 6px; font-size: 1rem; font-weight: 500; letter-spacing: -.025em; }
+.section .sub, .offer p, .locked p { margin: 0; font-size: .8125rem; line-height: 1.7; color: var(--text-dim); }
+.rowline { display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 12px 0; border-top: 1px solid var(--line); }
+.rowline:first-of-type { border-top: 0; }
+.rowline__ic { width: 24px; flex: none; font-size: 1rem; text-align: center; }
+.rowline__body { display: grid; flex: 1; min-width: 0; gap: 3px; }
+.rowline__t { font-size: .8125rem; font-weight: 500; overflow-wrap: anywhere; }
+.rowline__s { font-size: .6875rem; line-height: 1.55; color: var(--text-mute); overflow-wrap: anywhere; }
+.rowline__aside { display: inline-flex; align-items: center; justify-content: center; flex: none; min-height: 44px; padding: 0 4px; border: 0; background: none; color: var(--text-dim); font: inherit; font-size: .6875rem; }
+button.rowline__aside, a.rowline__aside { cursor: pointer; color: var(--accent); }
+.rowline__aside--ok { color: var(--ok); }
+a.rowline { color: inherit; text-decoration: none; }
+.flag { display: block; width: 24px; height: 17px; border-radius: 3px; object-fit: cover; }
+.flag--code { display: grid; place-items: center; background: var(--surface-2); font-size: .625rem; color: var(--text-dim); }
+.country-flag { display: flex; justify-content: center; }
+.offer { margin-top: 14px; padding: 18px; }
+.offer p { margin-bottom: 14px; }
+.locked { padding: 22px; }
+.locked > img { display: none; }
+.locked .btn { margin-top: 16px; }
+.foot { margin-top: 20px; font-size: .6875rem; color: var(--text-mute); line-height: 1.7; }
+.foot a { color: var(--text-dim); }
+.locked .foot { margin-top: 14px; }
+.preview-note { margin: 12px auto; padding: 10px; max-width: 712px; font-size: .6875rem; color: var(--warn-text); text-align: center; }
+.sk { border-radius: 5px; background: var(--surface-2); }
+.vpn-portal details:not(.support-disclosure):not(.support-purpose):not(.portal-options) > summary { min-height: 44px; cursor: pointer; }
+.vpn-portal .section ol { padding-left: 20px; }
+@media (max-width: 560px) {
+  .vpn-minimal.vpn-portal.app { padding-inline: 16px; }
+  .vpn-portal .project-support { padding: 14px; }
+  .tile { display: block; min-height: 92px; padding: 12px; }
+  .vpn-portal .tile__icon { display: block; margin-bottom: 8px; }
+  .tile__name, .tile__hint { display: block; }
+  .tile__hint { margin-top: 3px; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+@media (forced-colors: active) { .glass, .portal-public, .btn { border: 1px solid ButtonText; } }

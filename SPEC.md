@@ -18,6 +18,10 @@
 - On the public page, compact voluntary support appears below the main heading
   and before server downloads in DOM order. The skip link still goes directly
   to server selection; donation details and costs stay collapsed by default.
+- The Telegram cabinet uses the same minimal dark design and compact support.
+  Public server selection is always available, independent of cabinet login.
+  Personal profiles, paid plans and device entitlements stay separate; secondary
+  family/console/self-hosted controls are collapsed, with accurate expanded states.
 
 ## Goal
 Turn a rented VPS into a fast VPN and anti-block proxy with ready configs/links/QR codes.
