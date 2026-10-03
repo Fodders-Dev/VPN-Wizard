@@ -1,0 +1,10 @@
+[Unit]
+Description=Read-only AmneziaWG server availability snapshot
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/vpn-wizard/app
+EnvironmentFile=/etc/vpn-wizard.env
+ExecStart=/opt/vpn-wizard/venv/bin/python -m vpn_wizard.awg_health
+TimeoutStartSec=90

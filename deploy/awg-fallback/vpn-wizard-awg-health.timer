@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh AmneziaWG availability every two minutes
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=2min
+RandomizedDelaySec=5
+
+[Install]
+WantedBy=timers.target

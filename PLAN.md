@@ -29,4 +29,13 @@
 - [x] Cover missing kernel modules and readiness failures with regression tests
 - [x] Recover the Ubuntu 5.15.0-43 self-hosted VPS and verify handshake, DNS and HTTPS egress
 
-Next: Подтвердить подключение Ильи с прежним конфигом на его устройстве; затем вернуться к циклу Telegram Stars.
+- [x] Add a server catalogue with real, stale-aware VPN statuses and alternate ports
+- [x] Make free server selection consistent across issue, webhook and reconcile
+- [x] Add configurable voluntary support details below the catalogue
+
+- [x] Verify desktop/mobile catalogue and deploy with a rollback backup on NL
+
+- [x] Open public anonymous profiles without codes or device limits
+- [x] Verify public download/reuse, monitoring, donation UX and deploy final release
+
+Next: Опубликовать точные реквизиты поддержки после ответа владельца.

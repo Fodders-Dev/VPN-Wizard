@@ -16,7 +16,7 @@ from vpn_wizard.awg_devices import collect_usage
 from vpn_wizard.bot_api import BotApiClient
 from vpn_wizard.channel_access import ChannelAccessConfig, access_status as channel_access_status
 from vpn_wizard.metrics import collect as collect_metrics, daily_snapshot, day_key
-from vpn_wizard.awg_servers import AwgRegistry
+from vpn_wizard.awg_servers import AwgRegistry, free_server_choice_enabled
 from vpn_wizard.remnawave import RemnawaveClient, RemnawaveConfig, device_limit_of
 from vpn_wizard.web_signup import is_web_account
 
@@ -30,6 +30,7 @@ def reconcile_awg_peers(
     max_suspend_ratio: float = 0.5,
     legacy_server_id: str | None = None,
     free_server_id: str | None = None,
+    free_server_choice: bool = False,
     free_access_lookup: Callable[[int], bool | None] | None = None,
 ) -> dict[str, Any]:
     """Bring retained AWG peers in line with Remnawave entitlements.
@@ -103,8 +104,10 @@ def reconcile_awg_peers(
         free_allowed = bool(
             free_active is True
             and required_slot == 1
-            and free_assigned
-            and server_id == free_assigned
+            and (
+                (free_assigned and server_id == free_assigned)
+                or free_server_choice
+            )
         )
         if isinstance(entitlement, Exception):
             if free_allowed:
@@ -263,6 +266,7 @@ def main() -> int:
         server_services=server_services,
         legacy_server_id=getattr(default, "id", None),
         free_server_id=channel.free_server_id if channel.configured else None,
+        free_server_choice=free_server_choice_enabled(),
         free_access_lookup=(
             lambda telegram_id: (
                 channel_access_status(

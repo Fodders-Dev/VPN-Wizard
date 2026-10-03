@@ -5,197 +5,48 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="referrer" content="no-referrer">
-<meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="data:,">
-<title>Получить Fodder VPN</title>
-<link rel="preload" href="fonts/onest-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+<title>Выбрать сервер — Fodder VPN</title>
+<meta name="description" content="Бесплатный Fodder VPN: выбор сервера и личные профили AmneziaWG без кодов и регистрации.">
 <link rel="stylesheet" href="atlas.css">
-<style>
-  /* Экран рассчитан в том числе на пожилого человека: крупный шрифт,
-     одно поле, одно действие. */
-  .code-field input{
-    text-align:center;font-size:28px;line-height:38px;font-weight:600;
-    letter-spacing:.16em;text-transform:uppercase;padding:16px 0}
-  .facts{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:12px}
-  .facts span{padding:6px 14px;border:1px solid var(--line);border-radius:999px;
-    color:var(--text-dim);font-size:14px}
-</style>
+<link rel="stylesheet" href="server-catalog.css">
 </head>
 <body>
 <script src="atlas.js"></script>
-
-<main class="app app--plain" style="max-width:420px">
-
-  <header style="text-align:center;padding:calc(24px + env(safe-area-inset-top,0px)) 0 0">
-    <img class="head__crest head__crest--lg" src="assets/crest.svg" alt=""
-         style="margin:0 auto 14px;display:block">
-    <h1 class="h1">Получить Fodder VPN</h1>
-    <p class="t dim" id="lead" style="margin-top:8px">Введите код — и получите
-      свой VPN-профиль. Бесплатно и без срока.</p>
-    <div class="facts">
-      <span>Бесплатно</span><span id="fact-hours">Навсегда</span><span>1 устройство</span><span>Европа</span>
-    </div>
+<a class="skip-link" href="#servers">Перейти к серверам</a>
+<main class="app app--plain vpn-home">
+  <header class="vpn-hero">
+    <img class="head__crest head__crest--lg" src="assets/crest.svg" alt="">
+    <p class="vpn-kicker">Fodder VPN · открыт для всех</p>
+    <h1>Интернет без лишних шагов.</h1>
+    <p class="t dim">Выберите сервер и скачайте личный профиль AmneziaWG. Если один не подключается — попробуйте другой. Это бесплатно.</p>
+    <div class="vpn-actions"><a class="btn btn--primary" href="#servers">Выбрать сервер</a><a class="btn btn--secondary" href="#how">Как подключиться</a></div>
+    <p class="t-sm mute">Без регистрации, кодов и лимита устройств. Подписка на канал и поддержка — по желанию.</p>
   </header>
-
-  <div class="card stack" id="resume" hidden style="margin-top:24px">
-    <h2 class="h3">Вы уже получали профиль</h2>
-    <p class="t-sm dim" style="margin:0">Профиль выдаётся один на человека. На этом
-      устройстве он уже есть — продолжайте с того же места.</p>
-    <a class="btn btn--primary" id="resume-link" href="#">
-      <span class="btn__label">Продолжить подключение</span>
-    </a>
-    <button class="btn btn--secondary" id="other-code" type="button">
-      <span class="btn__label">У меня новый код</span>
-    </button>
-  </div>
-
-  <form id="form" novalidate class="stack" style="margin-top:28px">
-    <div>
-      <label class="field-label" for="code" style="text-align:center">Код приглашения</label>
-      <div class="field code-field">
-        <input id="code" name="code" inputmode="latin" autocomplete="off" spellcheck="false"
-               placeholder="ABCD-2345" maxlength="9" aria-describedby="msg">
-      </div>
+  <section class="vpn-stats" id="network-stats" aria-label="Состояние сети"><p class="dim">Получаем состояние серверов…</p></section>
+  <section id="servers" tabindex="-1">
+    <div class="vpn-server__head"><h2>Выберите свой маршрут</h2><button class="btn btn--secondary" id="refresh" type="button">Обновить</button></div>
+    <p class="t-sm dim" id="monitor-note">Проверяем работу VPN на серверах. Доступность у вашего оператора может отличаться.</p>
+    <p class="note" id="catalog-error" role="status" hidden></p>
+    <ul class="vpn-grid" id="server-grid" role="list"></ul>
+    <p class="note" id="download-status" role="status" hidden></p>
+  </section>
+  <section class="card stack vpn-how" id="how">
+    <h2>Три шага — и вы на связи</h2>
+    <ol class="t dim"><li>Установите AmneziaWG для вашего устройства по ссылкам ниже.</li><li>Скачайте профиль сервера выше. Импортируйте файл <code>.conf</code> в AmneziaWG и включите туннель.</li><li>Проверьте сайты. Нет соединения? Выключите туннель и скачайте профиль другого сервера.</li></ol>
+    <div class="vpn-actions">
+      <a href="https://github.com/amnezia-vpn/amneziawg-windows-client/releases/latest" target="_blank" rel="noopener noreferrer">Windows</a>
+      <a href="https://play.google.com/store/apps/details?id=org.amnezia.awg" target="_blank" rel="noopener noreferrer">Android</a>
+      <a href="https://apps.apple.com/app/amneziawg/id6478942365" target="_blank" rel="noopener noreferrer">iPhone / macOS</a>
+      <a href="https://docs.amnezia.org/ru/documentation/instructions/use-amneziawg-app/" target="_blank" rel="noopener noreferrer">Инструкция AmneziaWG</a>
     </div>
-    <button class="btn btn--primary" id="go" type="submit">
-      <span class="btn__label">Получить доступ</span>
-    </button>
-  </form>
-
-  <div class="note" id="msg" role="status" hidden style="margin-top:16px"></div>
-
-  <div class="card stack" style="margin-top:28px">
-    <h2 class="h3">Как это работает</h2>
-    <ol class="t-sm dim" style="margin:0;padding-left:22px">
-      <li>Сайт выдаст ваш собственный профиль AmneziaWG — насовсем.</li>
-      <li>Подключите его по шагам — и пользуйтесь.</li>
-      <li>По желанию: привяжите профиль к Telegram, чтобы он не потерялся
-        при смене телефона.</li>
-    </ol>
-    <p class="t-sm mute">Если код не подошёл — ничего не изменилось: попросите новый
-      у того, кто его прислал.</p>
-  </div>
-
-  <div class="card stack" style="margin-top:16px">
-    <h2 class="h3">Нужен ещё профиль или помощь?</h2>
-    <p class="t-sm dim" style="margin:0">Профиль выдаётся один на человека. Второй —
-      на планшет или для близкого — дают по промокоду: напишите нам, и его пришлют.</p>
-    <a class="btn btn--secondary" href="https://t.me/foddervpnbot?start=promo" target="_blank" rel="noopener noreferrer">
-      <span class="btn__label">Попросить промокод</span>
-    </a>
-    <a class="btn btn--secondary" href="https://t.me/fodders_dev" target="_blank" rel="noopener noreferrer">
-      <span class="btn__label">Подписаться на Fodder’s Dev</span>
-    </a>
-    <p class="t-sm dim" style="margin:0">Подпишитесь на канал: если этот адрес заблокируют,
-      новую рабочую ссылку мы выложим только там — иначе останетесь без VPN.</p>
-    <p class="t-sm mute" style="margin:0">Кнопки открываются в Telegram. Если он не
-      открывается — напишите тому, кто прислал ссылку.</p>
-  </div>
-
+    <p class="t-sm mute">Для каждого устройства нужен отдельный профиль: скачивайте его на самом устройстве. Можно сохранить несколько серверов; включайте только один туннель одновременно. Не публикуйте файл — внутри ваш приватный ключ.</p>
+    <p class="t-sm dim">Нужен профиль для другого устройства? Нажмите «Создать отдельный профиль» на карточке и передайте его лично. Лимита устройств нет.</p>
+    <a href="https://t.me/foddervpnbot" target="_blank" rel="noopener noreferrer">Связаться с нами</a>
+  </section>
+  <noscript><p class="note">Включите JavaScript для просмотра состояния и получения личного профиля. Помощь: @foddervpnbot.</p></noscript>
 </main>
-
-<script>
-(function(){
-  "use strict";
-  var $=function(id){return document.getElementById(id);};
-  var input=$("code"), form=$("form"), go=$("go"), msg=$("msg");
-
-  // Один общий код на семейный чат тает с каждым нажатием, а страницу люди
-  // переоткрывают постоянно. Возврат ведём на уже выданный профиль, пока не
-  // кончилась его 12-часовая связка.
-  var RESUME_KEY="fvpnJoinResume";
-  var saved=null;
-  try{saved=JSON.parse(localStorage.getItem(RESUME_KEY)||"null");}catch(e){}
-  if(saved&&saved.url&&(!saved.until||Date.now()/1000<saved.until)){
-    try{
-      var parsed=new URL(saved.url,location.href);
-      if(parsed.origin===location.origin){
-        $("resume-link").href=parsed.toString();
-        $("resume").hidden=false;
-        // Один профиль в руки: форма прячется, чтобы повторный клик не
-        // тратил общий код. Новый (промо)код вводится по явной кнопке.
-        form.hidden=true;
-        $("other-code").addEventListener("click",function(){
-          form.hidden=false;
-          this.hidden=true;
-          input.focus();
-        });
-      }
-    }catch(e){}
-  }
-
-  function show(text,kind){
-    msg.hidden=false;
-    msg.className="note "+(kind==="ok"?"note--ok":"note--bad");
-    msg.innerHTML=Atlas.icon(kind==="ok"?"check-circle":"alert")+'<p class="note__body"></p>';
-    msg.querySelector(".note__body").textContent=text;
-  }
-  function tidy(value){
-    var clean=(value||"").replace(/[^A-Za-z0-9]/g,"").toUpperCase().slice(0,8);
-    return clean.length>4?clean.slice(0,4)+"-"+clean.slice(4):clean;
-  }
-  input.addEventListener("input",function(){
-    var start=this.selectionStart===this.value.length;
-    this.value=tidy(this.value);
-    if(start)this.setSelectionRange(this.value.length,this.value.length);
-  });
-
-  // Код обычно приходит по SMS уже ссылкой, поэтому подставляем и проверяем его.
-  var params=new URLSearchParams(location.search);
-  var preset=tidy(params.get("code")||"");
-  if(preset.length===9){
-    input.value=preset;
-    fetch("/api/web/invite/"+encodeURIComponent(preset))
-      .then(function(r){return r.json();})
-      .then(function(d){
-        if(d&&d.grace_hours)$("fact-hours").textContent=d.grace_hours+" "+
-          Atlas.plural(d.grace_hours,"час","часа","часов");
-        if(d&&d.valid)show("Код принят. Нажмите «Получить доступ» — это займёт несколько секунд.","ok");
-        else if(d&&d.detail)show(d.detail);
-      })
-      .catch(function(){});
-  }
-
-  form.addEventListener("submit",async function(event){
-    event.preventDefault();
-    var code=tidy(input.value);
-    if(code.length!==9){
-      show("Код состоит из 8 символов, например ABCD-2345.");
-      input.focus();
-      return;
-    }
-    var stop=Atlas.busy(go,"Создаём доступ…");
-    try{
-      var response=await fetch("/api/web/invite/"+encodeURIComponent(code)+"/redeem",{
-        method:"POST",headers:{"Accept":"application/json"}
-      });
-      var body=null;try{body=await response.json();}catch(e){}
-      if(!response.ok||!body||!body.ok){
-        // Неудачная попытка ничего не потратила — говорим об этом прямо, иначе
-        // человек решит, что сжёг код.
-        var detail=body&&body.detail;
-        show(detail?(typeof detail==="object"?(detail.message||"Не удалось активировать."):String(detail)):
-          "Не удалось активировать. Ничего не изменилось, попробуйте ещё раз.");
-        stop();
-        return;
-      }
-      show("Доступ готов. Открываем страницу подключения…","ok");
-      // Страница подключения и есть кабинет: страна, профиль, QR.
-      var target="/connect/awg.html?tid="+encodeURIComponent(body.telegram_id)
-        +"&token="+encodeURIComponent(body.token)
-        +"&server="+encodeURIComponent(body.server_id)
-        +"&free=1&web=1"
-        +"&grace_until="+encodeURIComponent(body.grace_expires_at)
-        +"&bind="+encodeURIComponent(body.bind_url);
-      try{localStorage.setItem(RESUME_KEY,JSON.stringify(
-        {url:target,until:body.grace_expires_at||0}));}catch(e){}
-      location.href=target;
-    }catch(e){
-      show("Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.");
-      stop();
-    }
-  });
-})();
-</script>
+<script src="server-catalog.js"></script>
+<script src="public-vpn.js"></script>
 </body>
 </html>

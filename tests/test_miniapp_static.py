@@ -78,6 +78,7 @@ def test_free_profile_is_visibly_and_technically_scoped_to_netherlands() -> None
     assert "Нидерланды без срока окончания" in portal
     assert 'free:p.get("free")==="1"' in installer
     assert "servers.filter(function(item){return item.id===u.server;})" in installer
+    assert "if(u.free&&u.server&&!d.free_server_choice)" in installer
     assert "Бесплатный профиль работает только на закреплённой за вами стране." in server
     assert 'VPNW_CHANNEL_ACCESS_SERVER_ID' in server or 'ChannelAccessConfig' in server
 
@@ -440,8 +441,11 @@ def test_website_grace_hands_the_same_profile_to_telegram() -> None:
     ).read_text(encoding="utf-8")
     server = (ROOT / "src" / "vpn_wizard" / "server.py").read_text(encoding="utf-8")
 
-    assert 'body.grace_expires_at' in join
-    assert 'body.bind_url' in join
+    # Legacy invite APIs remain compatible, but the public entry no longer
+    # consumes a code or ties anonymous visitors to a temporary bridge.
+    assert 'public-vpn.js' in join
+    assert 'Без регистрации, кодов и лимита устройств' in join
+    assert 'id="code"' not in join
     assert 'id="grace-countdown" role="timer" aria-live="off"' in installer
     assert 'id="grace-actions" hidden' in installer
     assert "payload.lower().startswith('web_')" in handler
@@ -642,14 +646,14 @@ def test_a_failed_check_offers_a_different_port() -> None:
     assert "offerAlt=!ok&&!!altServer" in finish, "предлагаем только когда не вышло"
 
 
-def test_the_fallback_port_is_not_offered_as_a_country() -> None:
+def test_all_ports_are_shown_as_servers_and_fallback_pairing_is_preserved() -> None:
     # Иначе он встанет в список стран рядом с Финляндией и США, а это не страна,
     # а выход из положения — и место ему на экране «не получилось».
     html = (ROOT / "web" / "connect" / "awg.html").read_text(encoding="utf-8")
     load = html.split("function loadServers(){", 1)[1].split("\n  }", 1)[0]
-    assert "return !item.alt_port||item.id===u.server;" in load, (
-        "свой собственный экзит прятать нельзя — список стран станет пустым"
-    )
+    assert "include_unavailable=true" in load
+    assert "item.vpn_port" in load
+    assert "FodderCatalog.selectable(item)" in load
     # Запомнить его нужно ДО фильтрации по закреплённой стране: бесплатному
     # пользователю список стран не показывают вовсе, а кнопка нужна именно ему.
     assert "s.alt_of===u.server" in load, "напарник ищется по паре, а не по флагу"

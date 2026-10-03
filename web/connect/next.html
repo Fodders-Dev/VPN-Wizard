@@ -9,6 +9,8 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="data:,">
 <title>Fodder VPN · кабинет</title>
+<link rel="stylesheet" href="/connect/server-catalog.css">
+<script src="/connect/server-catalog.js"></script>
 <link rel="preload" href="fonts/onest-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
 <style>
 /* ============================================================= токены */
@@ -211,6 +213,8 @@ a.rowline:active{opacity:.7}
     <span class="chip" id="plan-chip" hidden></span>
   </header>
 
+  <a class="btn btn--primary" id="public-vpn-link" href="/connect/join.html" target="_blank" rel="noopener noreferrer" style="margin:16px 0">Бесплатные профили · все серверы · без кодов</a>
+
   <!-- ================================================== вход не выполнен -->
   <section class="glass locked" id="locked" hidden>
     <img src="assets/crest.svg" alt="">
@@ -218,8 +222,7 @@ a.rowline:active{opacity:.7}
     <p>Так мы безопасно поймём, что это вы, и покажем именно ваши устройства
       и профили.</p>
     <a class="btn btn--primary" href="https://t.me/foddervpnbot?start=portal">Открыть в Telegram</a>
-    <p class="foot" style="margin-top:16px">Telegram не открывается? Попросите у знакомого
-      код приглашения — он работает без Telegram.</p>
+    <p class="foot" style="margin-top:16px">Telegram не открывается? Бесплатные профили доступны по кнопке выше — без регистрации и кодов.</p>
   </section>
 
   <!-- ================================================== загрузка -->
@@ -263,7 +266,7 @@ a.rowline:active{opacity:.7}
       </button>
       <button class="glass tile" id="t-countries" type="button">
         <span class="tile__icon">🌍</span>
-        <span class="tile__name">Страны</span>
+        <span class="tile__name">Серверы</span>
         <span class="tile__hint" id="t-countries-hint">…</span>
       </button>
       <button class="glass tile" id="t-family" type="button">
@@ -285,7 +288,7 @@ a.rowline:active{opacity:.7}
 
     <!-- страны -->
     <section class="glass section" id="countries" hidden>
-      <h2>🌍 Страны</h2>
+      <h2>🌍 Серверы VPN</h2>
       <p class="sub" id="countries-sub"></p>
       <div id="countries-list"></div>
     </section>
@@ -402,6 +405,7 @@ a.rowline:active{opacity:.7}
 "use strict";
 var $=function(id){return document.getElementById(id);};
 var PREVIEW=((location.hash||"")+(location.search||"")).indexOf("preview")>=0;
+var catalogFreeChoice=false;
 
 /* ------------------------------------------------------------ telegram */
 var tg=null;
@@ -435,6 +439,10 @@ function openExternal(url){
   return false;
 }
 document.addEventListener("click",function(ev){
+  var publicLink=ev.target&&ev.target.closest?ev.target.closest("#public-vpn-link"):null;
+  if(publicLink&&tg&&typeof tg.openLink==="function"){
+    ev.preventDefault();tg.openLink(new URL("/connect/join.html",location.origin).href);return;
+  }
   var a=ev.target&&ev.target.closest?ev.target.closest("a[href^='https://t.me/']"):null;
   if(a&&openExternal(a.href))ev.preventDefault();
 });
@@ -495,7 +503,7 @@ function render(links,servers,devices){
   var facts="";
   var myServer=(links.channel_access_server_id||"").toLowerCase();
   var names={};(servers||[]).forEach(function(s){names[s.id]=(s.display||s.label||s.id);});
-  if(free&&myServer)facts+=fact("Страна",names[myServer]||myServer.toUpperCase());
+  if(free&&myServer)facts+=fact(catalogFreeChoice?"Серверы":"Страна",catalogFreeChoice?"на выбор":(names[myServer]||myServer.toUpperCase()));
   facts+=fact("Устройств",String(limit));
   if(paid){
     facts+=fact("Тариф","активен");
@@ -539,10 +547,11 @@ function render(links,servers,devices){
 
   var count=(servers||[]).length;
   $("t-countries-hint").textContent=count
-    ?(count+" "+plural(count,"страна","страны","стран"))
+    ?(count+" "+plural(count,"сервер","сервера","серверов"))
     :"Список загрузится позже";
   $("t-countries").onclick=function(){toggle("countries");};
   renderCountries(servers,links,paid,free,myServer);
+  $("countries").hidden=!(paid||free);
 
   $("t-family").onclick=function(){toggle("family");};
   $("family-open").href=links.family_vpn_url||"#";
@@ -558,7 +567,7 @@ function render(links,servers,devices){
     :(free?"Бесплатно: ваш профиль навсегда":"Тарифы и оплата");
   $("plan-sub").textContent=paid
     ?(links.expires_at?"Действует до "+new Date(links.expires_at).toLocaleDateString("ru-RU",{day:"numeric",month:"long"}):"")
-    :(free?"Другие страны и устройства — по подписке":"Страны, устройства, приставки");
+    :(free?(catalogFreeChoice?"Дополнительные устройства — по подписке":"Другие страны и устройства — по подписке"):"Страны, устройства, приставки");
 
   if(links.referral_url){
     $("invite-row").hidden=false;
@@ -579,6 +588,8 @@ function render(links,servers,devices){
 // картинка, а код страны остаётся запасным вариантом.
 function flagHtml(id){
   var code=String(id||"").toLowerCase();
+  code=code.split("-")[0];
+  if(["nl","fi","us"].indexOf(code)<0)return '<span class="flag flag--code">'+code.toUpperCase()+'</span>';
   return '<img class="flag" src="assets/flags/'+encodeURIComponent(code)+'.svg" alt=""'
     +' onerror="this.replaceWith(Object.assign(document.createElement(\'span\'),'
     +'{className:\'flag flag--code\',textContent:\''+code.toUpperCase()+'\'}))">';
@@ -588,7 +599,7 @@ function renderCountries(servers,links,paid,free,myServer){
   if(!servers||!servers.length){list.innerHTML="";return;}
   $("countries-sub").textContent=paid
     ? "Профиль для каждой страны скачивается отдельно и не занимает лишнее устройство."
-    : "Ваша страна включена бесплатно. Остальные открываются платной подпиской.";
+    : (catalogFreeChoice?"Выберите любой работающий сервер. Для него будет отдельный профиль.":"Ваша страна включена бесплатно. Остальные открываются платной подпиской.");
   var html="";
   servers.forEach(function(){ html+=
     '<div class="rowline"><span class="rowline__ic country-flag"></span>'
@@ -600,12 +611,13 @@ function renderCountries(servers,links,paid,free,myServer){
   servers.forEach(function(s,i){
     var row=rows[i];
     var mine=free&&myServer&&s.id===myServer;
-    var allowed=paid||mine;
+    var allowed=(paid||mine||(free&&catalogFreeChoice))&&FodderCatalog.selectable(s);
+    var health=FodderCatalog.status(s);
     row.querySelector(".country-flag").innerHTML=flagHtml(s.id);
-    row.querySelector(".rowline__t").textContent=s.label||s.display||s.id;
-    row.querySelector(".rowline__s").textContent=mine
-      ? "Ваша страна — бесплатно"
-      : (paid ? "Входит в ваш тариф" : "Доступна по подписке");
+    row.querySelector(".rowline__t").textContent=(s.label||s.display||s.id)+(s.vpn_port?" · UDP "+s.vpn_port:"");
+    row.querySelector(".rowline__s").textContent=health.label+(health.detail?" — "+health.detail:"");
+    row.querySelector(".rowline__s").classList.add("server-health","server-health--"+health.state);
+    row.querySelector(".rowline__s").dataset.healthId=s.id;
     var aside=row.querySelector(".rowline__aside");
     if(allowed&&links.personal_vpn_url){
       var a=document.createElement("a");
@@ -621,7 +633,7 @@ function renderCountries(servers,links,paid,free,myServer){
       }catch(e){a.href=links.personal_vpn_url;}
       aside.replaceWith(a);
     }else{
-      aside.textContent="🔒";
+      aside.textContent=FodderCatalog.selectable(s)?"🔒":"Нет выдачи";
     }
   });
 }
@@ -732,7 +744,12 @@ async function start(){
 
     var links=await api("/api/portal/links");
     var servers=[],devices=[];
-    try{servers=(await api("/api/awg/servers")).servers||[];}catch(e){}
+    try{
+      var catalog=await api("/api/awg/servers?include_unavailable=true");
+      servers=catalog.servers||[];catalogFreeChoice=!!catalog.free_server_choice;
+      FodderCatalog.support(catalog.support||{});
+      FodderCatalog.watch();
+    }catch(e){}
     var creds=readCreds(links.personal_vpn_url);
     if(creds&&creds.tid&&creds.token&&(links.subscription_active||links.channel_access_active)){
       try{

@@ -12,13 +12,26 @@ bedolaga_sql_tmp="$backup_dir/bedolaga-$stamp.sql.gz.tmp"
 bedolaga_sql_final="${bedolaga_sql_tmp%.tmp}"
 config_tmp="$backup_dir/vpn-stack-$stamp-config.tgz.tmp"
 config_final="${config_tmp%.tmp}"
+sqlite_snapshot_dir=
 
 cleanup() {
     rm -f \
         "$remnawave_sql_tmp" \
         "$bedolaga_sql_tmp" \
         "$config_tmp"
+    if [[ -n "$sqlite_snapshot_dir" ]] && is_generated_snapshot_dir "$sqlite_snapshot_dir"; then
+        rm -rf -- "$sqlite_snapshot_dir"
+    fi
 }
+
+is_generated_snapshot_dir() {
+    local candidate="$1"
+    local base="${candidate##*/}"
+    [[ "${candidate%/*}" == "$backup_dir" ]] &&
+        [[ "$base" =~ ^\.sqlite-snapshot\.[[:alnum:]]{8}$ ]] &&
+        [[ -d "$candidate" && ! -L "$candidate" ]]
+}
+
 trap cleanup EXIT
 
 docker exec remnawave-db \
@@ -53,7 +66,6 @@ config_paths=(
     opt/bedolaga/migrations/alembic/versions/0021_landing_localized_texts.py
     opt/vpn-wizard/app/src/vpn_wizard/server.py
     opt/vpn-wizard/app/web/miniapp/index.html
-    opt/vpn-wizard/shared/state.db
     etc/vpn-wizard.env
     etc/systemd/system/vpn-wizard.service
     etc/caddy/Caddyfile
@@ -67,13 +79,78 @@ if [[ -f /etc/caddy/fodder-vpn-bot.caddy ]]; then
     config_paths+=(etc/caddy/fodder-vpn-bot.caddy)
 fi
 
-tar -C / -czf "$config_tmp" "${config_paths[@]}"
+sqlite_sources=()
+[[ -f /opt/vpn-wizard/shared/state.db ]] &&
+    sqlite_sources+=(/opt/vpn-wizard/shared/state.db)
+[[ -f /opt/vpn-wizard/shared/public-access.db ]] &&
+    sqlite_sources+=(/opt/vpn-wizard/shared/public-access.db)
+
+sqlite_snapshot_paths=()
+sqlite_tar_args=()
+if (( ${#sqlite_sources[@]} > 0 )); then
+    snapshot_candidate=$(mktemp -d "$backup_dir/.sqlite-snapshot.XXXXXXXX")
+    sqlite_snapshot_dir="$snapshot_candidate"
+    snapshot_base="${snapshot_candidate##*/}"
+    if [[ "${snapshot_candidate%/*}" != "$backup_dir" ||
+          ! "$snapshot_base" =~ ^\.sqlite-snapshot\.[[:alnum:]]{8}$ ||
+          ! -d "$snapshot_candidate" || -L "$snapshot_candidate" ]]; then
+        printf 'Refusing unexpected SQLite snapshot directory path.\n' >&2
+        exit 1
+    fi
+    chmod 700 "$sqlite_snapshot_dir"
+    snapshot_shared_dir="$sqlite_snapshot_dir/opt/vpn-wizard/shared"
+    install -d -m 700 "$snapshot_shared_dir"
+
+    sqlite_backup_args=()
+    for source in "${sqlite_sources[@]}"; do
+        filename="${source##*/}"
+        sqlite_backup_args+=("$source" "$snapshot_shared_dir/$filename")
+        sqlite_snapshot_paths+=("opt/vpn-wizard/shared/$filename")
+    done
+
+    python3 - "$sqlite_snapshot_dir" "${sqlite_backup_args[@]}" <<'PY'
+from pathlib import Path
+import sqlite3
+import sys
+
+snapshot_root = Path(sys.argv[1])
+backup_pairs = sys.argv[2:]
+if not backup_pairs or len(backup_pairs) % 2:
+    raise SystemExit("Invalid SQLite backup arguments")
+
+for source_path, destination_path in zip(backup_pairs[::2], backup_pairs[1::2]):
+    source_uri = Path(source_path).resolve().as_uri() + "?mode=ro"
+    destination = Path(destination_path)
+    try:
+        destination.resolve().relative_to(snapshot_root.resolve())
+    except ValueError:
+        raise SystemExit("SQLite snapshot destination escaped its temporary directory")
+    source = sqlite3.connect(source_uri, uri=True)
+    target = sqlite3.connect(destination)
+    try:
+        source.backup(target)
+        check = target.execute("PRAGMA quick_check").fetchone()
+        if check is None or check[0] != "ok":
+            raise RuntimeError("SQLite online backup integrity check failed")
+    finally:
+        target.close()
+        source.close()
+PY
+    sqlite_tar_args=(-C "$sqlite_snapshot_dir" "${sqlite_snapshot_paths[@]}")
+fi
+
+tar_args=(-C / -czf "$config_tmp" "${config_paths[@]}")
+if (( ${#sqlite_tar_args[@]} > 0 )); then
+    tar_args+=("${sqlite_tar_args[@]}")
+fi
+tar "${tar_args[@]}"
 mv "$config_tmp" "$config_final"
 
 find "$backup_dir" -maxdepth 1 -type f \
     \( -name 'remnawave-*.sql.gz' -o -name 'bedolaga-*.sql.gz' -o -name 'vpn-stack-*-config.tgz' \) \
     -mtime +7 -delete
 
+cleanup
 trap - EXIT
 printf 'remnawave_db=%s\nbedolaga_db=%s\nconfig=%s\n' \
     "$remnawave_sql_final" \

@@ -1,5 +1,37 @@
 # RUNBOOK
 
+## Managed server catalogue
+
+Enable `VPNW_AWG_FREE_SERVER_CHOICE=true` in `/etc/vpn-wizard.env` to let existing
+valid free users select any enabled exit. This is not anonymous access and does
+not add device slots. Keep the original default server unchanged: legacy encrypted
+peer rows are mapped to it. Disabled exits remain registered for expiry handling.
+
+Install `deploy/awg-fallback/vpn-wizard-awg-health.{service,timer}` into
+`/etc/systemd/system/`, reload systemd and enable the timer. The read-only probe
+runs every two minutes; no key rotation or interface restart occurs. Its snapshot
+defaults to `awg-health.json` next to `VPNW_STATE_DB` (override with
+`VPNW_AWG_HEALTH_PATH`). More than ten minutes old means unknown, never green.
+`/api/awg/servers?include_unavailable=true` shows disabled locations too, while
+the default API remains compatible with bot clients that expect offerable exits.
+
+Manual partial-outage notices live in `web/connect/status.json` under
+`server_statuses.<id>={"state":"degraded","detail":"..."}`. Remove the notice
+only after rechecking affected networks. Server-side handshakes do not guarantee
+reachability from every operator; an SSH timeout does not prove a dead VPN.
+
+Set `VPNW_SUPPORT_DETAILS` to owner-approved public bank/card/SBP details and/or
+`VPNW_SUPPORT_URL` to an HTTPS donation link, then restart `vpn-wizard`. Empty
+details produce an honest placeholder, not a fake payment number. The support
+block appears below the portal and profile page and never gates downloads.
+
+The 2026-10-03 catalogue was deployed directly to NL after 426 tests and mobile
+browser verification. Original sources and environment are retained in
+`/opt/vpn-wizard/shared/backups/catalog-20261003-120318/` (owner-only directory).
+No VPN interfaces or keys were restarted/rotated. Commit/push the corresponding
+local source changes before the next unrelated Git-based production update:
+autodeploy resets tracked files to its upstream revision when that revision changes.
+
 ## Prereqs
 - Python 3.10+
 - SSH access with sudo on the VPS
@@ -116,6 +148,26 @@ Client config expectations:
 - `Address = 10.11.0.x/24`
 
 ## Notes
+- Public entry: `/connect/join.html` (also `/vpn`). Enable
+  `VPNW_PUBLIC_ACCESS_ENABLED=true` in the service environment. Public issuance
+  uses an isolated encrypted `public-access.db` beside `state.db`; include both
+  databases and the existing encryption/signing secrets in private backups.
+- Anonymous downloads first POST same-origin JSON to `/api/public/awg/device`,
+  then `/api/public/awg/config` with `server_id`. The Secure HttpOnly identity
+  cookie is never placed in URLs/JS storage. A retry reuses the same keys;
+  explicit `new_device` at bootstrap generates independent profiles without
+  disabling earlier ones. HTTPS is required.
+- There is no account/device-count cap for public profiles. Burst/hour request
+  throttles and bounded SSH concurrency protect the service; current limiter and
+  allocation locks require the existing single API worker. Keep paid entitlement
+  reconciliation pointed only at the original database.
+- Monitor-side latency is ICMP from the NL host, not a user's ping. Local NL
+  latency is intentionally not a fake 0ms; alternate ports share host telemetry.
+  Recent handshakes count peers, not unique people. Interface byte counters
+  reset on peer removal/restart and are not lifetime traffic or availability.
+- Exact support text/link: `VPNW_SUPPORT_DETAILS` / `VPNW_SUPPORT_URL` (HTTPS).
+  If absent, the page honestly shows pending details and the voluntary channel
+  link. Never invent donation totals, payment information or fundraising progress.
 - A successful WG/AWG setup now requires all runtime readiness checks to pass.
   `--no-check` only hides the CLI check report; it cannot bypass service,
   interface, IP forwarding or UDP listener validation. Failed API jobs retain

@@ -1,5 +1,18 @@
 # VPN Wizard - SPEC
 
+## Server catalogue and voluntary support
+
+- Existing signed profile links and the portal show all registered managed exits,
+  including alternate UDP ports and disabled locations (without new issuance).
+- `VPNW_AWG_FREE_SERVER_CHOICE=true` lets authenticated free accounts use any
+  enabled managed exit; the one-device limit and entitlement checks remain.
+  Periodic reconciliation and webhooks apply the same rule.
+- Public availability is based on a matching running AWG interface and recent
+  handshakes, not an SSH-port test. Missing/old telemetry is unknown; partial
+  regional reachability is explicitly marked and never promised for every ISP.
+- Support details are voluntary, publicly configured by the owner, and do not
+  replace subscriptions. Never publish invented payment details.
+
 ## Goal
 Turn a rented VPS into a fast VPN and anti-block proxy with ready configs/links/QR codes.
 
@@ -73,6 +86,13 @@ Telegram Stars stay on the Telegram bot balance.
 - Local (proxy mode, legacy): exported `vless://` link (txt) + QR PNG
 
 ## Constraints
+- Public VPN entry: no invite, login, channel membership or device-count cap.
+  Each browser obtains independent encrypted profiles per enabled exit. Explicit
+  additional profiles remain independent; repeat downloads reuse the same keys.
+  Anonymous storage is separate from paid entitlement reconciliation. Donations
+  and channel subscriptions are optional, never prerequisites for download.
+- Server status includes measurement age, partial-network notices and honestly
+  labelled monitor-side latency; it never claims to be a visitor's own ping.
 - Systemd required for `wg-quick@wg0`
 - Distros: Debian/Ubuntu and RHEL-like (CentOS/Rocky/Alma/Fedora)
 - Default UDP port: 3478 (configurable per server)

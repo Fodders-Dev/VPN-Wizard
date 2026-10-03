@@ -10,6 +10,8 @@
 <title>Fodder VPN · подключение</title>
 <link rel="preload" href="fonts/onest-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="atlas.css">
+<link rel="stylesheet" href="server-catalog.css">
+<script src="server-catalog.js"></script>
 <style>
   /* Ровно одна платформа на экране. Без этих двух правил инструкции всех
      четырёх систем рисуются одновременно и шаг установки превращается
@@ -194,12 +196,19 @@ body.has-nag-bar{padding-bottom:64px}
         <button class="row" type="button" id="row-country">
           <svg class="i i--badge" aria-hidden="true"><use href="#i-globe"/></svg>
           <span class="row__body">
-            <span class="row__sub">Страна</span>
+            <span class="row__sub">Сервер</span>
             <span class="row__title" id="srv"><b id="srv-name">Определяем…</b></span>
           </span>
           <svg class="i row__chev" aria-hidden="true"><use href="#i-chevron"/></svg>
         </button>
       </div>
+
+      <section class="server-overview">
+        <h2>Выберите сервер</h2>
+        <p class="t-sm mute" id="server-status-note">Проверяем состояние VPN…</p>
+        <button class="btn btn--secondary" type="button" id="refresh-servers">Обновить статусы</button>
+        <ul id="server-overview" role="list"></ul>
+      </section>
 
       <div class="stack" style="margin-top:12px">
         <a class="btn btn--primary" id="dl" href="#" download>
@@ -419,12 +428,12 @@ body.has-nag-bar{padding-bottom:64px}
          заработал. До этого любые тарифы только пугают. -->
     <p class="t-sm mute" id="check-upsell" hidden style="text-align:center">Дальше — по желанию:
       в боте <a href="https://t.me/foddervpnbot" target="_blank" rel="noopener noreferrer">@foddervpnbot</a>
-      есть другие страны (Финляндия, США) и профили на несколько устройств.</p>
+      есть профили на несколько устройств и семейный доступ.</p>
   </section>
 
   <!-- ============================================== выбор страны -->
   <section id="view-country" class="stack" hidden>
-    <h1 class="h1">Выберите страну</h1>
+    <h1 class="h1">Выберите сервер</h1>
     <div class="stack" id="server-picker">
       <div class="stack" id="server-buttons">
         <div class="sk sk--block"></div><div class="sk sk--block"></div>
@@ -1004,11 +1013,14 @@ body.has-nag-bar{padding-bottom:64px}
 
   function loadServers(){
     if(!window.fetch) return;
-    fetch(base()+"/api/awg/servers",{credentials:"omit"})
+    fetch(base()+"/api/awg/servers?include_unavailable=true",{credentials:"omit",cache:"no-store"})
       .then(function(r){return r.ok?r.json():null;})
       .then(function(d){
         if(!d||!d.servers||!d.servers.length){$("server-buttons").innerHTML="";return;}
         var servers=d.servers;
+        FodderCatalog.support(d.support||{});
+        FodderCatalog.watch();
+        $("server-status-note").textContent=d.status_note||"";
         // Напарник текущего экзита — в любую сторону: с основного порта на
         // запасной и обратно. Иначе человек, которому не подошёл как раз
         // запасной, остаётся вообще без вариантов.
@@ -1023,24 +1035,31 @@ body.has-nag-bar{padding-bottom:64px}
         // положения, и место ему на экране «не получилось». Но если человек
         // на нём уже сидит, прятать нельзя — список окажется пустым, и он
         // останется без выбора вообще.
-        servers=servers.filter(function(item){return !item.alt_port||item.id===u.server;});
-        if(u.free&&u.server){
+        if(u.free&&u.server&&!d.free_server_choice){
           servers=servers.filter(function(item){return item.id===u.server;});
           if(!servers.length){$("server-buttons").innerHTML="";return;}
           $("row-country").disabled=true;
           $("row-country").querySelector(".row__sub").textContent="Бесплатно подписчикам";
           $("row-country").querySelector(".row__chev").hidden=true;
         }
-        var pick=servers[0];
+        var pick=null;
         var wanted=u.server||d.default_server;
-        for(var i=0;i<servers.length;i++){ if(servers[i].id===wanted){ pick=servers[i]; break; } }
+        for(var i=0;i<servers.length;i++){
+          if(servers[i].id===wanted&&FodderCatalog.selectable(servers[i])){pick=servers[i];break;}
+        }
+        if(!pick)pick=servers.find(function(item){return FodderCatalog.selectable(item);});
         var box=$("server-buttons");box.textContent="";
+        var overview=$("server-overview");overview.textContent="";
         function mark(){
           var items=box.querySelectorAll(".pick");
           for(var j=0;j<items.length;j++)
             items[j].setAttribute("aria-checked",items[j].dataset.id===u.server?"true":"false");
+          overview.querySelectorAll("button").forEach(function(node){
+            node.setAttribute("aria-pressed",node.dataset.id===u.server?"true":"false");
+          });
         }
         function select(item){
+          if(!item||!FodderCatalog.selectable(item))return;
           pick=item;u.server=item.id;render();
           $("srv-name").textContent=item.display||item.label||item.id;
           $("use-country").querySelector(".btn__label").textContent=
@@ -1051,30 +1070,47 @@ body.has-nag-bar{padding-bottom:64px}
         }
         for(var k=0;k<servers.length;k++){
           (function(item,index){
+            var health=FodderCatalog.status(item);
             var flag=(item.display||"").trim().split(" ")[0];
-            var name=item.label||item.id;
+            var name=(item.label||item.id)+(item.vpn_port?" · UDP "+item.vpn_port:"");
             var node=document.createElement("button");
             node.type="button";node.className="pick";node.dataset.id=item.id;
             node.setAttribute("role","radio");node.setAttribute("aria-checked","false");
+            node.disabled=!FodderCatalog.selectable(item);
             node.innerHTML=
               // Windows не рисует эмодзи-флаги: 🇳🇱 показывается буквами «NL».
               // Поэтому флаг — картинка, а эмодзи/код остаётся запасным вариантом,
               // если для страны ещё нет своего SVG.
-              '<span class="pick__flag"><img src="assets/flags/'+
-                encodeURIComponent(String(item.id||"").toLowerCase())+'.svg" alt=""'+
-                ' onerror="this.replaceWith(document.createTextNode('+
-                "'"+Atlas.escapeHtml(flag===name?String(item.id||"").toUpperCase():flag)+"'"+
-                '))"></span>'+
+              '<span class="pick__flag"></span>'+
               '<span class="pick__body"><span class="pick__name">'+Atlas.escapeHtml(name)+'</span>'+
-              (index===0?'<span class="badge">'+Atlas.icon("star")+'Рекомендуем</span>':'')+
+              (item.id===d.default_server&&health.state==="online"?'<span class="badge">'+Atlas.icon("star")+'Рекомендуем</span>':'')+
               '</span>'+
-              '<span class="pick__status pick__status--ok">Доступен</span>'+
+              '<span class="pick__status server-health server-health--'+health.state+'" data-health-id="'+Atlas.escapeHtml(item.id)+'">'+Atlas.escapeHtml(health.label)+'</span>'+
               '<span class="pick__radio">'+Atlas.icon("check","i--sm")+'</span>';
+            var flagBox=node.querySelector(".pick__flag"),flagCode=String(item.id||"").split("-")[0];
+            if(["nl","fi","us"].indexOf(flagCode)>=0){
+              var image=document.createElement("img");image.alt="";image.src="assets/flags/"+flagCode+".svg";
+              image.onerror=function(){flagBox.textContent=flagCode.toUpperCase();};flagBox.appendChild(image);
+            }else flagBox.textContent=flagCode.toUpperCase();
             node.addEventListener("click",function(){select(item);});
+            node.dataset.catalogId=item.id;
             box.appendChild(node);
+            var li=document.createElement("li"),button=document.createElement("button");
+            button.type="button";button.dataset.id=item.id;button.disabled=node.disabled;
+            button.dataset.catalogId=item.id;
+            button.setAttribute("aria-pressed","false");
+            var title=document.createElement("span");title.textContent=name;button.appendChild(title);
+            var state=document.createElement("span");state.className="server-health server-health--"+health.state;
+            state.dataset.healthId=item.id;
+            state.textContent=health.label+(health.checked?" · проверено "+new Date(health.checked*1000).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"}):"");
+            button.appendChild(state);
+            var detail=document.createElement("span");detail.className="server-health";detail.dataset.healthDetail=item.id;detail.textContent=health.detail;button.appendChild(detail);
+            button.addEventListener("click",function(){select(item);$("dl-done").hidden=true;});
+            li.appendChild(button);overview.appendChild(li);
           })(servers[k],k);
         }
-        select(pick);
+        if(pick){select(pick);$("use-country").disabled=false;}
+        else{$("server-status-note").textContent="Сейчас нет серверов для выдачи профиля. Попробуйте позже.";$("use-country").disabled=true;}
 
         // Между пресетами отличаются только настройки на стороне клиента, поэтому
         // смена пресета — это другой файл того же ключа, без похода на сервер.
@@ -1116,7 +1152,7 @@ body.has-nag-bar{padding-bottom:64px}
           $("preset-box").hidden=false;
         }
       })
-      .catch(function(){});
+      .catch(function(){ $("server-status-note").textContent="Не удалось обновить статусы. Доступность сервера не подтверждена."; });
   }
 
   /* -------------------------------------------------- проверка связи */
@@ -1259,6 +1295,7 @@ body.has-nag-bar{padding-bottom:64px}
   if(u.cfg&&!u.access)render();
   syncDownloadState();
   loadServers();
+  $("refresh-servers").addEventListener("click",loadServers);
   loadAccess();
   // Ссылка уже персональная — значит человек пришёл за профилем, а не за
   // рассказом про установку. Но шаг 1 всё равно первый: без приложения

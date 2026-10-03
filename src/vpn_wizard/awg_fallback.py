@@ -27,6 +27,7 @@ import tempfile
 from typing import Any, Callable, Optional
 
 from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
+from vpn_wizard.awg_lock import serialized_mutation
 
 
 _SERVER_ID_RE = re.compile(r"[^a-z0-9-]")
@@ -264,6 +265,7 @@ class AwgFallbackService:
             return self.account.awg_delete_peer(telegram_id)
         return self.account.awg_delete_server_peer(telegram_id, self.server_id)
 
+    @serialized_mutation
     def issue(self, telegram_id: int, *, remnawave_uuid: Optional[str] = None) -> dict[str, Any]:
         """Return an AWG config for this user, provisioning the peer on first use.
 
@@ -301,6 +303,7 @@ class AwgFallbackService:
         )
         return {"config": config_text, "client_name": name, "reused": False}
 
+    @serialized_mutation
     def suspend(self, telegram_id: int) -> bool:
         """Disable access while retaining the peer keys and encrypted config."""
         telegram_id = int(telegram_id)
@@ -313,6 +316,7 @@ class AwgFallbackService:
         self._set_status(telegram_id, "suspended")
         return True
 
+    @serialized_mutation
     def resume(self, telegram_id: int) -> bool:
         """Re-enable a retained peer so the existing client config works again."""
         telegram_id = int(telegram_id)
@@ -326,6 +330,7 @@ class AwgFallbackService:
         self._set_status(telegram_id, "active")
         return True
 
+    @serialized_mutation
     def revoke(self, telegram_id: int) -> bool:
         """Permanently remove the AWG peer and its stored config.
 

@@ -10,6 +10,8 @@
 <title>Fodder VPN</title>
 <link rel="preload" href="fonts/onest-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="atlas.css">
+<link rel="stylesheet" href="server-catalog.css">
+<script src="server-catalog.js"></script>
 <style>
   .plan-row{display:grid;gap:2px}
   .plan-row strong{font-size:18px;font-weight:600}
@@ -755,6 +757,7 @@
       .then(function(r){return r.ok?r.json():null;})
       .then(function(d){
         if(!d||!d.servers)return;
+        FodderCatalog.support(d.support||{});
         for(var i=0;i<d.servers.length;i++){
           var item=d.servers[i];
           serverNames[item.id]=item.display||item.label||item.id;

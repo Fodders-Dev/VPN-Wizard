@@ -59,7 +59,14 @@ from vpn_wizard.awg_devices import (
     peer_id_for_slot,
     revoke_device,
 )
-from vpn_wizard.awg_servers import AwgRegistry, AwgRegistryError, apply_preset
+from vpn_wizard.awg_servers import AwgRegistry, AwgRegistryError, apply_preset, free_server_choice_enabled
+from vpn_wizard.awg_health import public_catalog
+from vpn_wizard.awg_lock import AwgMutationBusy
+from vpn_wizard.public_access import (
+    PUBLIC_DEVICE_COOKIE, PublicAccessService, PublicAccessNotConfigured,
+    InvalidDeviceToken, UnknownServer, RateLimitExceeded, SlidingWindowRateLimiter,
+    public_access_enabled, set_public_device_cookie, validate_same_origin,
+)
 from vpn_wizard.bot_api import BotApiClient, referral_link, subscription_facts_of
 from vpn_wizard.console_proxy import (
     ConsoleProxyConfig,
@@ -3084,6 +3091,10 @@ def _awg_authorise_entitlement(
         server_id is None
         or server_id == assigned
         or _awg_same_place(assigned, server_id)
+        or (
+            free_server_choice_enabled()
+            and any(s.id == server_id for s in _awg_registry().offerable)
+        )
     )
     if entitlement.free.active and free_slot and free_location:
         return 1, entitlement.free.kind or "member"
@@ -3343,14 +3354,17 @@ def _awg_webhook_apply(action: str, telegram_id: int) -> None:
                 free_allowed = bool(
                     free.active
                     and peer_id == int(telegram_id)
-                    and logical_server_id == free_server_id
+                    and (
+                        logical_server_id == free_server_id
+                        or free_server_choice_enabled()
+                    )
                 )
                 if paid_active or free_allowed:
                     service.resume(peer_id)
                 elif billing_unknown or (
                     free_unknown
                     and peer_id == int(telegram_id)
-                    and logical_server_id == free_server_id
+                    and (logical_server_id == free_server_id or free_server_choice_enabled())
                 ):
                     # A failed policy lookup is not evidence that access expired.
                     continue
@@ -4074,7 +4088,7 @@ def owner_metrics(telegram_id: int, token: str) -> JSONResponse:
 
 
 @app.get("/api/awg/servers")
-async def awg_servers() -> JSONResponse:
+async def awg_servers(include_unavailable: bool = False) -> JSONResponse:
     """Exit servers and obfuscation profiles offered to the bot/website picker.
 
     Public on purpose: it carries labels only. ``AwgRegistry.public()`` is what
@@ -4087,7 +4101,109 @@ async def awg_servers() -> JSONResponse:
         raise HTTPException(status_code=500, detail=f"AWG registry is invalid: {exc}") from exc
     if not registry.configured:
         raise HTTPException(status_code=503, detail="AWG fallback is not configured.")
-    return JSONResponse(registry.public())
+    body = public_catalog(registry, include_unavailable=include_unavailable)
+    body["public_access"] = public_access_enabled()
+    return JSONResponse(
+        body,
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+_PUBLIC_SERVICE = None
+_PUBLIC_SERVICE_LOCK = threading.Lock()
+_PUBLIC_LIMITER = SlidingWindowRateLimiter()
+
+
+def _public_service() -> PublicAccessService:
+    global _PUBLIC_SERVICE
+    if not public_access_enabled():
+        raise HTTPException(503, "Публичная выдача временно отключена.")
+    with _PUBLIC_SERVICE_LOCK:
+        if _PUBLIC_SERVICE is None:
+            _PUBLIC_SERVICE = PublicAccessService(
+                _awg_registry(), build_account_store(),
+                AwgFallbackConfig.from_env().link_secret, limiter=_PUBLIC_LIMITER,
+            )
+        return _PUBLIC_SERVICE
+
+
+class PublicProfileRequest(BaseModel):
+    server_id: str = Field(min_length=1, max_length=40)
+    new_device: bool = False
+
+
+class PublicDeviceRequest(BaseModel):
+    new_device: bool = False
+
+
+def _public_origin(request: Request) -> str:
+    if request.headers.get("sec-fetch-site") == "cross-site" or not validate_same_origin(
+        request.headers.get("origin"), {str(request.base_url).rstrip("/")}
+    ):
+        raise HTTPException(403, "Скачивайте профиль с сайта Fodder VPN.")
+    ip = request.client.host if request.client else ""
+    if ip in {"127.0.0.1", "::1"}:
+        ip = (request.headers.get("x-forwarded-for") or ip).split(",")[0].strip()
+    return ip
+
+
+def _public_failure(exc: Exception):
+    if isinstance(exc, AwgMutationBusy):
+        raise HTTPException(429, "Сервер готовит другой профиль. Повторите через несколько секунд.",
+                            headers={"Retry-After": "5"}) from None
+    if isinstance(exc, RateLimitExceeded):
+        raise HTTPException(429, "Слишком много запросов. Подождите немного и повторите.",
+                            headers={"Retry-After": str(exc.retry_after)}) from None
+    if isinstance(exc, InvalidDeviceToken):
+        raise HTTPException(403, "Не удалось восстановить профиль. Обновите страницу.") from None
+    if isinstance(exc, UnknownServer):
+        raise HTTPException(503, "Этот сервер недоступен. Выберите другой.") from None
+    if isinstance(exc, PublicAccessNotConfigured):
+        raise HTTPException(503, "Выдача профилей пока недоступна.") from None
+    raise HTTPException(502, "Не удалось подготовить профиль. Повторите или выберите другой сервер.") from None
+
+
+@app.post("/api/public/awg/device")
+def public_awg_device(payload: PublicDeviceRequest, request: Request) -> Response:
+    ip = _public_origin(request)
+    try:
+        service = _public_service()
+        token = service.bootstrap_device(device_token=request.cookies.get(PUBLIC_DEVICE_COOKIE),
+                                         new_device=payload.new_device, client_ip=ip)
+        response = JSONResponse({"ok": True}, headers={"Cache-Control": "no-store"})
+        set_public_device_cookie(response, token)
+        return response
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _public_failure(exc)
+
+
+@app.post("/api/public/awg/config")
+def public_awg_config(payload: PublicProfileRequest, request: Request) -> Response:
+    ip = _public_origin(request)
+    cookie = request.cookies.get(PUBLIC_DEVICE_COOKIE)
+    if not cookie:
+        raise HTTPException(428, "Обновите страницу перед скачиванием.")
+    try:
+        service = _public_service()
+        selected = service.registry.get_server(payload.server_id)
+        if selected is None or selected not in service.registry.offerable:
+            raise UnknownServer()
+        if payload.new_device:
+            raise HTTPException(400, "Сначала создайте отдельный профиль.")
+        issue = service.issue(device_token=cookie, client_ip=ip, server_id=selected.id)
+        response = Response(issue.config, media_type="application/octet-stream", headers={
+            "Content-Disposition": f'attachment; filename="{issue.filename}"',
+            "Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
+            "X-Content-Type-Options": "nosniff",
+        })
+        set_public_device_cookie(response, issue.device_cookie)
+        return response
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _public_failure(exc)
 
 
 PORTAL_ENTRY_URL = "/portal/"
@@ -4111,6 +4227,13 @@ def legacy_miniapp_entry() -> RedirectResponse:
 def _entry_file(directory: str, filename: str = "index.html") -> FileResponse:
     root = Path(__file__).resolve().parents[2]
     return FileResponse(root / "web" / directory / filename, headers=STATIC_ENTRY_HEADERS)
+
+
+@app.get("/", include_in_schema=False)
+@app.get("/vpn", include_in_schema=False)
+@app.get("/vpn/", include_in_schema=False)
+def public_vpn_entry() -> RedirectResponse:
+    return RedirectResponse("/connect/join.html", status_code=307, headers=STATIC_ENTRY_HEADERS)
 
 
 @app.get("/portal", include_in_schema=False)

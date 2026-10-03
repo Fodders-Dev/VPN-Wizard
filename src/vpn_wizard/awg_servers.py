@@ -36,6 +36,13 @@ _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,15}$")
 LEGACY_SERVER_ID = "main"
 
 
+def free_server_choice_enabled() -> bool:
+    """Opt in to country switching without changing authentication/device limits."""
+    return os.getenv("VPNW_AWG_FREE_SERVER_CHOICE", "").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+
+
 class AwgRegistryError(ValueError):
     """Raised when the configured registry is malformed."""
 
