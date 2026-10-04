@@ -2,6 +2,18 @@
 
 ## Managed server catalogue
 
+NL public primary is the existing `nl-alt` exit on UDP 3478; `nl` on UDP 443
+remains an alternate choice. Do not swap server IDs, interfaces, stored keys or
+`VPNW_AWG_DEFAULT_SERVER`: that legacy default selects existing encrypted rows.
+Promotion is registry presentation metadata only, not a VPN restart:
+`python deploy/scripts/prefer-nl-3478.py --apply --backup-dir <new-private-dir>`
+on NL, followed by `systemctl restart vpn-wizard`. The helper preserves the
+existing listen ports and credentials and backs up `/etc/vpn-wizard.env`.
+Applied 2026-10-04; private environment backup:
+`/opt/vpn-wizard/shared/backups/nl-primary-3478-20261004/vpn-wizard.env`.
+Verified live 3478 profile endpoint, matching QR, same-key reuse and unchanged
+443/3478 interface listeners; regression suite: 544 passed.
+
 Enable `VPNW_AWG_FREE_SERVER_CHOICE=true` in `/etc/vpn-wizard.env` to let existing
 valid free users select any enabled exit. This is not anonymous access and does
 not add device slots. Keep the original default server unchanged: legacy encrypted

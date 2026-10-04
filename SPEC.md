@@ -108,6 +108,9 @@ Telegram Stars stay on the Telegram bot balance.
   and channel subscriptions are optional, never prerequisites for download.
 - Server status includes measurement age, partial-network notices and honestly
   labelled monitor-side latency; it never claims to be a visitor's own ping.
+- Netherlands public primary uses the existing `nl-alt` UDP 3478 interface.
+  Existing `nl` UDP 443 profiles remain valid; its catalogue card is an alternate.
+  Promoting a port must preserve IDs and the legacy storage default.
 - Degraded/unknown exits show an always-visible recommendation to use another
   server and require explicit confirmation before config or QR issuance.
   Unavailable/disabled exits show conspicuous outage text and disabled actions.
