@@ -49,3 +49,9 @@ def test_promote_existing_port_is_idempotent_and_preserves_legacy(monkeypatch):
 def test_wrong_existing_port_is_rejected(replacement):
     with pytest.raises(ValueError):
         module.promote(environment().replace('"listen_port": 3478', '"listen_port": ' + replacement))
+
+
+@pytest.mark.parametrize("default", ["", "VPNW_AWG_DEFAULT_SERVER=nl-alt\n"])
+def test_implicit_or_different_storage_default_is_rejected(default):
+    with pytest.raises(ValueError):
+        module.promote(environment().replace("VPNW_AWG_DEFAULT_SERVER=nl\n", default))

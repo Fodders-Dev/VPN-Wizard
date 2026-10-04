@@ -10,6 +10,10 @@ import shutil
 
 def promote(text: str) -> str:
     lines = text.splitlines(keepends=True)
+    defaults = [line.partition("=")[2].strip().strip("'\"") for line in lines
+                if line.partition("=")[0].strip() == "VPNW_AWG_DEFAULT_SERVER"]
+    if defaults != ["nl"]:
+        raise ValueError("Explicit legacy VPNW_AWG_DEFAULT_SERVER=nl is required")
     matches = [i for i, line in enumerate(lines)
                if line.partition("=")[0].strip() == "VPNW_AWG_SERVERS"]
     if len(matches) != 1:
