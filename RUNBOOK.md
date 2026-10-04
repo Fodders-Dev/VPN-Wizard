@@ -2,6 +2,15 @@
 
 ## Managed server catalogue
 
+FI provider address changed to `46.38.156.229` on 2026-10-04. SSH host keys
+match the previous trusted host. Public `fi` remains `awg9` (70 retained peers);
+`fi-alt` remains `awg8`. UDP 3478 is occupied by personal `awg0`, so changing
+only the public registry port would produce profiles with the wrong server key.
+Back up runtime and persistent configs before any owner-approved port swap.
+Cached downloads now render the current registry endpoint without rotating keys;
+previously imported profiles must be re-downloaded or have Endpoint updated.
+Do not remove the partial-outage overlay until an RF client test succeeds.
+
 NL public primary is the existing `nl-alt` exit on UDP 3478; `nl` on UDP 443
 remains an alternate choice. Do not swap server IDs, interfaces, stored keys or
 `VPNW_AWG_DEFAULT_SERVER`: that legacy default selects existing encrypted rows.

@@ -265,6 +265,35 @@ class AwgFallbackService:
             return self.account.awg_delete_peer(telegram_id)
         return self.account.awg_delete_server_peer(telegram_id, self.server_id)
 
+    def _current_endpoint(self, config_text: str) -> str:
+        """Refresh the exit address on download without rotating retained keys.
+
+        Registry identity and interface MUST still refer to the same keypair.
+        This supports an IP/listen-port move, not migration to a different exit.
+        """
+        host = self.config.host.strip()
+        port = self.config.listen_port
+        if not host or not port:
+            return config_text
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        endpoint = f"{host}:{int(port)}"
+        in_peer = False
+        result = []
+        for line in config_text.splitlines(keepends=True):
+            section = re.match(r"^\s*\[([^]]+)\]", line)
+            if section:
+                in_peer = section.group(1).strip().lower() == "peer"
+            if in_peer:
+                line = re.sub(
+                    r"^(\s*Endpoint\s*=\s*)[^\s#;]+",
+                    lambda match: match.group(1) + endpoint,
+                    line,
+                    flags=re.IGNORECASE,
+                )
+            result.append(line)
+        return "".join(result)
+
     @serialized_mutation
     def issue(self, telegram_id: int, *, remnawave_uuid: Optional[str] = None) -> dict[str, Any]:
         """Return an AWG config for this user, provisioning the peer on first use.
@@ -273,6 +302,8 @@ class AwgFallbackService:
         """
         telegram_id = int(telegram_id)
         existing = self._get_peer(telegram_id)
+        if existing and existing.get("config"):
+            existing["config"] = self._current_endpoint(existing["config"])
         if existing and existing.get("status") == "active" and existing.get("config"):
             return {"config": existing["config"], "client_name": existing["client_name"], "reused": True}
         if existing and existing.get("status") == "suspended" and existing.get("config"):
@@ -293,7 +324,7 @@ class AwgFallbackService:
             }
 
         name = peer_name(telegram_id, self.server_id)
-        config_text = self._provision(name)
+        config_text = self._current_endpoint(self._provision(name))
         self._save_peer(
             telegram_id,
             client_name=name,

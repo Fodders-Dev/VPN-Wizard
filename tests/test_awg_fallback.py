@@ -7,6 +7,7 @@ from pathlib import Path
 
 from vpn_wizard.account import AccountStore
 from vpn_wizard.awg_fallback import (
+    AwgFallbackConfig,
     AwgFallbackService,
     device_owner_slot,
     device_peer_id,
@@ -137,6 +138,41 @@ def test_peer_name() -> None:
 
 
 # --- service orchestration ----------------------------------------------------
+
+
+def test_ip_port_move_refreshes_retained_profile_without_reprovision(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    old = ("[Interface]\r\nPrivateKey = retained-client-key\r\n"
+           "Address = 10.99.0.2/32\r\n[Peer]\r\nPublicKey = retained-server-key\r\n"
+           "Endpoint = 193.222.97.50:443 # exit\r\nAllowedIPs = 0.0.0.0/0\r\n")
+    store.awg_save_server_peer(77, "fi", client_name="sub-77-fi",
+                              remnawave_uuid="old-uuid", config=old, status="active")
+    config = AwgFallbackConfig("46.38.156.229", "root", 22, None, None, None,
+                               3478, "test", "awg9")
+    calls = []
+    service = AwgFallbackService(store, config, server_id="fi",
+                                 provision=lambda name: calls.append(name) or old,
+                                 resume=lambda name: True)
+    expected = old.replace("193.222.97.50:443", "46.38.156.229:3478")
+    assert service.issue(77)["config"] == expected
+    assert service.issue(77)["reused"] is True
+    assert calls == []
+    store.awg_set_server_status(77, "fi", "suspended")
+    assert service.issue(77)["config"] == expected
+    assert store.awg_get_server_peer(77, "fi")["config"] == expected
+    assert service.issue(78)["config"] == expected
+    assert calls == ["sub-78-fi"]
+
+
+def test_endpoint_refresh_preserves_unknown_port_and_handles_ipv6(tmp_path: Path) -> None:
+    config = AwgFallbackConfig("2001:db8::1", "root", 22, None, None, None,
+                               3478, "test")
+    service = AwgFallbackService(_store(tmp_path), config)
+    original = "[Interface]\n# Endpoint = old:443\n[Peer]\nEndpoint = old:443\n"
+    assert service._current_endpoint(original) == original.replace(
+        "\nEndpoint = old:443", "\nEndpoint = [2001:db8::1]:3478")
+    config.listen_port = None
+    assert service._current_endpoint(original) == original
 
 def test_issue_provisions_once_then_reuses(tmp_path: Path) -> None:
     store = _store(tmp_path)

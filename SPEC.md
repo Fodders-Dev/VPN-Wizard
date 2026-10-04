@@ -2,6 +2,9 @@
 
 ## Server catalogue and voluntary support
 
+- After an exit IP/listen-port change, downloads and QR reuse the same client
+  and server keys with the current registry endpoint, including retained profiles.
+  Moving an endpoint must not silently move a server ID to a different keypair.
 - Existing signed profile links and the portal show all registered managed exits,
   including alternate UDP ports and disabled locations (without new issuance).
 - `VPNW_AWG_FREE_SERVER_CHOICE=true` lets authenticated free accounts use any
