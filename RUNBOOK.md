@@ -4,8 +4,8 @@
 
 FI provider address changed to `46.38.156.229` on 2026-10-04. SSH host keys
 match the previous trusted host. Public `fi` remains `awg9` (70 retained peers);
-`fi-alt` remains `awg8`. UDP 3478 is occupied by personal `awg0`, so changing
-only the public registry port would produce profiles with the wrong server key.
+`fi-alt` remains `awg8`. Before migration UDP 3478 was occupied by personal
+`awg0`; changing only the registry port would give the wrong server key.
 Back up runtime and persistent configs before any owner-approved port swap.
 Cached downloads now render the current registry endpoint without rotating keys;
 previously imported profiles must be re-downloaded or have Endpoint updated.
@@ -15,6 +15,22 @@ Applied the FI address-only migration in production; backup:
 Public config/repeated same-key download/QR verified at `46.38.156.229:443`;
 FI alternative remains UDP 4500. Actual RF VPN handshake remains unverified.
 Regression run: 548 passed, plus three endpoint migration helper tests passed.
+
+The owner approved swapping ports on 2026-10-04. Applied
+`deploy/scripts/swap-fi-ports.py --apply --backup-dir <new-private-dir>` on FI:
+public `awg9` now uses UDP 3478; personal `awg0` uses UDP 443. Other interfaces
+remain unchanged. The helper backs up every touched configuration, changes only
+the runtime listen ports (no interface restart), updates persistent/client
+configs atomically and checks public-key/peer identities. It rolls back on error.
+FI rollback copies: `/root/fi-3478-backup-20261004-105009/` (74 files).
+Then applied `move-fi-endpoint.py --port 3478 --apply` on NL, under the same
+cross-process AWG mutation lock. Environment rollback copy:
+`/opt/vpn-wizard/shared/backups/fi-port-20261004-105009/vpn-wizard.env`.
+Verified live/persistent listeners, matching public server key, repeated profile
+reuse and QR at `46.38.156.229:3478`; all 554 tests passed. Monitoring refreshed.
+No RF handshake yet; retain the warning until the owner tests a fresh download.
+An old imported personal awg0 profile needs Endpoint `46.38.156.229:443`;
+an old public fi profile needs Endpoint `46.38.156.229:3478` or re-import.
 
 NL public primary is the existing `nl-alt` exit on UDP 3478; `nl` on UDP 443
 remains an alternate choice. Do not swap server IDs, interfaces, stored keys or
