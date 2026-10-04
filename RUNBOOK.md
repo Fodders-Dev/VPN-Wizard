@@ -10,6 +10,11 @@ Back up runtime and persistent configs before any owner-approved port swap.
 Cached downloads now render the current registry endpoint without rotating keys;
 previously imported profiles must be re-downloaded or have Endpoint updated.
 Do not remove the partial-outage overlay until an RF client test succeeds.
+Applied the FI address-only migration in production; backup:
+`/opt/vpn-wizard/shared/backups/fi-address-20261004-103610/`.
+Public config/repeated same-key download/QR verified at `46.38.156.229:443`;
+FI alternative remains UDP 4500. Actual RF VPN handshake remains unverified.
+Regression run: 548 passed, plus three endpoint migration helper tests passed.
 
 NL public primary is the existing `nl-alt` exit on UDP 3478; `nl` on UDP 443
 remains an alternate choice. Do not swap server IDs, interfaces, stored keys or
