@@ -28,9 +28,17 @@ cross-process AWG mutation lock. Environment rollback copy:
 `/opt/vpn-wizard/shared/backups/fi-port-20261004-105009/vpn-wizard.env`.
 Verified live/persistent listeners, matching public server key, repeated profile
 reuse and QR at `46.38.156.229:3478`; all 554 tests passed. Monitoring refreshed.
-No RF handshake yet; retain the warning until the owner tests a fresh download.
+At migration time no RF handshake existed; the warning was retained pending a client test.
 An old imported personal awg0 profile needs Endpoint `46.38.156.229:443`;
 an old public fi profile needs Endpoint `46.38.156.229:3478` or re-import.
+
+On 2026-10-05 the owner confirmed internet access through the fresh `FVPN-fi`
+profile from the RF client. The screenshot shows a recent handshake and traffic
+in both directions at `46.38.156.229:3478`; exit-side counters independently
+confirm a live handshake and several MB transferred. Removed the stale `fi`
+partial-outage override: the primary card now follows ordinary runtime telemetry.
+Kept an explicit caution for `fi-alt` UDP 4500, which was not client-tested.
+This is evidence for the tested network, not a guarantee for every RF operator.
 
 NL public primary is the existing `nl-alt` exit on UDP 3478; `nl` on UDP 443
 remains an alternate choice. Do not swap server IDs, interfaces, stored keys or
