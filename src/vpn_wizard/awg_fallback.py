@@ -168,6 +168,9 @@ class AwgFallbackConfig:
     listen_port: Optional[int]
     link_secret: str
     interface: Optional[str] = None
+    # The SSH host can be loopback/private on the controller; this is the
+    # address that belongs in a user's WireGuard Endpoint line.
+    public_host: Optional[str] = None
 
     @classmethod
     def from_env(cls) -> "AwgFallbackConfig":
@@ -185,6 +188,7 @@ class AwgFallbackConfig:
             listen_port=_int("VPNW_AWG_FALLBACK_LISTEN_PORT"),
             link_secret=(os.getenv("VPNW_AWG_LINK_SECRET") or "").strip(),
             interface=(os.getenv("VPNW_AWG_FALLBACK_INTERFACE") or "").strip() or None,
+            public_host=(os.getenv("VPNW_AWG_FALLBACK_PUBLIC_HOST") or "").strip() or None,
         )
 
     @classmethod
@@ -200,6 +204,7 @@ class AwgFallbackConfig:
             listen_port=server.listen_port,
             link_secret=link_secret,
             interface=getattr(server, "interface", None),
+            public_host=getattr(server, "endpoint_host", None),
         )
 
     @property
@@ -271,7 +276,7 @@ class AwgFallbackService:
         Registry identity and interface MUST still refer to the same keypair.
         This supports an IP/listen-port move, not migration to a different exit.
         """
-        host = self.config.host.strip()
+        host = (self.config.public_host or self.config.host).strip()
         port = self.config.listen_port
         if not host or not port:
             return config_text

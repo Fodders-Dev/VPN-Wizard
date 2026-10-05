@@ -58,12 +58,6 @@ def _host_key(host: str) -> str:
         return host.lower().rstrip(".")
 
 
-def _monitor_host(registry: AwgRegistry) -> str | None:
-    monitor_id = os.getenv("VPNW_AWG_MONITOR_SERVER_ID", "nl").strip().lower()
-    monitor = next((s for s in registry.servers if s.id == monitor_id), None)
-    return _host_key(monitor.host) if monitor else None
-
-
 def measure_latency(host: str, *, local: bool = False, now: int | None = None) -> dict[str, Any]:
     """ICMP reference from the NL monitor process, never client/tunnel latency.
 
@@ -160,15 +154,17 @@ def probe(server: Any, *, now: int | None = None, service: Any = None) -> dict[s
 
 def refresh(registry: AwgRegistry, *, path: Path | None = None) -> dict[str, Any]:
     servers = [s for s in registry.servers if s.usable]
-    hosts = list(dict.fromkeys(_host_key(s.host) for s in servers if s.enabled))
-    local_host = _monitor_host(registry)
+    hosts = list(dict.fromkeys(_host_key(s.endpoint_host) for s in servers if s.enabled))
     with ThreadPoolExecutor(max_workers=4) as pool:
-        latency_jobs = {host: pool.submit(measure_latency, host, local=host == local_host) for host in hosts}
+        # Ping the public endpoint even for the monitor's own exit. This is a
+        # real reachability measurement of the address users receive, not the
+        # SSH/loopback address used to administer the box.
+        latency_jobs = {host: pool.submit(measure_latency, host, local=False) for host in hosts}
         results = list(pool.map(probe, servers))
         latencies = {host: job.result() for host, job in latency_jobs.items()}
     for server, result in zip(servers, results):
         if server.enabled:
-            result["latency"] = latencies[_host_key(server.host)]
+            result["latency"] = latencies[_host_key(server.endpoint_host)]
     data = {"servers": dict(zip((s.id for s in servers), results))}
     target = path or snapshot_path()
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -198,10 +194,9 @@ def _public_latency(value: Any, stamp: int, *, local: bool = False) -> dict[str,
         "ms": ms if fresh and valid and valid_ms and scope == "remote" else None,
         "origin": "nl_monitor", "method": "icmp",
         "scope": scope,
-        "local": scope == "local",
+        "local": False,
         "checked_at": checked if fresh and valid else None,
-        "label": ("Локальный сервер монитора в Нидерландах; задержка не сравнивается"
-                  if scope == "local" else "ICMP от монитора в Нидерландах; не пинг с вашего устройства"),
+        "label": "Пинг от монитора в Нидерландах; не с вашего устройства",
     }
 
 
@@ -215,12 +210,11 @@ def public_catalog(registry: AwgRegistry, *, include_unavailable: bool = False, 
         notices = {}
     body = registry.public()
     choices = [s for s in registry.servers if s.usable] if include_unavailable else registry.offerable
-    local_host = _monitor_host(registry)
     # Group alternate ports by the actual configured host, never publish its IP
     # or a hash of it. Prefer the primary's public ID regardless of list order.
     groups: dict[str, str] = {}
     for server in sorted((s for s in registry.servers if s.usable), key=lambda s: (s.alt_port, s.id)):
-        groups.setdefault(_host_key(server.host), server.id)
+        groups.setdefault(_host_key(server.endpoint_host), server.id)
     body["servers"] = []
     for server in choices:
         row = snapshot.get(server.id, {})
@@ -265,7 +259,10 @@ def public_catalog(registry: AwgRegistry, *, include_unavailable: bool = False, 
                 "recent_connections_label": "Число пиров с handshake за 5 минут до проверки",
                 "available_ports": ports,
                 "available_ports_label": "UDP-порты интерфейса VPN; доступность из вашей сети не проверена",
-                "latency": _public_latency(row.get("latency"), stamp, local=_host_key(server.host) == local_host),
+                # The value is always a ping from the NL monitor to the public
+                # endpoint. It must not turn into the confusing word
+                # "Локально" merely because SSH happens on the same controller.
+                "latency": _public_latency(row.get("latency"), stamp, local=False),
                 "traffic": {"received_bytes": rx, "sent_bytes": tx,
                             "scope": "interface_current_peers", "direction": "server",
                             "label": "Сумма счётчиков текущих пиров; сбрасывается при перезапуске или удалении пиров"}

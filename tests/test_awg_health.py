@@ -204,7 +204,7 @@ def test_local_or_invalid_host_never_runs_ping(monkeypatch, host, local, scope):
     assert result["ms"] is None and result["scope"] == scope
 
 
-def test_refresh_pings_shared_host_once_and_marks_nl_local(tmp_path, monkeypatch):
+def test_refresh_pings_public_host_once_and_keeps_nl_comparable(tmp_path, monkeypatch):
     calls = []
     def latency(host, *, local):
         calls.append((host, local))
@@ -215,7 +215,7 @@ def test_refresh_pings_shared_host_once_and_marks_nl_local(tmp_path, monkeypatch
     registry = AwgRegistry((node(), node(id="nl-alt", alt_port=True, listen_port=3478),
                             node(id="fi", host="192.0.2.2"), node(id="off", host="192.0.2.3", enabled=False)), (), "nl")
     result = refresh(registry, path=tmp_path / "health.json")["servers"]
-    assert sorted(calls) == [("192.0.2.1", True), ("192.0.2.2", False)]
+    assert sorted(calls) == [("192.0.2.1", False), ("192.0.2.2", False)]
     assert result["nl"]["latency"] == result["nl-alt"]["latency"]
     assert result["fi"]["state"] == "ready"  # ICMP silence is not VPN downtime.
     assert "latency" not in result["off"]
@@ -241,7 +241,7 @@ def test_public_aggregates_group_ports_and_drop_private_payload(monkeypatch):
     assert public["latency"]["ms"] == 12.5
     assert public["latency"]["local"] is False
     assert public["latency"]["origin"] == "nl_monitor"
-    assert "не пинг с вашего устройства" in public["latency"]["label"]
+    assert "не с вашего устройства" in public["latency"]["label"]
     encoded = json.dumps(body)
     assert all(s not in encoded for s in ("PRIVATE", "192.0.2.1", "secret"))
 
@@ -260,17 +260,17 @@ def test_public_latency_rejects_forged_stale_or_local_numbers(monkeypatch, chang
     assert "PRIVATE" not in json.dumps(result)
 
 
-def test_nl_and_same_host_alternatives_never_publish_comparable_latency(monkeypatch):
+def test_nl_and_same_host_alternatives_publish_the_public_ping(monkeypatch):
     monkeypatch.setenv("VPNW_AWG_MONITOR_SERVER_ID", "nl")
     row = {"state": "online", "checked_at": 950,
            "latency": {"ms": 0.03, "origin": "nl_monitor", "method": "icmp",
                        "scope": "remote", "checked_at": 950}}
     body = catalog_with(monkeypatch, row, servers=(node(), node(id="nl-alt", alt_port=True)))
-    for server_row in body["servers"]:
-        assert server_row["health"]["latency"]["ms"] is None
-        assert server_row["health"]["latency"]["scope"] == "local"
-        assert server_row["health"]["latency"]["local"] is True
-        assert "Локальный сервер" in server_row["health"]["latency"]["label"]
+    server_row = body["servers"][0]
+    assert server_row["health"]["latency"]["ms"] == 0.03
+    assert server_row["health"]["latency"]["scope"] == "remote"
+    assert server_row["health"]["latency"]["local"] is False
+    assert "Пинг от монитора" in server_row["health"]["latency"]["label"]
 
 
 def test_valid_empty_runtime_has_zero_measured_counters():

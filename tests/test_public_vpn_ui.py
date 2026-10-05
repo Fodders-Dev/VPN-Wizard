@@ -74,6 +74,12 @@ def test_public_download_keeps_private_posts_and_independent_devices() -> None:
     assert "PrivateKey" not in script
 
 
+def test_public_latency_shows_monitor_ping_not_local_placeholder() -> None:
+    script = (WEB / "public-vpn.js").read_text(encoding="utf-8")
+    assert "Пинг от NL-монитора" in script
+    assert "Локально" not in script
+
+
 def test_public_qr_uses_private_post_and_revokes_image_on_close() -> None:
     html = (WEB / "join.html").read_text(encoding="utf-8")
     script = (WEB / "public-vpn.js").read_text(encoding="utf-8")

@@ -58,9 +58,11 @@ VPNW_AWG_LINK_SECRET="<random string>"
 # Multi-exit registry. Use one dedicated SSH key which every AWG node authorizes.
 # The first/default server reuses the legacy peer table; other ids get independent
 # encrypted profiles, so one Telegram user can install all countries at once.
+# `host` is the SSH/admin address; set `public_host` when users must receive a
+# different public endpoint (for example, a controller-managed local exit).
 VPNW_AWG_DEFAULT_SERVER="nl"
 VPNW_AWG_SERVERS='[
-  {"id":"nl","label":"Нидерланды","flag":"🇳🇱","host":"127.0.0.1","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":443},
+  {"id":"nl","label":"Нидерланды","flag":"🇳🇱","host":"127.0.0.1","public_host":"77.67.89.164","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":443},
   {"id":"fi","label":"Финляндия","flag":"🇫🇮","host":"203.0.113.20","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":3478},
   {"id":"tr","label":"Турция","flag":"🇹🇷","host":"203.0.113.30","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":3478},
   {"id":"us","label":"США","flag":"🇺🇸","host":"203.0.113.40","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":3478}

@@ -28,6 +28,7 @@ _ENV_VARS = (
     "VPNW_AWG_FALLBACK_SSH_KEY",
     "VPNW_AWG_FALLBACK_SSH_KEY_CONTENT",
     "VPNW_AWG_FALLBACK_LISTEN_PORT",
+    "VPNW_AWG_FALLBACK_PUBLIC_HOST",
 )
 
 
@@ -91,6 +92,16 @@ def test_json_registry_parses_all_servers(monkeypatch: pytest.MonkeyPatch) -> No
     assert registry.get_server("fi").host == "2.2.2.2"
     assert registry.get_server("FI").host == "2.2.2.2"  # ids are case-insensitive
     assert registry.get_server("tr").display == "🇹🇷 Турция"
+
+
+def test_registry_keeps_private_ssh_host_separate_from_public_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        "VPNW_AWG_SERVERS",
+        _servers_json({"id": "nl", "host": "127.0.0.1", "public_host": "77.67.89.164", "password": "p"}),
+    )
+    server = AwgRegistry.from_env().default_server
+    assert server.host == "127.0.0.1"
+    assert server.endpoint_host == "77.67.89.164"
 
 
 def test_unknown_server_id_is_rejected_not_silently_defaulted(monkeypatch: pytest.MonkeyPatch) -> None:

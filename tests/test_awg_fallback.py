@@ -174,6 +174,14 @@ def test_endpoint_refresh_preserves_unknown_port_and_handles_ipv6(tmp_path: Path
     config.listen_port = None
     assert service._current_endpoint(original) == original
 
+
+def test_endpoint_uses_public_host_when_ssh_host_is_loopback(tmp_path: Path) -> None:
+    config = AwgFallbackConfig("127.0.0.1", "root", 22, None, None, None,
+                               3478, "test", None, "77.67.89.164")
+    service = AwgFallbackService(_store(tmp_path), config)
+    original = "[Interface]\nPrivateKey = key\n[Peer]\nEndpoint = old:443\n"
+    assert service._current_endpoint(original).endswith("Endpoint = 77.67.89.164:3478\n")
+
 def test_issue_provisions_once_then_reuses(tmp_path: Path) -> None:
     store = _store(tmp_path)
     calls: list[str] = []

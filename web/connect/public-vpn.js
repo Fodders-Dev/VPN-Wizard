@@ -28,11 +28,11 @@
   function stateOf(server){return server.enabled===false?'maintenance':staleCatalog?'unknown':catalog.status(server).state;}
   function caution(state){return {degraded:'Не рекомендуем: у части пользователей нет соединения. Выберите другой сервер.',unavailable:'Не работает. Профили временно недоступны — выберите другой сервер.',maintenance:'Сервер отключён. Выберите другой сервер.',unknown:'Работа не подтверждена. Лучше выбрать сервер со статусом «Работает».'}[state]||'';}
   function metrics(server,card){
-    var h=server.health||{}, latency=h.latency||server.latency||{}, local=latency.local===true||latency.scope==='local';
-    var measured=!staleCatalog&&typeof latency.ms==='number'&&Number.isFinite(latency.ms)&&!local;
-    var block=el('div','vpn-latency'), value=el('p','vpn-latency-value',staleCatalog?'—':local?'Локально':measured?String(Math.round(latency.ms)):'—');
+    var h=server.health||{}, latency=h.latency||server.latency||{};
+    var measured=!staleCatalog&&typeof latency.ms==='number'&&Number.isFinite(latency.ms);
+    var block=el('div','vpn-latency'), value=el('p','vpn-latency-value',staleCatalog?'—':measured?String(Math.round(latency.ms)):'—');
     if(measured)value.appendChild(el('span','','мс'));
-    block.appendChild(value);block.appendChild(el('p','vpn-latency-label',local&&!staleCatalog?'Сам NL-монитор':'От NL-монитора'));card.appendChild(block);
+    block.appendChild(value);block.appendChild(el('p','vpn-latency-label',staleCatalog?'Нет свежего замера':latency.label||'Пинг от NL-монитора'));card.appendChild(block);
     var meta=el('div','vpn-card-meta');
     meta.appendChild(el('span','',Number.isInteger(server.vpn_port)?'UDP '+server.vpn_port:'UDP'));
     card.appendChild(meta);

@@ -208,6 +208,9 @@ class AwgServer:
     # when a box is unreachable (e.g. the provider blocks its UDP port) — dropping
     # the entry outright would strand those peers with permanent access.
     enabled: bool = True
+    # SSH may use a private/loopback address while clients must use the public
+    # address. Keep both explicit so 127.0.0.1 never leaks into a profile.
+    public_host: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AwgServer":
@@ -233,6 +236,7 @@ class AwgServer:
             max_free=_opt_int(data.get("max_free")),
             alt_port=bool(data.get("alt_port", False)),
             alt_of=(_clean(data.get("alt_of")).lower() or None),
+            public_host=_clean(data.get("public_host")) or None,
         )
 
     @property
@@ -243,6 +247,11 @@ class AwgServer:
     @property
     def display(self) -> str:
         return f"{self.flag} {self.label}".strip()
+
+    @property
+    def endpoint_host(self) -> str:
+        """Address written into client profiles and used for public telemetry."""
+        return self.public_host or self.host
 
     def public(self) -> dict[str, Any]:
         """Safe to expose to the bot/website — never leaks host or credentials."""
@@ -274,6 +283,7 @@ def _legacy_server() -> Optional[AwgServer]:
         key_path=_clean(os.getenv("VPNW_AWG_FALLBACK_SSH_KEY")) or None,
         key_content=_clean(os.getenv("VPNW_AWG_FALLBACK_SSH_KEY_CONTENT")) or None,
         listen_port=_opt_int(os.getenv("VPNW_AWG_FALLBACK_LISTEN_PORT")),
+        public_host=_clean(os.getenv("VPNW_AWG_FALLBACK_PUBLIC_HOST")) or None,
     )
 
 
