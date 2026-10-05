@@ -246,7 +246,7 @@ def public_catalog(registry: AwgRegistry, *, include_unavailable: bool = False, 
         detail = note.get("detail")
         body["servers"].append({
             **server.public(), "enabled": server.enabled,
-            "host_group": groups[_host_key(server.host)],
+            "host_group": groups[_host_key(server.endpoint_host)],
             "vpn_port": server.listen_port,
             "health": {
                 "state": state, "label": STATES[state],
