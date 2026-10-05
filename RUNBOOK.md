@@ -26,6 +26,16 @@ Rollback backup before release: `/var/backups/bedolaga/free-ux-20261005T055439Z/
 (both PostgreSQL databases plus web/Bedolaga overrides). Menu-layout snapshots
 are separately saved under `/var/backups/bedolaga` by the configuration helper.
 
+Deployed 2026-10-05: web/bot release `85f6887`. Full tests: 569 passed.
+Live public NL download is 445 bytes with unique safe `.conf` filename; live QR
+decoded as 890×890. Test profile contents were not logged and the local QA file
+was removed. Bot is healthy, menu routes to `/portal/`, commands are
+`free/wizard/help`, active rows are public catalog URL + self-hosted WebApp.
+All 20 menu button definitions remain, including legacy inactive ones.
+Persistent old-layout snapshot:
+`/opt/bedolaga/data/backups/free-menu-20261005T060904Z/`
+(also copied into the private rollback directory above).
+
 ## Managed server catalogue
 
 FI provider address changed to `46.38.156.229` on 2026-10-04. SSH host keys

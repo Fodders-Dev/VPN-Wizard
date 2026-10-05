@@ -12,7 +12,11 @@ filename repair live at `/connect/guide.html`. Old private flows are preserved a
 After deploying the web release, back up Bedolaga/Postgres and the two override
 files before applying the free menu. The handler is a read-only host bind mount;
 recreate only the `bot` service with the existing image (`--no-deps`, no DB
-restart). Run `configure_fodders_vpn1_menu.py` inside that container. It backs up
+restart). Copy the current host `scripts/configure_fodders_vpn1_menu.py` into
+`/app/scripts/` after recreation, or pass its source to `docker exec -i ... python -`;
+the image may still contain the older helper. Run the current helper inside that
+container, with `FODDERS_MENU_BACKUP_DIR=/app/data/backups/<new-release-dir>` to
+keep its snapshot on the persistent bind mount. It backs up
 the complete old menu layout, preserves button definitions, replaces only active
 rows, and updates both Telegram command scopes plus the WebApp menu button.
 Verify the pinned renderer supports `url` and `mini_app` button types first.
