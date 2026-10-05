@@ -24,7 +24,7 @@ const refs = {
   authSummary: document.getElementById("auth-summary"),
   connectFields: document.getElementById("connect-fields"),
   connectAuthHint: document.getElementById("connect-auth-hint"),
-  unlockPinBtn: document.getElementById("unlock-pin-btn"),
+  openPinSettingsBtn: document.getElementById("open-pin-settings-btn"),
   versionPill: document.getElementById("version-pill"),
   topbarBadge: document.getElementById("topbar-badge"),
   topbarCopy: document.getElementById("topbar-copy"),
@@ -948,8 +948,8 @@ function renderAuth() {
   refs.connectFields.disabled = !canManageServer;
   refs.connectAuthHint.classList.toggle("hidden", canManageServer);
   refs.connectAuthHint.textContent = account.pin_required ? STATE.lang === "ru" ? "Аккаунт защищён PIN-кодом. Введите PIN, чтобы управлять сервером." : "Your account is PIN-protected. Enter your PIN to manage the server." : STATE.lang === "ru" ? "Сначала войдите через Telegram выше. Затем здесь можно ввести данные вашего VPS." : "First sign in with Telegram above. Then enter your VPS details here.";
-  refs.unlockPinBtn.classList.toggle("hidden", !account.pin_required);
-  refs.unlockPinBtn.textContent = STATE.lang === "ru" ? "Ввести PIN" : "Enter PIN";
+  refs.openPinSettingsBtn.classList.toggle("hidden", !account.pin_required);
+  refs.openPinSettingsBtn.textContent = STATE.lang === "ru" ? "Ввести PIN" : "Enter PIN";
 }
 
 function serverIdentity(server) {
@@ -2037,7 +2037,7 @@ function bindEvents() {
     event.preventDefault();
     await connectManual();
   });
-  refs.unlockPinBtn.addEventListener("click", () => setPage("settings"));
+  refs.openPinSettingsBtn.addEventListener("click", () => setPage("settings"));
   refs.modeInputs.forEach((input) => input.addEventListener("change", () => { renderModeCards(); renderRelaySection(); renderAll(); }));
   refs.authMethodInputs.forEach((input) => input.addEventListener("change", renderMethodSwitch));
   refs.relayAuthMethodInputs.forEach((input) => input.addEventListener("change", renderRelayMethodSwitch));

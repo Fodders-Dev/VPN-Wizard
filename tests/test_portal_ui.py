@@ -111,6 +111,9 @@ def test_public_catalog_exposes_self_hosted_setup_without_disclosure():
 
 def test_self_hosted_master_explains_required_login_before_ssh_secrets():
     html = (WEB.parent / "miniapp" / "index.html").read_text(encoding="utf-8")
+    parser = PortalMarkup()
+    parser.feed(html)
+    assert len(parser.ids) == len(set(parser.ids))
     js = (WEB.parent / "miniapp" / "app.js").read_text(encoding="utf-8")
     assert 'id="auth-disclosure" open' in html
     assert 'id="connect-fields" disabled' in html
@@ -119,3 +122,6 @@ def test_self_hosted_master_explains_required_login_before_ssh_secrets():
     assert "refs.connectFields.disabled = !canManageServer" in js
     assert "account.authenticated && !account.pin_required" in js
     assert "Можно настроить VPS без входа" not in html + js
+    assert 'id="open-pin-settings-btn"' in html
+    assert 'id="unlock-pin-btn"' in html
+    assert 'refs.openPinSettingsBtn.addEventListener("click", () => setPage("settings"))' in js
