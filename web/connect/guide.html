@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ru" class="vpn-public">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101312">
+<meta name="color-scheme" content="dark">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="data:,">
+<title>Как подключить VPN — инструкция с картинками</title>
+<link rel="stylesheet" href="atlas.css">
+<link rel="stylesheet" href="server-catalog.css">
+<link rel="stylesheet" href="guide.css">
+<script src="profile-file.js" defer></script>
+<script src="guide.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#install">К инструкции</a>
+<main class="app vpn-minimal vpn-guide">
+  <header class="vpn-hero"><a class="vpn-brand" href="join.html"><img src="assets/crest.svg" alt="" width="36" height="36"><span>Fodder VPN</span></a><a class="guide-back" href="join.html">← К серверам</a></header>
+  <h1>Подключим по шагам</h1>
+  <p class="guide-lead">Нужно один раз установить приложение и добавить в него скачанный файл.</p>
+  <section class="guide-install" id="install" aria-labelledby="install-title">
+    <h2 id="install-title">1. Установите именно AmneziaWG</h2>
+    <p>Название должно совпадать: <strong>AmneziaWG</strong>. Для этой инструкции выбирайте его, а не WireGuard или Amnezia VPN.</p>
+    <div class="guide-downloads">
+      <a class="btn btn--primary" href="https://play.google.com/store/apps/details?id=org.amnezia.awg" target="_blank" rel="noopener noreferrer">Android · Google Play ↗</a>
+      <a class="btn btn--secondary" href="https://apps.apple.com/app/amneziawg/id6478942365" target="_blank" rel="noopener noreferrer">iPhone · App Store ↗</a>
+      <a class="btn btn--secondary" href="https://github.com/amnezia-vpn/amneziawg-windows-client/releases/latest" target="_blank" rel="noopener noreferrer">Windows · установщик ↗</a>
+    </div>
+    <p>Затем <a href="join.html">выберите работающий сервер</a> и нажмите <strong>«Скачать профиль»</strong>. Запомните его имя: например, <code>FVPN-nl-a12b34.conf</code>.</p>
+  </section>
+  <h2>2. Добавьте файл в приложение</h2>
+  <nav class="guide-device-nav" aria-label="Ваше устройство"><a href="#android">Android</a><a href="#iphone">iPhone</a><a href="#windows">Windows</a><a href="#filename">Файл не добавляется?</a></nav>
+  <details class="guide-device" id="android" open>
+    <summary>На телефоне Android</summary>
+    <p class="guide-caption">Картинки показывают нужные пункты меню. Внешний вид может немного отличаться в вашей версии.</p>
+    <ol class="guide-steps">
+      <li><h3>Откройте AmneziaWG и нажмите «+»</h3><p>Выберите <strong>«Импорт из файла или архива»</strong>. Не «Создать с нуля».</p><figure><img src="assets/guide/and-3b-import.png" alt="Меню AmneziaWG: первый пункт — Импорт из файла или архива" width="560" height="1244" loading="lazy"><figcaption>Нужен первый пункт меню.</figcaption></figure></li>
+      <li><h3>Найдите скачанный файл</h3><p>В окне выбора откройте <strong>«Скачанные» / «Загрузки»</strong>. Если папки не видно, нажмите <strong>☰</strong> слева сверху. Нажмите файл, имя которого начинается с <strong>FVPN</strong> и заканчивается на <strong>.conf</strong>.</p><figure><img src="assets/guide/and-3a-files.png" alt="Папка Скачанные: файл FVPN-nl.conf" width="560" height="1244" loading="lazy"><figcaption>Выбирайте файл профиля, не картинку и не установщик.</figcaption></figure></li>
+      <li><h3>Включите переключатель рядом с профилем</h3><p>Профиль появится в списке. Нажмите его переключатель.</p><figure><img src="assets/guide/and-3c-tunnel.png" alt="Список туннелей AmneziaWG с переключателем рядом с профилем" width="560" height="1244" loading="lazy"><figcaption>Один включённый VPN за раз.</figcaption></figure></li>
+      <li><h3>Разрешите VPN-подключение</h3><p>Если Android спросит разрешение, нажмите <strong>«ОК»</strong>. Затем откройте браузер и проверьте, загружается ли сайт.</p><figure><img src="assets/guide/and-3d-permission.png" alt="Android запрашивает разрешение создать VPN-подключение: кнопка ОК" width="560" height="1244" loading="lazy"><figcaption>Это обычный системный запрос при первом подключении.</figcaption></figure></li>
+    </ol>
+  </details>
+  <details class="guide-device" id="iphone">
+    <summary>На iPhone</summary>
+    <ol class="guide-text-steps">
+      <li>В Safari нажмите <strong>«Скачать профиль» → «Загрузить»</strong>. Файл обычно попадает в приложение <strong>«Файлы» → «Обзор» → «Загрузки»</strong> (в iCloud Drive или «На iPhone»).</li>
+      <li>Откройте <strong>AmneziaWG</strong>. Нажмите <strong>«+» → «Импорт из файла или архива»</strong>.</li>
+      <li>Выберите скачанный файл <strong>FVPN… .conf</strong>. Если приложение попросит название, введите <strong>FVPN-nl</strong> и сохраните.</li>
+      <li>Включите переключатель у профиля. На запрос добавления VPN-конфигурации нажмите <strong>«Разрешить»</strong> и подтвердите кодом телефона или Face ID.</li>
+    </ol>
+    <p>Не видите файл? Откройте «Файлы», найдите его в «Загрузках», удерживайте → «Поделиться» и посмотрите, доступна ли AmneziaWG.</p>
+  </details>
+  <details class="guide-device" id="windows">
+    <summary>На компьютере Windows</summary>
+    <ol class="guide-text-steps">
+      <li>По ссылке выше скачайте установщик AmneziaWG. Для обычного современного ПК выберите вариант <strong>amd64 / x64</strong>. Запустите его и завершите установку.</li>
+      <li>В AmneziaWG внизу слева нажмите <strong>«Добавить туннель»</strong> (или стрелку рядом) → <strong>«Импорт туннелей из файла…»</strong>.</li>
+      <li>В окне выбора слева нажмите <strong>«Загрузки»</strong>. Выберите скачанный <strong>FVPN… .conf</strong> → <strong>«Открыть»</strong>.</li>
+      <li>Выберите появившийся профиль слева и нажмите <strong>«Подключить»</strong>. Откройте браузер и проверьте интернет.</li>
+    </ol>
+    <p>Файла не видно или приложение ругается на имя? Следующий раздел поможет.</p>
+  </details>
+  <section class="guide-fix" id="filename" aria-labelledby="filename-title">
+    <h2 id="filename-title">Файл не добавляется?</h2>
+    <p>Иногда браузер меняет имя. Например: <code>FVPN-nl (1).conf</code> или <code>FVPN-nl.conf.txt</code>. Нужен короткий вариант без пробелов и скобок, с <strong>.conf</strong> в конце.</p>
+    <div class="guide-repair">
+      <h3>Проще: сделайте исправленную копию здесь</h3>
+      <p>Выберите свой скачанный файл. Мы исправим только имя — содержимое и ключи не меняются. Файл не отправляется на сервер.</p>
+      <label class="guide-file-label" for="repair-file">Выберите файл профиля</label>
+      <input type="file" id="repair-file" accept=".conf,.txt,text/plain" aria-describedby="repair-status">
+      <p id="repair-status" role="status">Подойдут .conf и .conf.txt. Не выбирайте фотографию или установщик.</p>
+      <button class="btn btn--primary" id="repair-download" type="button" disabled>Скачать исправленную копию</button>
+      <p>Потом добавьте <strong>новую копию</strong> в AmneziaWG по шагам выше. Исходный файл останется на месте.</p>
+      <noscript><p>Для этой кнопки нужен JavaScript. Ниже есть способ переименовать вручную.</p></noscript>
+    </div>
+    <details class="guide-device" id="rename-android"><summary>Переименовать вручную · Android</summary><ol class="guide-text-steps"><li>Откройте приложение <strong>«Файлы»</strong> или <strong>«Мои файлы»</strong> → <strong>«Загрузки» / «Скачанные»</strong>.</li><li>Нажмите на файл и <strong>удерживайте палец</strong>. Откройте меню <strong>⋮</strong> → <strong>«Переименовать»</strong>. На некоторых телефонах меню находится рядом с самим файлом.</li><li>Удалите старое имя целиком и напишите <strong>FVPN-nl.conf</strong>. Без пробелов, скобок и .txt.</li><li>Нажмите <strong>«ОК» / «Сохранить»</strong>. Если спрашивают о смене расширения — подтвердите. Вернитесь в AmneziaWG и импортируйте файл заново.</li></ol><p>Если такое имя уже занято, используйте <strong>FVPN-nl-2.conf</strong>.</p></details>
+    <details class="guide-device" id="rename-iphone"><summary>Переименовать вручную · iPhone</summary><ol class="guide-text-steps"><li>Откройте <strong>«Файлы» → «Обзор» → «Загрузки»</strong> (в iCloud Drive или «На iPhone»).</li><li>Удерживайте палец на файле → <strong>«Переименовать»</strong>.</li><li>Замените имя на <strong>FVPN-nl.conf</strong>. Если расширение показано отдельно, меняйте его с <strong>txt</strong> на <strong>conf</strong>; не добавляйте вторую точку .conf.</li><li>Нажмите <strong>«Готово»</strong> и подтвердите смену расширения, если попросят. Снова выберите файл в AmneziaWG.</li></ol><p>Если .txt не видно, удобнее сделать исправленную копию кнопкой выше.</p></details>
+    <details class="guide-device" id="rename-windows"><summary>Переименовать вручную · Windows</summary><ol class="guide-text-steps"><li>Откройте <strong>«Проводник»</strong> — значок жёлтой папки. Слева выберите <strong>«Загрузки»</strong>.</li><li>Сначала покажите окончание файла. <strong>Windows 11:</strong> вверху <strong>«Просмотреть» / «Вид» → «Показать» → «Расширения имён файлов»</strong>. <strong>Windows 10:</strong> вкладка <strong>«Вид»</strong> → поставьте галочку <strong>«Расширения имён файлов»</strong>.</li><li>Нажмите файл <strong>правой кнопкой мыши</strong> → <strong>«Переименовать»</strong>. В Windows 11, если пункта не видно, откройте <strong>«Показать дополнительные параметры»</strong>. Другой способ: один раз выделите файл и нажмите <strong>F2</strong>.</li><li>Выделите <strong>всё имя вместе с окончанием</strong> (Ctrl+A) и введите <strong>FVPN-nl.conf</strong>. Нажмите <strong>Enter</strong>. На предупреждение «Изменить расширение?» ответьте <strong>«Да»</strong>.</li><li>В AmneziaWG повторите <strong>«Добавить туннель» → «Импорт туннелей из файла…»</strong> и выберите исправленный файл.</li></ol><p>Если такое имя уже занято, используйте <strong>FVPN-nl-2.conf</strong>. Ничего внутри файла редактировать не нужно.</p></details>
+  </section>
+  <details class="guide-device" id="qr"><summary>Без файлов · подключить телефон через QR</summary><ol class="guide-text-steps"><li>На <strong>другом устройстве</strong>, например компьютере, откройте <a href="join.html">список серверов</a> → нажмите <strong>«QR»</strong> у работающего сервера.</li><li>На телефоне откройте AmneziaWG → <strong>«+» → «Сканировать QR-код»</strong>. Разрешите камеру и наведите её на экран компьютера.</li><li>Сохраните профиль и включите его. Если спросят разрешение на VPN, подтвердите.</li></ol><p>С того же телефона сканировать собственный экран неудобно — используйте файл по инструкции выше.</p></details>
+  <section class="guide-install" aria-labelledby="no-internet"><h2 id="no-internet">VPN включён, а интернета нет?</h2><p>Выключите профиль, <a href="join.html">выберите другой работающий сервер</a> и добавьте его профиль. Надпись «Подключён» сама по себе не гарантирует соединение с сервером.</p><p>Не пересылайте свой файл и QR: внутри личный ключ. Если нужна помощь, пришлите название приложения и текст ошибки <strong>без содержимого профиля</strong>.</p><a class="btn btn--secondary" href="https://t.me/foddervpnbot?start=help" target="_blank" rel="noopener noreferrer">Помочь с подключением ↗</a></section>
+  <footer class="vpn-footer"><a href="join.html">← Выбрать сервер</a><a href="https://docs.amnezia.org/documentation/alternative-clients/" target="_blank" rel="noopener noreferrer">Официальная документация ↗</a></footer>
+</main>
+</body>
+</html>

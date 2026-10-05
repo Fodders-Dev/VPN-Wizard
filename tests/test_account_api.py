@@ -241,9 +241,13 @@ def test_legacy_miniapp_entry_redirects_to_uncached_portal() -> None:
     assert wizard.status_code == 200
     assert portal.headers["cache-control"] == "no-store, max-age=0"
     assert wizard.headers["cache-control"] == "no-store, max-age=0"
-    # The portal entry serves the liquid-glass cabinet; the previous portal
-    # must stay reachable as a fallback under its own file name.
-    assert "Fodder VPN · кабинет" in portal.text
+    # Public entry must not ask for an account or show a paid dashboard.
+    assert "Получить бесплатный VPN" in portal.text
+    assert "Настроить свой сервер" in portal.text
+    assert 'id="locked"' not in portal.text
+    retained = client.get("/connect/account.html")
+    assert retained.status_code == 200
+    assert "Fodder VPN · прежний кабинет" in retained.text
     legacy = client.get("/connect/index.html")
     assert legacy.status_code == 200
     assert "Fodder VPN · кабинет" not in legacy.text

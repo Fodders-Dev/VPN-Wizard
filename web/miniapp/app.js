@@ -20,6 +20,11 @@ const PROVISION_STEP_ESTIMATE = {
 
 const refs = {
   authCard: document.getElementById("auth-card"),
+  authDisclosure: document.getElementById("auth-disclosure"),
+  authSummary: document.getElementById("auth-summary"),
+  connectFields: document.getElementById("connect-fields"),
+  connectAuthHint: document.getElementById("connect-auth-hint"),
+  unlockPinBtn: document.getElementById("unlock-pin-btn"),
   versionPill: document.getElementById("version-pill"),
   topbarBadge: document.getElementById("topbar-badge"),
   topbarCopy: document.getElementById("topbar-copy"),
@@ -119,14 +124,14 @@ const refs = {
 
 const COPY = {
   ru: {
-    topbarCopy: "Конструктор сервера: выберите протокол, поднимите сервис и выдайте профили.",
+    topbarCopy: "Введите данные арендованного VPS. Мастер установит VPN и выдаст профили.",
     guestBadge: "Гость",
     accountBadge: "Telegram",
     diagnosticsTitle: "Миниапп не может дотянуться до API",
     diagnosticsBody: "Это проблема связи между интерфейсом и сервисом, а не ошибка SSH на вашем сервере.",
     diagnosticsResetDone: "Сохранённый API-адрес сброшен. Используем текущий сервер.",
     authTitleGuest: "Войти через Telegram",
-    authCopyGuest: "Войдите через Telegram, чтобы выбирать свои серверы без повторного ввода IP и пароля.",
+    authCopyGuest: "Войдите через Telegram, чтобы доступ к настройке вашего VPS был только у вас. Для бесплатных готовых профилей вход не нужен.",
     authTitleReady: "Аккаунт подключен",
     authCopyReady: "Сохранённые серверы уже под рукой. Можно просто выбрать нужный.",
     authStateGuest: "Не подключен",
@@ -248,14 +253,14 @@ const COPY = {
     debugClearBtn: "Очистить",
   },
   en: {
-    topbarCopy: "Server builder: choose a protocol, provision the stack, and issue profiles.",
+    topbarCopy: "Enter your rented VPS details. The wizard will install VPN and issue profiles.",
     guestBadge: "Guest",
     accountBadge: "Telegram",
     diagnosticsTitle: "The miniapp cannot reach the API",
     diagnosticsBody: "This is an app-to-service transport issue, not an SSH issue on your server.",
     diagnosticsResetDone: "Stored API target was cleared. Using the current server again.",
     authTitleGuest: "Sign in with Telegram",
-    authCopyGuest: "Use Telegram sign-in to pick your servers without entering IP and password again.",
+    authCopyGuest: "Sign in with Telegram to protect access to your VPS. Ready-made free VPN profiles do not require sign-in.",
     authTitleReady: "Account connected",
     authCopyReady: "Saved servers are ready. Pick the one you need.",
     authStateGuest: "Signed out",
@@ -565,7 +570,14 @@ function currentMiniappUrl() {
 
 function currentPortalUrl() {
   try {
-    return new URL("/portal/", window.location.origin).toString();
+    const portal = new URL("/portal/", window.location.origin);
+    const incoming = new URLSearchParams(window.location.hash.slice(1));
+    const launch = new URLSearchParams();
+    ["tgWebAppData", "tgWebAppVersion", "tgWebAppPlatform", "tgWebAppThemeParams"].forEach((name) => {
+      if (incoming.has(name)) launch.set(name, incoming.get(name));
+    });
+    if (launch.has("tgWebAppData")) portal.hash = launch.toString();
+    return portal.toString();
   } catch {
     return CANONICAL_PORTAL_URL;
   }
@@ -930,6 +942,14 @@ function renderAuth() {
   refs.pinUnlockRow.classList.toggle("hidden", !account.pin_required);
   refs.pinNote.textContent = account.pin_required ? t("pinNoteLocked") : account.pin_enabled ? t("pinNoteReady") : t("pinNoteDisabled");
   refs.authCard.classList.toggle("is-condensed", Boolean(account.authenticated && !account.pin_required));
+  const canManageServer = Boolean(account.authenticated && !account.pin_required);
+  refs.authSummary.textContent = account.pin_required ? STATE.lang === "ru" ? "Аккаунт заблокирован · Введите PIN" : "Account locked · Enter PIN" : account.authenticated ? t("authTitleReady") : STATE.lang === "ru" ? "Шаг 1 · Войти через Telegram" : "Step 1 · Sign in with Telegram";
+  refs.authDisclosure.open = !canManageServer;
+  refs.connectFields.disabled = !canManageServer;
+  refs.connectAuthHint.classList.toggle("hidden", canManageServer);
+  refs.connectAuthHint.textContent = account.pin_required ? STATE.lang === "ru" ? "Аккаунт защищён PIN-кодом. Введите PIN, чтобы управлять сервером." : "Your account is PIN-protected. Enter your PIN to manage the server." : STATE.lang === "ru" ? "Сначала войдите через Telegram выше. Затем здесь можно ввести данные вашего VPS." : "First sign in with Telegram above. Then enter your VPS details here.";
+  refs.unlockPinBtn.classList.toggle("hidden", !account.pin_required);
+  refs.unlockPinBtn.textContent = STATE.lang === "ru" ? "Ввести PIN" : "Enter PIN";
 }
 
 function serverIdentity(server) {
@@ -1170,7 +1190,8 @@ function renderProfilesHeader() {
 
 function renderAll() {
   refs.topbarCopy.textContent = t("topbarCopy");
-  document.getElementById("product-managed-label").textContent = STATE.lang === "ru" ? "VPN-подписка" : "VPN subscription";
+  document.getElementById('product-free-link').href = currentPortalUrl();
+  document.getElementById("product-managed-label").textContent = STATE.lang === "ru" ? "Бесплатный VPN" : "Free VPN";
   document.getElementById("product-wizard-label").textContent = STATE.lang === "ru" ? "Свой сервер" : "My server";
   document.getElementById("connect-title").textContent = STATE.lang === "ru" ? "Подключение к серверу" : "Connect your server";
   document.getElementById("host-label").textContent = STATE.lang === "ru" ? "IP или домен" : "IP or domain";
@@ -1398,6 +1419,12 @@ async function maybeSaveServer(ssh) {
 }
 
 async function connectManual() {
+  if (!STATE.account.authenticated || STATE.account.pin_required) {
+    refs.authDisclosure.open = true;
+    refs.authSummary.focus();
+    toast(STATE.lang === "ru" ? "Сначала войдите через Telegram и разблокируйте аккаунт." : "Sign in with Telegram and unlock your account first.");
+    return;
+  }
   logDebug("connect.manual.start", { host: refs.host.value.trim(), user: refs.user.value.trim(), mode: selectedMode() });
   resetProvisionState();
   renderConnectStatus("busy", t("connectBusyTitle"), t("connectBusyBody"));
@@ -2010,6 +2037,7 @@ function bindEvents() {
     event.preventDefault();
     await connectManual();
   });
+  refs.unlockPinBtn.addEventListener("click", () => setPage("settings"));
   refs.modeInputs.forEach((input) => input.addEventListener("change", () => { renderModeCards(); renderRelaySection(); renderAll(); }));
   refs.authMethodInputs.forEach((input) => input.addEventListener("change", renderMethodSwitch));
   refs.relayAuthMethodInputs.forEach((input) => input.addEventListener("change", renderRelayMethodSwitch));

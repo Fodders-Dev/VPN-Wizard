@@ -1,5 +1,11 @@
 @import url("https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap");
 
+#auth-disclosure>summary{cursor:pointer;min-height:44px;display:list-item;padding:8px 4px;font-weight:600}
+#auth-disclosure>summary:focus-visible{outline:3px solid #efc673;outline-offset:4px}
+#auth-disclosure[open]>summary{margin-bottom:16px}
+.connect-fields{border:0;margin:0;padding:0;min-width:0}
+.connect-fields:disabled{opacity:.65}
+
 :root {
   color-scheme: light;
   --bg-top: #f6f8ff;

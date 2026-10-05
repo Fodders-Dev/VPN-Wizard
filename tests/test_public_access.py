@@ -195,6 +195,17 @@ def test_public_access_is_opt_in(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         service.offered_servers()
 
 
+def test_device_cookie_rejects_noncanonical_signature_padding_bits(tmp_path: Path) -> None:
+    service, _records = _service(tmp_path)
+    token = service.create_device_token()
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+    index = alphabet.index(token[-1])
+    assert index % 4 == 0  # SHA-256 signature leaves two unused bits.
+    edited = token[:-1] + alphabet[index + 1]
+    with pytest.raises(InvalidDeviceToken):
+        service.issue(device_token=edited, client_ip="192.0.2.1")
+
+
 def test_isolated_public_database_is_separate_and_uses_loaded_store_key(tmp_path: Path) -> None:
     paid = AccountStore(tmp_path / "state.db", "same-encryption-key")
     public = isolated_public_account_store(paid)

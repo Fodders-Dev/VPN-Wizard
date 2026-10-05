@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="ru" class="vpn-public">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#101312">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="data:,">
+<title>Fodder VPN · прежний кабинет</title>
+<link rel="stylesheet" href="/connect/server-catalog.css">
+<script src="/connect/server-catalog.js"></script>
+<link rel="preload" href="/connect/fonts/onest-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/connect/portal.css">
+</head>
+<body>
+<a class="skip-link" href="#public-vpn-link">К серверам</a>
+<main class="app vpn-minimal vpn-portal">
+
+  <header class="top">
+    <img src="assets/crest.svg" alt="">
+    <div>
+      <div class="top__name">Fodder<span> VPN</span></div>
+      <div class="top__sub">Telegram · кабинет</div>
+    </div>
+    <div class="top__spacer"></div>
+    <span class="chip" id="plan-chip" hidden></span>
+  </header>
+
+  <div class="portal-intro"><p>Ваше подключение</p><h1>VPN под рукой.</h1></div>
+  <div id="support-slot"></div>
+  <a class="portal-public" id="public-vpn-link" href="/connect/join.html" target="_blank" rel="noopener noreferrer"><span><strong>Выбрать сервер</strong><span>Бесплатно · без кодов и лимита устройств</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>
+
+  <!-- ================================================== вход не выполнен -->
+  <section class="glass locked" id="locked" hidden>
+    <img src="assets/crest.svg" alt="">
+    <h2>Личный кабинет — в боте</h2>
+    <p>Войдите через Telegram, чтобы управлять своими профилями.</p>
+    <a class="btn btn--primary" href="https://t.me/foddervpnbot?start=portal">Открыть в Telegram</a>
+    <p class="foot">Бесплатный VPN доступен по кнопке «Выбрать сервер» — вход не нужен.</p>
+  </section>
+
+  <!-- ================================================== загрузка -->
+  <div id="loading">
+    <div class="glass" style="padding:22px 20px">
+      <div class="sk" style="height:14px;width:40%"></div>
+      <div class="sk" style="height:30px;width:75%;margin-top:12px"></div>
+      <div class="sk" style="height:50px;margin-top:18px"></div>
+    </div>
+  </div>
+
+  <!-- ================================================== основной экран -->
+  <div id="cabinet" hidden>
+
+    <section class="glass hero">
+      <div class="hero__status"><span class="dot" id="st-dot"></span><span id="st-word">Проверяем…</span></div>
+      <h2 class="hero__title" id="st-title">Ваш профиль</h2>
+      <p class="hero__meta" id="st-meta"></p>
+      <div class="hero__facts" id="st-facts"></div>
+      <a class="btn btn--primary" id="cta-connect" href="#">Моё подключение <span aria-hidden="true">↗</span></a>
+    </section>
+
+    <!-- бесплатный доступ ещё не забран -->
+    <section class="glass offer" id="offer" hidden>
+      <h2>Сохранить профиль в кабинете</h2>
+      <p>Профиль для подписчиков канала. Бесплатные профили без входа — по кнопке «Выбрать сервер».</p>
+      <a class="btn btn--glass" id="offer-channel" href="https://t.me/fodders_dev"
+         target="_blank" rel="noopener noreferrer" style="margin-bottom:10px">1. Подписаться на канал</a>
+      <button class="btn btn--primary" id="offer-claim" type="button">2. Забрать профиль</button>
+      <p class="sub" id="offer-status" role="status"></p>
+    </section>
+
+    <!-- Плитки раскрывают секции прямо здесь. Раньше они были ссылками на
+         страницу подключения — куда ни нажми, человек улетал из кабинета и
+         не мог вернуться. Уходим со страницы только по явной кнопке внутри. -->
+    <nav class="tiles" id="tiles" aria-label="Управление подключением">
+      <button class="glass tile" id="t-devices" type="button" aria-controls="devices" aria-expanded="false">
+        <svg class="tile__icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg>
+        <span class="tile__name">Устройства</span>
+        <span class="tile__hint" id="t-devices-hint">…</span>
+      </button>
+      <button class="glass tile" id="t-countries" type="button" aria-controls="countries" aria-expanded="false">
+        <svg class="tile__icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c5 5 5 13 0 18-5-5-5-13 0-18Z"/></svg>
+        <span class="tile__name">Серверы</span>
+        <span class="tile__hint" id="t-countries-hint">…</span>
+      </button>
+    </nav>
+    <details class="portal-options">
+      <summary>Другие возможности <span aria-hidden="true">⌄</span></summary>
+      <div class="tiles">
+      <button class="glass tile" id="t-family" type="button" aria-controls="family" aria-expanded="false">
+        <svg class="tile__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20S3 14 3 8c0-5 6-7 9-2 3-5 9-3 9 2 0 6-9 12-9 12Z"/></svg>
+        <span class="tile__name">Для близкого</span>
+        <span class="tile__hint">Семейный профиль</span>
+      </button>
+      <button class="glass tile" id="t-consoles" type="button" aria-controls="consoles" aria-expanded="false">
+        <svg class="tile__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10c3 0 5 10 2 11-2 1-4-3-7-3s-5 4-7 3C2 17 4 7 7 7Zm0 3v4m-2-2h4m7-1h.01m2 2h.01"/></svg>
+        <span class="tile__name">Приставки<span class="soon" id="consoles-soon">скоро</span></span>
+        <span class="tile__hint" id="t-consoles-hint">Прокси для PlayStation и Switch</span>
+      </button>
+      <a class="glass tile tile--wide" id="wizard-link-main" href="/wizard/">
+        <svg class="tile__icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6h.01M7 17h.01"/></svg>
+        <span class="tile__name">Свой сервер</span>
+        <span class="tile__hint">Установка и управление</span>
+      </a>
+      </div>
+    </details>
+
+    <!-- страны -->
+    <section class="glass section" id="countries" hidden>
+      <h2>Серверы VPN</h2>
+      <p class="sub" id="countries-sub"></p>
+      <div id="countries-list"></div>
+    </section>
+
+    <!-- для близкого -->
+    <section class="glass section" id="family" hidden>
+      <h2>Профиль для близкого</h2>
+      <p class="sub">Отдельный профиль по семейной ссылке: он не отключит ваши
+        устройства, а близкому не нужен ни Telegram, ни регистрация. Ссылку лучше
+        не публиковать — это один слот для родного человека.</p>
+      <a class="btn btn--primary" id="family-open" style="margin-top:14px" href="#">
+        <span class="btn__label">Открыть страницу для близкого</span>
+      </a>
+      <p class="sub" style="margin-top:10px" id="family-note" hidden>Семейный доступ
+        входит в тарифы от 3 устройств.</p>
+    </section>
+
+    <!-- устройства -->
+    <section class="glass section" id="devices" hidden>
+      <h2>Устройства</h2>
+      <p class="sub" id="devices-sub"></p>
+      <div id="devices-list"></div>
+    </section>
+
+    <!-- приставки: прокси по домашнему IP -->
+    <section class="glass section" id="consoles" hidden>
+      <h2>Прокси для приставок</h2>
+      <div id="consoles-locked" hidden>
+        <p class="sub">PlayStation и Switch не умеют VPN, но умеют прокси. Он входит
+          в платный тариф: подключаете — и магазины, обновления и игры ходят
+          через Нидерланды.</p>
+        <a class="btn btn--primary" style="margin-top:14px"
+           href="https://t.me/foddervpnbot?start=plan" target="_blank" rel="noopener noreferrer">
+          Оформить подписку в боте
+        </a>
+      </div>
+      <div id="consoles-open" hidden>
+        <p class="sub">Приставки не умеют вводить пароль у прокси, поэтому доступ
+          привязывается к домашнему Wi-Fi. Нажмите кнопку с телефона,
+          подключённого к той же сети, что и приставка.</p>
+        <button class="btn btn--primary" id="consoles-bind" type="button"
+                style="margin-top:14px">Разрешить мой домашний Wi-Fi</button>
+        <div id="consoles-ips"></div>
+        <div class="rowline">
+          <span class="rowline__ic">🌐</span>
+          <span class="rowline__body">
+            <span class="rowline__t" id="consoles-host">…</span>
+            <span class="rowline__s">Адрес прокси — впишите его в приставку</span>
+          </span>
+          <button class="rowline__aside" id="consoles-copy" type="button">Копировать</button>
+        </div>
+        <details style="margin-top:10px">
+          <summary style="cursor:pointer;color:var(--ink-dim);font-size:14.5px">Как настроить PlayStation</summary>
+          <ol class="sub" style="margin:10px 0 0;padding-left:20px;line-height:1.7">
+            <li>Настройки → Сеть → Настройки → Установить соединение с Интернетом.</li>
+            <li>Выберите свой Wi-Fi → Дополнительные настройки.</li>
+            <li>Всё оставьте «Автоматически», а в пункте <b>Прокси-сервер</b>
+              выберите «Использовать».</li>
+            <li>Введите адрес и порт, показанные выше, и сохраните.</li>
+          </ol>
+        </details>
+        <details style="margin-top:8px">
+          <summary style="cursor:pointer;color:var(--ink-dim);font-size:14.5px">Как настроить Nintendo Switch</summary>
+          <ol class="sub" style="margin:10px 0 0;padding-left:20px;line-height:1.7">
+            <li>Настройки → Интернет → Параметры интернета.</li>
+            <li>Выберите свою сеть → Изменить настройки.</li>
+            <li><b>Настройки прокси-сервера</b> → Включить.</li>
+            <li>Введите адрес и порт, показанные выше. Авторизация — «Выкл».</li>
+          </ol>
+        </details>
+      </div>
+    </section>
+
+    <!-- тариф — тихо, в самом низу смыслового блока -->
+    <section class="glass section" id="plan">
+      <a class="rowline" id="plan-row" href="https://t.me/foddervpnbot?start=plan"
+         target="_blank" rel="noopener noreferrer">
+        <span class="rowline__ic">💎</span>
+        <span class="rowline__body">
+          <span class="rowline__t" id="plan-title">Тариф</span>
+          <span class="rowline__s" id="plan-sub"></span>
+        </span>
+        <span class="rowline__aside">Изменить</span>
+      </a>
+      <a class="rowline" id="invite-row" href="#" hidden>
+        <span class="rowline__ic">🎟</span>
+        <span class="rowline__body">
+          <span class="rowline__t">Пригласить друга</span>
+          <span class="rowline__s" id="invite-sub">Друг оплатил — вам месяц бесплатно</span>
+        </span>
+        <span class="rowline__aside">Копировать</span>
+      </a>
+      <a class="rowline" href="https://t.me/foddervpnbot?start=help"
+         target="_blank" rel="noopener noreferrer">
+        <span class="rowline__ic">🆘</span>
+        <span class="rowline__body">
+          <span class="rowline__t">Помощь</span>
+          <span class="rowline__s">Не работает или есть вопрос — ответим в боте</span>
+        </span>
+        <span class="rowline__aside">Открыть</span>
+      </a>
+    </section>
+
+    <p class="foot">Канал с новостями и запасными ссылками —
+      <a href="https://t.me/fodders_dev" target="_blank" rel="noopener noreferrer">@fodders_dev</a></p>
+  </div>
+
+</main>
+
+<div class="preview-note" id="preview-note" hidden>Превью дизайна · данные примерные</div>
+
+<script>
+(function(){
+"use strict";
+var $=function(id){return document.getElementById(id);};
+var PREVIEW=((location.hash||"")+(location.search||"")).indexOf("preview")>=0;
+var catalogFreeChoice=false;
+
+/* ------------------------------------------------------------ telegram */
+var tg=null;
+var booted=false;
+var telegramLaunch=!!(window.TelegramWebviewProxy||(location.hash||"").indexOf("tgWebApp")>=0);
+function boot(){
+  if(booted)return;
+  tg=window.Telegram&&window.Telegram.WebApp?window.Telegram.WebApp:null;
+  // A late SDK must not authenticate a Telegram launch with another user's cookie.
+  if(telegramLaunch&&!tg){
+    FodderCatalog.support({});FodderCatalog.watch();show("locked");return;
+  }
+  booted=true;
+  if(tg){try{tg.ready();tg.expand();if(tg.setHeaderColor)tg.setHeaderColor("#101312");if(tg.setBackgroundColor)tg.setBackgroundColor("#101312");}catch(e){}}
+  start();
+}
+if(telegramLaunch){
+  var sdk=document.createElement("script");
+  sdk.src="https://telegram.org/js/telegram-web-app.js";
+  sdk.async=true;sdk.onload=boot;sdk.onerror=boot;
+  document.head.appendChild(sdk);
+  setTimeout(function(){if(!tg)boot();},4000);
+}else{
+  boot();
+}
+
+/* ------------------------------------------------------------- helpers */
+function show(view){
+  $("loading").hidden=view!=="loading";
+  $("locked").hidden=view!=="locked";
+  $("cabinet").hidden=view!=="cabinet";
+}
+function openExternal(url){
+  try{
+    if(tg&&/^https?:\/\/t\.me\//i.test(url)&&typeof tg.openTelegramLink==="function"){
+      tg.openTelegramLink(url);return true;
+    }
+  }catch(e){}
+  return false;
+}
+document.addEventListener("click",function(ev){
+  var publicLink=ev.target&&ev.target.closest?ev.target.closest("#public-vpn-link"):null;
+  if(publicLink&&tg&&typeof tg.openLink==="function"){
+    ev.preventDefault();tg.openLink(new URL("/connect/join.html",location.origin).href);return;
+  }
+  var a=ev.target&&ev.target.closest?ev.target.closest("a[href^='https://t.me/']"):null;
+  if(a&&openExternal(a.href))ev.preventDefault();
+});
+async function api(url,opts){
+  var r=await fetch(url,Object.assign({headers:{"Accept":"application/json"}},opts||{}));
+  var body=null;try{body=await r.json();}catch(e){}
+  if(!r.ok)throw Object.assign(new Error("api"),{status:r.status,body:body});
+  return body||{};
+}
+function readCreds(url){
+  try{
+    var u=new URL(url,location.href);
+    return {tid:u.searchParams.get("tid"),token:u.searchParams.get("token")};
+  }catch(e){return null;}
+}
+function plural(n,a,b,c){
+  n=Math.abs(n)%100;var d=n%10;
+  if(n>10&&n<20)return c; if(d>1&&d<5)return b; if(d===1)return a; return c;
+}
+function ago(sec){
+  var d=Math.max(0,Math.floor(Date.now()/1000)-sec);
+  if(d<90)return "только что";
+  if(d<5400)return Math.round(d/60)+" мин назад";
+  if(d<129600)return Math.round(d/3600)+" ч назад";
+  return Math.round(d/86400)+" дн назад";
+}
+
+/* ------------------------------------------------------------- рендер */
+function fact(label,value){
+  var item=document.createElement("span"),strong=document.createElement("b");
+  item.className="fact";item.appendChild(document.createTextNode(label+" "));
+  strong.textContent=value;item.appendChild(strong);return item.outerHTML;
+}
+function render(links,servers,devices){
+  var paid=!!links.subscription_active;
+  var free=!!links.channel_access_active;
+  var active=paid||free;
+  var limit=Math.max(1,parseInt(links.device_limit||"1",10));
+
+  var dot=$("st-dot"),word=$("st-word");
+  if(active){
+    var seen=0;
+    (devices||[]).forEach(function(d){if(d.last_seen_at)seen=Math.max(seen,+d.last_seen_at);});
+    var online=seen&&(Date.now()/1000-seen)<600;
+    dot.className="dot"+(online?"":" dot--warn");
+    word.textContent=online?"VPN работает":"Доступ активен";
+    $("st-title").textContent=online?"Всё в порядке":"Профиль готов";
+    $("st-meta").textContent=seen
+      ?("Последнее подключение — "+ago(seen))
+      :"Сервер ещё не видел подключений. Откройте своё подключение и включите VPN.";
+  }else{
+    dot.className="dot dot--off";
+    word.textContent="Доступ не активен";
+    $("st-title").textContent="VPN пока выключен";
+    $("st-meta").textContent=links.channel_access_available
+      ?"Заберите бесплатные Нидерланды — карточка ниже."
+      :"Оформите доступ в боте — займёт пару минут.";
+  }
+
+  var facts="";
+  var myServer=(links.channel_access_server_id||"").toLowerCase();
+  var names={};(servers||[]).forEach(function(s){names[s.id]=(s.display||s.label||s.id);});
+  if(free&&myServer)facts+=fact(catalogFreeChoice?"Серверы":"Страна",catalogFreeChoice?"на выбор":(names[myServer]||myServer.toUpperCase()));
+  facts+=fact(paid?"Устройств":"Профилей в кабинете",String(limit));
+  if(paid){
+    facts+=fact("Тариф","активен");
+  }else if(free){
+    facts+=fact("Доступ","навсегда");
+  }
+  $("st-facts").innerHTML=facts;
+
+  // Единственный «уход» с главного экрана — эта кнопка, и она помечена так,
+  // чтобы со страницы подключения был путь обратно в кабинет.
+  var connectUrl=links.personal_vpn_url;
+  try{
+    var cu=new URL(links.personal_vpn_url,location.href);
+    cu.searchParams.set("from","portal");
+    connectUrl=cu.toString();
+  }catch(e){}
+  $("cta-connect").href=connectUrl;
+  $("cta-connect").hidden=!active;
+
+  $("offer").hidden=!(links.channel_access_available&&!active);
+  if(links.channel_access_channel_url)$("offer-channel").href=links.channel_access_channel_url;
+
+  // Каждая плитка раскрывает свою секцию и закрывает соседние: так на экране
+  // всегда одна открытая тема, и человек не теряется.
+  function toggle(id){
+    var box=$(id),wasHidden=box.hidden;
+    ["devices","countries","family","consoles"].forEach(function(other){
+      if(other!==id)$(other).hidden=true;
+    });
+    box.hidden=!wasHidden;
+    syncPanelButtons();
+    // Keep navigation predictable in Telegram WebViews and with reduced motion.
+    if(!box.hidden)box.scrollIntoView({block:"nearest"});
+  }
+
+  var used=(devices||[]).length;
+  $("t-devices-hint").textContent=active
+    ?(paid?(used+" из "+limit+" слотов"):used+" "+plural(used,"сохранённый профиль","сохранённых профиля","сохранённых профилей"))
+    :"Появятся после подключения";
+  $("t-devices").onclick=function(){toggle("devices");};
+
+  var count=(servers||[]).length;
+  $("t-countries-hint").textContent=count
+    ?(count+" "+plural(count,"сервер","сервера","серверов"))
+    :"Список загрузится позже";
+  $("t-countries").onclick=function(){toggle("countries");};
+  renderCountries(servers,links,paid,free,myServer);
+  $("countries").hidden=true;
+
+  $("t-family").onclick=function(){toggle("family");};
+  $("family-open").href=links.family_vpn_url||"#";
+  $("family-open").hidden=!links.family_vpn_url;
+  $("family-note").hidden=!!links.family_vpn_url;
+
+  $("t-consoles").onclick=function(){toggle("consoles");};
+
+  $("plan-chip").hidden=false;
+  $("plan-chip").textContent=paid?"тариф активен":(free?"бесплатный доступ":"без доступа");
+  $("plan-title").textContent=paid
+    ?("Тариф: "+limit+" "+plural(limit,"устройство","устройства","устройств"))
+    :(free?"Бесплатно: ваш профиль навсегда":"Тарифы и оплата");
+  $("plan-sub").textContent=paid
+    ?(links.expires_at?"Действует до "+new Date(links.expires_at).toLocaleDateString("ru-RU",{day:"numeric",month:"long"}):"")
+    :(free?"Настройки тарифа и платные возможности":"Страны, устройства, приставки");
+
+  if(links.referral_url){
+    $("invite-row").hidden=false;
+    $("invite-row").onclick=function(ev){
+      ev.preventDefault();
+      (navigator.clipboard?navigator.clipboard.writeText(links.referral_url):Promise.reject())
+        .then(function(){ $("invite-sub").textContent="Ссылка скопирована — отправьте другу"; })
+        .catch(function(){ $("invite-sub").textContent=links.referral_url; });
+    };
+  }
+
+  renderDevices(devices||[]);
+  syncPanelButtons();
+  show("cabinet");
+}
+
+function syncPanelButtons(){
+  [["t-devices","devices"],["t-countries","countries"],["t-family","family"],["t-consoles","consoles"]].forEach(function(pair){
+    $(pair[0]).setAttribute("aria-expanded",String(!$(pair[1]).hidden));
+  });
+}
+document.querySelector(".portal-options").addEventListener("toggle",function(){
+  if(this.open)return;
+  $("family").hidden=true;$("consoles").hidden=true;syncPanelButtons();
+});
+
+/* --------------------------------------------------------------- страны */
+// Windows не рисует эмодзи-флаги (🇳🇱 превращается в буквы «NL»), поэтому флаг —
+// картинка, а код страны остаётся запасным вариантом.
+function flagHtml(id){
+  var code=String(id||"").toLowerCase();
+  code=code.split("-")[0];
+  if(["nl","fi","us"].indexOf(code)<0)return '<span class="flag flag--code">'+code.toUpperCase()+'</span>';
+  return '<img class="flag" src="assets/flags/'+encodeURIComponent(code)+'.svg" alt=""'
+    +' onerror="this.replaceWith(Object.assign(document.createElement(\'span\'),'
+    +'{className:\'flag flag--code\',textContent:\''+code.toUpperCase()+'\'}))">';
+}
+function renderCountries(servers,links,paid,free,myServer){
+  var list=$("countries-list");
+  if(!servers||!servers.length){list.innerHTML="";return;}
+  $("countries-sub").textContent=paid
+    ? "Профиль для каждой страны скачивается отдельно и не занимает лишнее устройство."
+    : (catalogFreeChoice?"Выберите любой работающий сервер. Для него будет отдельный профиль.":"Ваша страна включена бесплатно. Остальные открываются платной подпиской.");
+  var html="";
+  servers.forEach(function(){ html+=
+    '<div class="rowline"><span class="rowline__ic country-flag"></span>'
+    +'<span class="rowline__body"><span class="rowline__t"></span>'
+    +'<span class="rowline__s"></span></span>'
+    +'<span class="rowline__aside"></span></div>';});
+  list.innerHTML=html;
+  var rows=list.querySelectorAll(".rowline");
+  servers.forEach(function(s,i){
+    var row=rows[i];
+    var mine=free&&myServer&&s.id===myServer;
+    var allowed=(paid||mine||(free&&catalogFreeChoice))&&FodderCatalog.selectable(s);
+    var health=FodderCatalog.status(s);
+    row.querySelector(".country-flag").innerHTML=flagHtml(s.id);
+    row.querySelector(".rowline__t").textContent=(s.label||s.display||s.id)+(s.vpn_port?" · UDP "+s.vpn_port:"");
+    row.querySelector(".rowline__s").textContent=health.label+(health.detail?" — "+health.detail:"");
+    row.querySelector(".rowline__s").classList.add("server-health","server-health--"+health.state);
+    row.querySelector(".rowline__s").dataset.healthId=s.id;
+    var aside=row.querySelector(".rowline__aside");
+    if(allowed&&links.personal_vpn_url){
+      var a=document.createElement("a");
+      a.className="rowline__aside";a.textContent="Получить";
+      a.style.color="var(--accent)";
+      // Уход со страницы — только по явному нажатию, и с меткой from=portal,
+      // чтобы со страницы подключения можно было вернуться в кабинет.
+      try{
+        var url=new URL(links.personal_vpn_url,location.href);
+        url.searchParams.set("server",s.id);
+        url.searchParams.set("from","portal");
+        a.href=url.toString();
+      }catch(e){a.href=links.personal_vpn_url;}
+      aside.replaceWith(a);
+    }else{
+      aside.textContent=FodderCatalog.selectable(s)?"🔒":"Нет выдачи";
+    }
+  });
+}
+
+/* ------------------------------------------------- прокси для приставок */
+var consoleCreds=null;
+function consoleApi(path,opts){
+  return api("/api/console-proxy/"+encodeURIComponent(consoleCreds.tid)+path
+    +(path.indexOf("?")>=0?"&":"?")+"token="+encodeURIComponent(consoleCreds.token),opts);
+}
+function renderConsoles(data){
+  var soon=$("consoles-soon"),hint=$("t-consoles-hint");
+  if(!data||!data.enabled){
+    soon.hidden=false;hint.textContent="Прокси для PlayStation и Switch";
+    $("consoles-locked").hidden=true;$("consoles-open").hidden=true;return;
+  }
+  soon.hidden=true;
+  $("consoles-locked").hidden=!!data.entitled;
+  $("consoles-open").hidden=!data.entitled;
+  hint.textContent=data.entitled
+    ?((data.ips||[]).length?"Домашний Wi-Fi разрешён":"Нажмите, чтобы настроить")
+    :"Входит в платный тариф";
+  if(!data.entitled)return;
+
+  var addr=(data.host||"")+" : "+(data.port||"");
+  $("consoles-host").textContent=addr;
+  $("consoles-copy").onclick=function(){
+    var plain=(data.host||"")+":"+(data.port||"");
+    (navigator.clipboard?navigator.clipboard.writeText(plain):Promise.reject())
+      .then(function(){$("consoles-copy").textContent="Скопировано";})
+      .catch(function(){});
+  };
+
+  var list=$("consoles-ips");
+  if((data.ips||[]).length){
+    var html="";
+    data.ips.forEach(function(){ html+=
+      '<div class="rowline"><span class="rowline__ic">🏠</span>'
+      +'<span class="rowline__body"><span class="rowline__t"></span>'
+      +'<span class="rowline__s">Разрешён до продления привязки</span></span>'
+      +'<button class="rowline__aside" type="button">Убрать</button></div>';});
+    list.innerHTML=html;
+    var rows=list.querySelectorAll(".rowline");
+    data.ips.forEach(function(item,i){
+      rows[i].querySelector(".rowline__t").textContent="Wi-Fi · "+item.ip;
+      rows[i].querySelector(".rowline__aside").onclick=function(){
+        if(!consoleCreds)return;
+        consoleApi("/bind?ip="+encodeURIComponent(item.ip),{method:"DELETE"})
+          .then(renderConsoles).catch(function(){});
+      };
+    });
+  }else{
+    list.innerHTML="";
+  }
+  var bind=$("consoles-bind");
+  bind.disabled=false;
+  bind.onclick=function(){
+    bind.disabled=true;bind.textContent="Привязываем…";
+    (consoleCreds?consoleApi("/bind",{method:"POST"})
+      :Promise.resolve(data))  /* превью: показываем успех без сети */
+      .then(function(d){
+        bind.textContent="Готово — этот Wi-Fi разрешён ✓";
+        setTimeout(function(){bind.textContent="Разрешить мой домашний Wi-Fi";bind.disabled=false;},2500);
+        renderConsoles(d);
+      })
+      .catch(function(){
+        bind.textContent="Не получилось — попробуйте ещё раз";
+        setTimeout(function(){bind.textContent="Разрешить мой домашний Wi-Fi";bind.disabled=false;},2500);
+      });
+  };
+}
+
+function renderDevices(devices){
+  if(!devices.length){$("devices").hidden=true;return;}
+  $("devices-sub").textContent="У каждого устройства свой ключ. Управление — в личной странице подключения или в боте.";
+  var html="";
+  devices.forEach(function(d){
+    var on=d.last_seen_at&&(Date.now()/1000-d.last_seen_at)<600;
+    html+='<div class="rowline"><span class="rowline__ic">'+(on?"🟢":"📴")+'</span>'
+      +'<span class="rowline__body"><span class="rowline__t"></span>'
+      +'<span class="rowline__s"></span></span>'
+      +'<span class="rowline__aside'+(on?" rowline__aside--ok":"")+'">'+(on?"онлайн":"")+'</span></div>';
+  });
+  var box=$("devices-list");box.innerHTML=html;
+  var rows=box.querySelectorAll(".rowline");
+  devices.forEach(function(d,i){
+    rows[i].querySelector(".rowline__t").textContent=d.label||("Устройство "+d.slot);
+    rows[i].querySelector(".rowline__s").textContent=d.last_seen_at
+      ?("Был в сети "+ago(+d.last_seen_at)):"Ещё не подключалось";
+  });
+  $("devices").hidden=true;
+}
+
+/* --------------------------------------------------------------- поток */
+async function start(){
+  show("loading");
+  FodderCatalog.support({});
+  if(PREVIEW){$("preview-note").hidden=false;return renderPreview();}
+  FodderCatalog.watch();
+  if(telegramLaunch&&!(tg&&tg.initData))return show("locked");
+  try{
+    var me;
+    if(tg&&tg.initData){
+      me=await api("/api/auth/telegram/miniapp",{method:"POST",
+        headers:{"Accept":"application/json","Content-Type":"application/json"},
+        body:JSON.stringify({init_data:tg.initData})});
+    }else{
+      me=await api("/api/auth/me");
+    }
+    if(!me.authenticated)return show("locked");
+
+    var links=await api("/api/portal/links");
+    var servers=[],devices=[];
+    try{
+      var catalog=await api("/api/awg/servers?include_unavailable=true");
+      servers=catalog.servers||[];catalogFreeChoice=!!catalog.free_server_choice;
+      FodderCatalog.support(catalog.support||{});
+    }catch(e){}
+    var creds=readCreds(links.personal_vpn_url);
+    if(creds&&creds.tid&&creds.token&&(links.subscription_active||links.channel_access_active)){
+      try{
+        devices=(await api("/api/awg/"+encodeURIComponent(creds.tid)+"/devices?token="
+          +encodeURIComponent(creds.token))).devices||[];
+      }catch(e){}
+    }
+    render(links,servers,devices);
+    if(creds&&creds.tid&&creds.token){
+      consoleCreds=creds;
+      consoleApi("").then(renderConsoles).catch(function(){renderConsoles(null);});
+    }
+  }catch(e){
+    show("locked");
+  }
+}
+
+$("offer-claim").addEventListener("click",async function(){
+  var button=this,status=$("offer-status");
+  button.disabled=true;button.textContent="Проверяем…";status.textContent="";
+  try{
+    await api("/api/portal/channel-access/verify",{method:"POST",credentials:"same-origin"});
+    status.textContent="Профиль готов";
+    await start();
+  }catch(e){
+    var detail=e.body&&e.body.detail;
+    status.textContent=detail&&detail.code==="channel_membership_required"
+      ?"Подпишитесь на канал и попробуйте ещё раз."
+      :"Не получилось. Попробуйте ещё раз позже.";
+  }finally{
+    button.disabled=false;button.textContent="2. Забрать профиль";
+  }
+});
+
+function renderPreview(){
+  render({
+    subscription_active:false,
+    channel_access_active:true,
+    channel_access_available:false,
+    channel_access_server_id:"nl",
+    device_limit:1,
+    personal_vpn_url:"awg.html?tid=1&token=x&server=nl&free=1",
+    family_vpn_url:"#",
+    referral_url:"https://t.me/foddervpnbot?start=ref_PREVIEW",
+    expires_at:null
+  },[
+    {id:"nl",label:"Нидерланды",display:"🇳🇱 Нидерланды"},
+    {id:"fi",label:"Финляндия",display:"🇫🇮 Финляндия"},
+    {id:"us",label:"США",display:"🇺🇸 США"}
+  ],[
+    {slot:1,label:"Мой телефон",last_seen_at:Math.floor(Date.now()/1000)-120}
+  ]);
+  renderConsoles({
+    enabled:true,entitled:true,host:"77.67.89.164",port:3129,
+    ips:[{ip:"95.161.60.194",expires_at:0}]
+  });
+}
+})();
+</script>
+</body>
+</html>

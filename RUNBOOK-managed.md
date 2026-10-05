@@ -1,5 +1,30 @@
 # RUNBOOK — Fodder VPN 2 (managed subscription)
 
+> Current public mode (2026-10-05): profiles are free, without codes or device
+> limits. Channel/donations are voluntary. The historical paid setup below is
+> retained for later use, not the active public onboarding.
+
+The bot menu button opens `/portal/`, with two immediate choices: public catalog
+`/connect/join.html` and self-hosted `/wizard/`. Illustrated installation and local
+filename repair live at `/connect/guide.html`. Old private flows are preserved at
+`/connect/account.html`; do not migrate/delete account or tariff records.
+
+After deploying the web release, back up Bedolaga/Postgres and the two override
+files before applying the free menu. The handler is a read-only host bind mount;
+recreate only the `bot` service with the existing image (`--no-deps`, no DB
+restart). Run `configure_fodders_vpn1_menu.py` inside that container. It backs up
+the complete old menu layout, preserves button definitions, replaces only active
+rows, and updates both Telegram command scopes plus the WebApp menu button.
+Verify the pinned renderer supports `url` and `mini_app` button types first.
+
+Verification: both entry choices visible on 390px, public link opens a browser
+from Telegram, wizard return still has SDK context, guest SSH inputs are gated
+until Telegram login/PIN unlock. Free profiles remain anonymous. Guide images
+load, device links expand the correct steps,
+`.conf.txt`/`(1).conf` repair downloads identical bytes without any upload, normal
+downloads have unique short ASCII `.conf` names, and QR remains personal.
+Private profile contents must not appear in screenshots, logs or Git.
+
 Managed VPN on **your** servers: one NL profile is free while a user subscribes to
 `@fodders_dev`; other exits, extra devices and console proxy setup are paid and
 auto-disabled when unpaid. Stack: **Remnawave** panel + nodes, **Bedolaga** shop-bot,

@@ -5,8 +5,17 @@ import os
 from pathlib import Path
 import tempfile
 from typing import Optional, Tuple
+from urllib.parse import urlparse
 
-from telegram import KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, Update, WebAppInfo
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+    Update,
+    WebAppInfo,
+)
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -19,7 +28,7 @@ from telegram.ext import (
 import qrcode
 
 from vpn_wizard.core import SSHConfig, SSHRunner, WireGuardProvisioner
-from vpn_wizard.urls import CANONICAL_MINIAPP_URL, resolve_public_miniapp_url
+from vpn_wizard.urls import CANONICAL_API_BASE, resolve_public_miniapp_url
 
 
 STATE_HOST, STATE_USER, STATE_AUTH, STATE_PASSWORD, STATE_KEY, STATE_PORT = range(6)
@@ -28,33 +37,13 @@ REQUIRED_CHANNEL = os.getenv("VPNW_REQUIRED_CHANNEL", "@fodders_dev")
 
 I18N = {
     "ru": {
-        "start": (
-            "Привет! Это VPN Wizard.\n\n"
-            "Бот работает через миниапп: там вся настройка и получение профилей.\n"
-            "Нажмите кнопку ниже или используйте /miniapp.\n\n"
-            "Где взять приложение AmneziaWG:\n"
-            "Android: https://play.google.com/store/apps/details?id=org.amnezia.awg\n"
-            "iOS: https://apps.apple.com/us/app/amneziawg/id6478942365\n"
-            "Windows: https://github.com/amnezia-vpn/amneziawg-windows-client/releases\n"
-            "Linux: https://github.com/amnezia-vpn/amneziawg-linux-kernel-module\n"
-            "macOS: пока нет приложения\n\n"
-            "Гайд по аренде сервера (HostKey):\n"
-            "https://telegra.ph/Kak-arendovat-minimalnyj-server-VPS-na-HostKey-dlya-VPN-12-28\n\n"
-            "После получения конфига откройте AmneziaWG и нажмите «+», чтобы добавить файл."
-        ),
+        "start": "Привет! Выберите бесплатное подключение или настройте собственный сервер.",
         "help": (
-            "Для настройки используйте миниапп — бот не настраивает сервер напрямую.\n"
-            "Нажмите /miniapp и следуйте шагам.\n\n"
-            "Приложение AmneziaWG:\n"
-            "Android: https://play.google.com/store/apps/details?id=org.amnezia.awg\n"
-            "iOS: https://apps.apple.com/us/app/amneziawg/id6478942365\n"
-            "Windows: https://github.com/amnezia-vpn/amneziawg-windows-client/releases\n"
-            "Linux: https://github.com/amnezia-vpn/amneziawg-linux-kernel-module\n"
-            "macOS: пока нет приложения\n\n"
-            "Гайд по аренде сервера (HostKey):\n"
-            "https://telegra.ph/Kak-arendovat-minimalnyj-server-VPS-na-HostKey-dlya-VPN-12-28\n\n"
-            "После получения конфига откройте AmneziaWG и нажмите «+»."
+            "Бесплатный VPN: выберите сервер и скачайте профиль — без промокода "
+            "и ограничения по числу устройств.\n"
+            "Свой сервер: /wizard. Пошаговая инструкция — кнопка ниже."
         ),
+        "guide": "📖 Инструкция по подключению",
         "bot_use_miniapp": "Бот работает через миниапп. Нажмите кнопку ниже или используйте /miniapp.",
         "subscribe_required": "Подпишитесь на канал {channel} и нажмите /start, чтобы пользоваться ботом.",
         "subscribe_check_failed": (
@@ -77,37 +66,19 @@ I18N = {
         "checks_fail": "Проверки: Есть проблемы",
         "canceled": "Отменено.",
         "open_wizard": "Открыть мастер",
+        "free_vpn": "Получить бесплатный VPN",
+        "own_server": "Настроить свой сервер",
         "miniapp_open": "Откройте мастер:",
         "miniapp_missing": "VPNW_MINIAPP_URL не настроен.",
     },
     "en": {
-        "start": (
-            "Hi! This is VPN Wizard.\n\n"
-            "The bot works via the miniapp: all setup and profiles are there.\n"
-            "Tap the button below or use /miniapp.\n\n"
-            "Get AmneziaWG:\n"
-            "Android: https://play.google.com/store/apps/details?id=org.amnezia.awg\n"
-            "iOS: https://apps.apple.com/us/app/amneziawg/id6478942365\n"
-            "Windows: https://github.com/amnezia-vpn/amneziawg-windows-client/releases\n"
-            "Linux: https://github.com/amnezia-vpn/amneziawg-linux-kernel-module\n"
-            "macOS: no official app yet\n\n"
-            "VPS rental guide (HostKey):\n"
-            "https://telegra.ph/Kak-arendovat-minimalnyj-server-VPS-na-HostKey-dlya-VPN-12-28\n\n"
-            "After you get the config, open AmneziaWG and press “+” to add it."
-        ),
+        "start": "Hi! Choose free VPN access or set up your own server.",
         "help": (
-            "Use the miniapp for setup — the bot no longer provisions directly.\n"
-            "Open /miniapp and follow the steps.\n\n"
-            "Get AmneziaWG:\n"
-            "Android: https://play.google.com/store/apps/details?id=org.amnezia.awg\n"
-            "iOS: https://apps.apple.com/us/app/amneziawg/id6478942365\n"
-            "Windows: https://github.com/amnezia-vpn/amneziawg-windows-client/releases\n"
-            "Linux: https://github.com/amnezia-vpn/amneziawg-linux-kernel-module\n"
-            "macOS: no official app yet\n\n"
-            "VPS rental guide (HostKey):\n"
-            "https://telegra.ph/Kak-arendovat-minimalnyj-server-VPS-na-HostKey-dlya-VPN-12-28\n\n"
-            "After you get the config, open AmneziaWG and press “+”."
+            "Free VPN: choose a server and download a profile — no promo code "
+            "or device limit.\n"
+            "Own server: /wizard. Step-by-step setup: button below."
         ),
+        "guide": "📖 Connection guide",
         "bot_use_miniapp": "The bot works via the miniapp. Tap the button below or use /miniapp.",
         "subscribe_required": "Subscribe to {channel} and send /start to use the bot.",
         "subscribe_check_failed": (
@@ -130,6 +101,8 @@ I18N = {
         "checks_fail": "Checks: Issues",
         "canceled": "Canceled.",
         "open_wizard": "Open VPN Wizard",
+        "free_vpn": "Get free VPN",
+        "own_server": "Set up my own server",
         "miniapp_open": "Open the wizard:",
         "miniapp_missing": "VPNW_MINIAPP_URL is not configured.",
     },
@@ -157,27 +130,69 @@ def _channel_link() -> str:
         return f"https://t.me/{channel}"
     return ""
 
-def _build_miniapp_keyboard(url: Optional[str], update: Update) -> Optional[ReplyKeyboardMarkup]:
+def _build_miniapp_keyboard(
+    url: Optional[str], update: Update, *, label: Optional[str] = None
+) -> Optional[ReplyKeyboardMarkup]:
     if not url:
         return None
     return ReplyKeyboardMarkup(
-        [[KeyboardButton(_t(update, "open_wizard"), web_app=WebAppInfo(url))]],
+        [[KeyboardButton(label or _t(update, "open_wizard"), web_app=WebAppInfo(url))]],
         resize_keyboard=True,
     )
 
 
+def _public_page_url(path: str) -> str:
+    configured = (
+        os.getenv("VPNW_PUBLIC_BASE_URL")
+        or os.getenv("VPNW_MINIAPP_URL")
+        or ""
+    ).strip()
+    if not configured:
+        base = CANONICAL_API_BASE
+    else:
+        candidate = resolve_public_miniapp_url(configured)
+        parsed = urlparse(candidate)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+    return f"{base}{path}"
+
+
+def _free_vpn_url() -> str:
+    return _public_page_url("/connect/join.html")
+
+
+def _portal_url() -> str:
+    return _public_page_url("/portal/")
+
+
+def _guide_url() -> str:
+    return _public_page_url("/connect/guide.html")
+
+
+def _entry_keyboard(update: Update) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton(_t(update, "free_vpn"), url=_free_vpn_url())],
+            [InlineKeyboardButton(
+                _t(update, "own_server"), web_app=WebAppInfo(_miniapp_url())
+            )],
+        ]
+    )
+
+
 def _miniapp_url() -> str:
-    return resolve_public_miniapp_url(os.getenv("VPNW_MINIAPP_URL") or CANONICAL_MINIAPP_URL)
+    configured = (os.getenv("VPNW_WIZARD_URL") or "").strip()
+    parsed = urlparse(configured)
+    if parsed.scheme == "https" and parsed.netloc:
+        return configured
+    return _public_page_url("/wizard/")
 
 async def _send_miniapp_intro(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
     if not message:
         return
-    url = _miniapp_url()
-    keyboard = _build_miniapp_keyboard(url, update)
     await message.reply_text(
         _t(update, "start"),
-        reply_markup=keyboard or ReplyKeyboardRemove(),
+        reply_markup=_entry_keyboard(update),
     )
 
 
@@ -218,8 +233,6 @@ def _parse_host_port(text: str) -> Tuple[str, int]:
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if not await _require_subscription(update, context):
-        return ConversationHandler.END
     await _send_miniapp_intro(update, context)
     context.user_data.clear()
     return ConversationHandler.END
@@ -397,31 +410,43 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def miniapp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not await _require_subscription(update, context):
-        return
-    url = _miniapp_url()
-    if not url:
-        await update.message.reply_text(_t(update, "miniapp_missing"))
-        return
-    keyboard = _build_miniapp_keyboard(url, update)
-    await update.message.reply_text(_t(update, "miniapp_open"), reply_markup=keyboard)
+    message = update.effective_message
+    if message:
+        label = "Открыть Fodder VPN" if _lang(update) == "ru" else "Open Fodder VPN"
+        keyboard = _build_miniapp_keyboard(_portal_url(), update, label=label)
+        await message.reply_text(
+            "Откройте бесплатный каталог:" if _lang(update) == "ru" else "Open the free VPN catalog:",
+            reply_markup=keyboard,
+        )
+
+
+async def wizard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    if message:
+        await message.reply_text(
+            _t(update, "miniapp_open"),
+            reply_markup=_build_miniapp_keyboard(_miniapp_url(), update),
+        )
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not await _require_subscription(update, context):
-        return
-    keyboard = _build_miniapp_keyboard(_miniapp_url(), update)
-    await update.message.reply_text(_t(update, "help"), reply_markup=keyboard or ReplyKeyboardRemove())
+    message = update.effective_message
+    if message:
+        keyboard = _entry_keyboard(update)
+        rows = [list(row) for row in keyboard.inline_keyboard]
+        rows.append(
+            [InlineKeyboardButton(_t(update, "guide"), url=_guide_url())]
+        )
+        await message.reply_text(
+            _t(update, "help"), reply_markup=InlineKeyboardMarkup(rows)
+        )
 
 
 async def fallback_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not await _require_subscription(update, context):
-        return
     message = update.effective_message
     if not message:
         return
-    keyboard = _build_miniapp_keyboard(_miniapp_url(), update)
-    await message.reply_text(_t(update, "bot_use_miniapp"), reply_markup=keyboard or ReplyKeyboardRemove())
+    await message.reply_text(_t(update, "bot_use_miniapp"), reply_markup=_entry_keyboard(update))
 
 
 def main(*, in_thread: bool = False) -> None:
@@ -444,6 +469,7 @@ def main(*, in_thread: bool = False) -> None:
     )
     app.add_handler(conv)
     app.add_handler(CommandHandler("miniapp", miniapp))
+    app.add_handler(CommandHandler("wizard", wizard))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, fallback_text))
     run_kwargs = {}

@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import copy
+from datetime import datetime, timezone
+import json
 import os
+from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 from aiogram import Bot
 from aiogram.types import (
@@ -19,12 +23,10 @@ from app.database.database import AsyncSessionLocal
 from app.services.menu_layout.service import MenuLayoutService
 
 
-BUTTON_ID = 'fodders_vpn1'
-ROW_ID = 'fodders_vpn1_row'
-AWG_BUTTON_ID = 'fodders_awg'
-AWG_ROW_ID = 'fodders_awg_row'
-INVITE_BUTTON_ID = 'referrals'
-INVITE_ROW_ID = 'fodders_invite_row'
+FREE_BUTTON_ID = 'fodders_free_vpn'
+FREE_ROW_ID = 'fodders_free_vpn_row'
+WIZARD_BUTTON_ID = 'fodders_vpn1'
+WIZARD_ROW_ID = 'fodders_vpn1_row'
 DEFAULT_PORTAL_URL = 'https://77-67-89-164.nip.io/portal/'
 DEFAULT_LEGACY_URL = 'https://77-67-89-164.nip.io/wizard/'
 
@@ -32,165 +34,88 @@ DEFAULT_LEGACY_URL = 'https://77-67-89-164.nip.io/wizard/'
 async def main() -> None:
     portal_url = (os.getenv('FODDERS_PORTAL_URL') or DEFAULT_PORTAL_URL).strip()
     legacy_url = (os.getenv('FODDERS_VPN1_MINIAPP_URL') or DEFAULT_LEGACY_URL).strip()
-    if not portal_url.startswith('https://'):
+    token = (os.getenv('BOT_TOKEN') or '').strip()
+    portal = urlsplit(portal_url)
+    wizard = urlsplit(legacy_url)
+    if portal.scheme != 'https' or not portal.netloc:
         raise RuntimeError('FODDERS_PORTAL_URL must be an HTTPS URL')
-    if not legacy_url.startswith('https://'):
+    if wizard.scheme != 'https' or not wizard.netloc:
         raise RuntimeError('FODDERS_VPN1_MINIAPP_URL must be an HTTPS URL')
+    if not token:
+        raise RuntimeError('BOT_TOKEN is required to configure Telegram commands')
+
+    free_url = urlunsplit((portal.scheme, portal.netloc, '/connect/join.html', '', ''))
 
     async with AsyncSessionLocal() as db:
         config = copy.deepcopy(await MenuLayoutService.get_config(db))
+        backup_dir = Path(
+            os.getenv('FODDERS_MENU_BACKUP_DIR') or '/var/backups/bedolaga'
+        )
+        backup_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        backup_path = backup_dir / (
+            'fodders-menu-layout-'
+            + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+            + '.json'
+        )
+        backup_fd = os.open(
+            backup_path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        with os.fdopen(backup_fd, 'w', encoding='utf-8') as backup_file:
+            json.dump(config, backup_file, ensure_ascii=False, indent=2)
+            backup_file.write('\n')
+            backup_file.flush()
+            os.fsync(backup_file.fileno())
+
         buttons = config.setdefault('buttons', {})
-        buttons[AWG_BUTTON_ID] = {
-            'type': 'callback',
+        buttons[FREE_BUTTON_ID] = {
+            'type': 'url',
             'builtin_id': None,
             'text': {
-                'ru': '🛡 Подключиться · AmneziaWG',
-                'en': '🛡 Connect · AmneziaWG',
+                'ru': 'Получить бесплатный VPN',
+                'en': 'Get free VPN',
             },
             'icon': None,
-            'action': 'fodders_awg',
-            'enabled': True,
-            'visibility': 'all',
-            'conditions': {
-                'has_active_subscription': True,
-                'subscription_is_active': True,
-            },
-            'dynamic_text': False,
-            'description': 'Managed AmneziaWG profile tied to the subscription',
-        }
-        invite_button = buttons.get(INVITE_BUTTON_ID)
-        if invite_button:
-            invite_button.setdefault('text', {})
-            invite_button['text'].update(
-                {
-                    'ru': '🎁 Поделиться VPN · получить бонус',
-                    'en': '🎁 Share VPN · earn a bonus',
-                }
-            )
-            invite_button['description'] = (
-                'Create a personal invite link and view referral rewards'
-            )
-        legacy_connect = buttons.get('connect')
-        if legacy_connect:
-            legacy_connect.setdefault('text', {})
-            legacy_connect['text'].update(
-                {
-                    'ru': '🌐 Happ / Reality · резерв',
-                    'en': '🌐 Happ / Reality · fallback',
-                }
-            )
-        happ_download = buttons.get('happ_download')
-        if happ_download:
-            happ_download.setdefault('text', {})
-            happ_download['text'].update(
-                {
-                    'ru': '⬇️ Скачать Happ · резерв',
-                    'en': '⬇️ Download Happ · fallback',
-                }
-            )
-        buttons[BUTTON_ID] = {
-            'type': 'mini_app',
-            'builtin_id': None,
-            'text': {
-                'ru': '🛡 Открыть Fodder VPN',
-                'en': '🛡 Open Fodder VPN',
-            },
-            'icon': None,
-            'action': portal_url,
+            'action': free_url,
             'enabled': True,
             'visibility': 'all',
             'conditions': None,
             'dynamic_text': False,
-            'description': 'Unified managed VPN and self-hosted server portal',
+            'description': 'Open the free VPN connection guide',
+        }
+        buttons[WIZARD_BUTTON_ID] = {
+            'type': 'mini_app',
+            'builtin_id': None,
+            'text': {
+                'ru': 'Настроить свой сервер',
+                'en': 'Set up my own server',
+            },
+            'icon': None,
+            'action': legacy_url,
+            'enabled': True,
+            'visibility': 'all',
+            'conditions': None,
+            'dynamic_text': False,
+            'description': 'Open the self-hosted VPN server wizard',
         }
 
-        rows = config.setdefault('rows', [])
-        awg_row = next((row for row in rows if row.get('id') == AWG_ROW_ID), None)
-        if awg_row:
-            awg_row.update(
-                {
-                    'buttons': [AWG_BUTTON_ID],
-                    'conditions': None,
-                    'max_per_row': 1,
-                }
-            )
-        else:
-            awg_row = {
-                'id': AWG_ROW_ID,
-                'buttons': [AWG_BUTTON_ID],
+        # Preserve every existing button definition and its business data. Only
+        # replace the active layout so paid and referral actions are hidden.
+        config['rows'] = [
+            {
+                'id': FREE_ROW_ID,
+                'buttons': [FREE_BUTTON_ID],
                 'conditions': None,
                 'max_per_row': 1,
-            }
-            rows.append(awg_row)
-        # The proven RF-safe path is the first action. The original Reality/Happ
-        # connection remains directly below it as a fully preserved fallback.
-        rows[:] = [row for row in rows if row.get('id') != AWG_ROW_ID]
-        rows.insert(0, awg_row)
-
-        # A two-column "Партнёрка" button looked like an internal sales
-        # tool and hid the sharing action. Keep Bedolaga's complete referral
-        # implementation, but expose it as one explicit full-width action.
-        for row in rows:
-            if row.get('id') == INVITE_ROW_ID:
-                continue
-            row['buttons'] = [
-                button_id
-                for button_id in row.get('buttons', [])
-                if button_id != INVITE_BUTTON_ID
-            ]
-        rows[:] = [row for row in rows if row.get('buttons')]
-
-        invite_row = next((row for row in rows if row.get('id') == INVITE_ROW_ID), None)
-        if invite_row:
-            invite_row.update(
-                {
-                    'buttons': [INVITE_BUTTON_ID],
-                    'conditions': {'referral_enabled': True},
-                    'max_per_row': 1,
-                }
-            )
-        else:
-            invite_row = {
-                'id': INVITE_ROW_ID,
-                'buttons': [INVITE_BUTTON_ID],
-                'conditions': {'referral_enabled': True},
-                'max_per_row': 1,
-            }
-        rows[:] = [row for row in rows if row.get('id') != INVITE_ROW_ID]
-        promo_index = next(
-            (index for index, row in enumerate(rows) if row.get('id') == 'promo_referral_row'),
-            None,
-        )
-        if promo_index is not None:
-            rows.insert(promo_index + 1, invite_row)
-        else:
-            insert_at = next(
-                (index for index, row in enumerate(rows) if row.get('id') == 'support_info_row'),
-                len(rows),
-            )
-            rows.insert(insert_at, invite_row)
-
-        legacy_row = next((row for row in rows if row.get('id') == ROW_ID), None)
-        if legacy_row:
-            legacy_row.update(
-                {
-                    'buttons': [BUTTON_ID],
-                    'conditions': None,
-                    'max_per_row': 1,
-                }
-            )
-        else:
-            row = {
-                'id': ROW_ID,
-                'buttons': [BUTTON_ID],
+            },
+            {
+                'id': WIZARD_ROW_ID,
+                'buttons': [WIZARD_BUTTON_ID],
                 'conditions': None,
                 'max_per_row': 1,
-            }
-            insert_at = next(
-                (index for index, item in enumerate(rows) if item.get('id') == 'support_info_row'),
-                len(rows),
-            )
-            rows.insert(insert_at, row)
+            },
+        ]
 
         validation = MenuLayoutService.validate_config(config)
         if not validation['is_valid']:
@@ -198,24 +123,14 @@ async def main() -> None:
 
         await MenuLayoutService.save_config(db, config)
 
-    token = (os.getenv('BOT_TOKEN') or '').strip()
-    if not token:
-        raise RuntimeError('BOT_TOKEN is required to configure Telegram commands')
     bot = Bot(token=token)
     try:
         current = await bot.get_my_commands()
         descriptions = {command.command: command.description for command in current}
-        descriptions['awg'] = 'Подключиться: выбрать страну и получить конфиг'
-        descriptions['devices'] = 'Мои устройства: кто подключён, отключить'
-        descriptions['invite'] = 'Код для того, у кого не открывается Telegram'
-        descriptions['family'] = 'Дать отдельный VPN-профиль близкому'
-        descriptions['menu'] = 'Показать кнопки действий'
-        descriptions['miniapp'] = 'Открыть единый портал Fodder VPN'
-        descriptions['vpn1'] = 'Настроить собственный VPS через Wizard'
-        order = [
-            'start', 'awg', 'devices', 'invite', 'family',
-            'menu', 'miniapp', 'vpn1', 'help',
-        ]
+        descriptions['free'] = 'Получить бесплатный VPN'
+        descriptions['wizard'] = 'Настроить собственный сервер'
+        descriptions['help'] = 'Помощь и инструкции'
+        order = ['free', 'wizard', 'help']
         commands = [
             BotCommand(command=command, description=descriptions[command])
             for command in order
@@ -229,7 +144,7 @@ async def main() -> None:
         await bot.set_my_commands(commands, scope=BotCommandScopeAllPrivateChats())
         await bot.set_chat_menu_button(
             menu_button=MenuButtonWebApp(
-                text='Open Fodder VPN',
+                text='Fodder VPN',
                 web_app=WebAppInfo(url=portal_url),
             )
         )
@@ -237,8 +152,8 @@ async def main() -> None:
         await bot.session.close()
 
     print(
-        f'portal_menu=configured url={portal_url} '
-        f'legacy_wizard={legacy_url} awg_command=configured'
+        f'free_first_menu=configured free_url={free_url} '
+        f'wizard_webapp={legacy_url} backup={backup_path}'
     )
 
 

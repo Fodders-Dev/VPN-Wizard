@@ -306,11 +306,16 @@ def test_bedolaga_exposes_family_link_with_the_api_token_namespace() -> None:
     assert "Command('family', 'share')" in handler
     assert "Command('miniapp', 'portal')" in handler
     assert "Command('wizard', 'vpn1')" in handler
-    assert "web_app=types.WebAppInfo(url=_portal_url())" in handler
     assert "web_app=types.WebAppInfo(url=_miniapp_url())" in handler
+    assert "web_app=types.WebAppInfo(url=_portal_url())" in handler
+    assert "BTN_FREE = 'Получить бесплатный VPN'" in handler
+    assert "BTN_WIZARD = 'Настроить свой сервер'" in handler
+    assert "url=_free_vpn_url()" in handler
+    assert "Command('miniapp', 'portal')" in handler
+    assert "dp.message.register(open_free_vpn, Command('free', 'join'))" in handler
 
 
-def test_bedolaga_configures_telegram_menu_button_for_the_portal() -> None:
+def test_bedolaga_configures_free_first_menu_and_native_wizard_button() -> None:
     script = (
         ROOT
         / "deploy"
@@ -321,9 +326,17 @@ def test_bedolaga_configures_telegram_menu_button_for_the_portal() -> None:
     ).read_text(encoding="utf-8")
     assert "set_chat_menu_button" in script
     assert "WebAppInfo(url=portal_url)" in script
-    assert "action': portal_url" in script
+    assert "text='Fodder VPN'" in script
+    assert "'action': free_url" in script
+    assert "'action': legacy_url" in script
+    assert "'/connect/join.html'" in script
+    assert "'type': 'mini_app'" in script
+    assert "config['rows'] = [" in script
+    assert "Preserve every existing button definition" in script
+    assert "FODDERS_MENU_BACKUP_DIR" in script
+    assert "json.dump(config, backup_file" in script
     assert "FODDERS_VPN1_MINIAPP_URL" in script
-    assert "/portal/" in script
+    assert "/wizard/" in script
 
 
 def test_connect_page_survives_the_telegram_webview() -> None:
@@ -467,18 +480,21 @@ def test_metrics_dashboard_is_owner_scoped_and_private() -> None:
 
 
 def test_bot_actions_are_discoverable_without_typing_commands() -> None:
-    # A WebApp menu button replaces Telegram's "/" command list, so the commands
-    # were invisible: the chat showed only "Open" and nothing explained the rest.
+    # The start follow-up exposes two directly labeled entry actions.
     handler = (
         ROOT / "deploy" / "bedolaga" / "overrides" / "app" / "handlers" / "fodders_vpn1.py"
     ).read_text(encoding="utf-8")
-    assert "ReplyKeyboardMarkup" in handler
-    assert "is_persistent=True" in handler
-    for button in ("BTN_CONNECT", "BTN_DEVICES", "BTN_INVITE", "BTN_HELP"):
-        assert button in handler
-    # Exact-text filters only: a loose one would swallow promocodes and support
-    # messages, which reach Bedolaga's handlers after ours.
-    assert "F.text == BTN_CONNECT" in handler
+    assert "InlineKeyboardMarkup" in handler
+    assert "BTN_FREE = 'Получить бесплатный VPN'" in handler
+    assert "BTN_WIZARD = 'Настроить свой сервер'" in handler
+    assert "url=_free_vpn_url()" in handler
+    assert "web_app=types.WebAppInfo(url=_miniapp_url())" in handler
+    assert "reply_markup=main_keyboard(event)" in handler
+    # Existing utility and paid handlers remain reachable by command/callback.
+    for command in ("Command('devices', 'ustroystva')", "Command('invite', 'priglasit')", "Command('family', 'share')"):
+        assert command in handler
+    # Telegram's bottom menu button keeps opening the integrated free-first portal.
+    assert "web_app=types.WebAppInfo(url=_portal_url())" in handler
 
 
 def test_stars_screen_offers_a_way_out_when_stars_run_short() -> None:
@@ -527,11 +543,36 @@ def test_start_payload_decides_what_the_bot_answers() -> None:
         ROOT / "deploy" / "bedolaga" / "overrides" / "app" / "handlers" / "fodders_vpn1.py"
     ).read_text(encoding="utf-8")
     assert "START_TOPICS" in handler
-    for topic in ("'plan'", "'help'", "'portal'"):
+    for topic in ("'plan'", "'help'", "'portal'", "'promo'"):
         assert topic in handler
-    # Money has to be one tap away once someone asks for it: this is Bedolaga's
-    # own subscription screen, not a re-implementation of checkout.
+    # A historical plan deep link still gets its original payment destination;
+    # the free-first default help topics must not repurpose or hide that path.
     assert "callback_data='menu_subscription'" in handler
+    assert "Telegram Stars" in handler
+    for marker in ("'help': (", "'promo': (", "'portal': ("):
+        topic = handler.split(marker, 1)[1].split("\n    )", 1)[0]
+        topic_lower = "".join(re.findall(r"'((?:\\.|[^'\\])*)'", topic)).lower()
+        assert "без промокода" in topic_lower or "промокод не нужен" in topic_lower
+        assert "ограничения по числу устройств" in topic_lower
+        assert "нет" in topic_lower or "без промокода и ограничения" in topic_lower
+
+
+def test_bedolaga_help_and_legacy_entry_are_free_first_with_setup_guide() -> None:
+    handler = (
+        ROOT / "deploy" / "bedolaga" / "overrides" / "app" / "handlers" / "fodders_vpn1.py"
+    ).read_text(encoding="utf-8")
+    help_text = handler.split("async def show_help", 1)[1].split("\ndef _start_payload", 1)[0]
+    legacy_text = handler.split("async def open_legacy_miniapp", 1)[1].split("\n\nasync def show_help", 1)[0]
+    for section in (help_text, legacy_text):
+        assert "paid locations" not in section
+        assert "paid plans" not in section
+        assert "Платные страны" not in section
+        assert "/start" not in section
+        assert "device limit" in section or "ограничения по числу устройств" in section
+        assert "promo code" in section or "промокода" in section
+        assert "_guide_url()" in section
+    assert "def _guide_url()" in handler
+    assert "_free_vpn_url().rsplit('/', 1)[0]" in handler
 
 
 def test_every_command_is_listed_in_the_telegram_menu() -> None:
@@ -549,11 +590,15 @@ def test_every_command_is_listed_in_the_telegram_menu() -> None:
         registered.update(re.findall(r"'([a-z0-9_]+)'", match))
     listed = set(re.findall(r"descriptions\['([a-z0-9_]+)'\]", script)) | {"start", "help"}
 
-    # Aliases need not be advertised, but every primary verb must be reachable
-    # both as a handler and from the menu, or people cannot find it at all.
-    for primary in ("awg", "devices", "invite", "family", "menu"):
+    # The utility and paid handlers remain registered, but paid/referral commands
+    # are omitted from the default command menu while subscriptions are paused.
+    for primary in ("awg", "devices", "invite", "family", "menu", "miniapp", "vpn1"):
         assert primary in registered, f"/{primary} has no handler"
+    for primary in ("free", "wizard", "help"):
         assert primary in listed, f"/{primary} is missing from the Telegram menu"
+    assert "invite" not in listed
+    assert "family" not in listed
+    assert "miniapp" not in listed
 
 
 def test_the_channel_is_asked_for_only_once_the_tunnel_works() -> None:

@@ -32,25 +32,24 @@ DEVICE_REVOKE_PREFIX = 'fdev_rk:'
 DEVICE_REVOKE_CONFIRM_PREFIX = 'fdev_rky:'
 RENAME_PROMPT_MARKER = '✏️ Введите новое название'
 
-# Telegram replaces the "/" command list with the Mini App button whenever a
-# WebApp menu button is set, so commands become invisible. A persistent reply
-# keyboard is the discoverable surface for people who will never type a slash.
-BTN_CONNECT = '🛡 Подключить VPN'
-BTN_DEVICES = '📱 Мои устройства'
-BTN_INVITE = '🎟 Пригласить'
-BTN_HELP = '❓ Помощь'
+# Keep the two entry actions visible in the chat. The free flow is a normal
+# link; the self-hosted wizard uses Telegram's native WebApp launch.
+BTN_FREE = 'Получить бесплатный VPN'
+BTN_WIZARD = 'Настроить свой сервер'
 
 
-def main_keyboard() -> types.ReplyKeyboardMarkup:
-    return types.ReplyKeyboardMarkup(
-        keyboard=[
-            [types.KeyboardButton(text=BTN_CONNECT)],
-            [types.KeyboardButton(text=BTN_DEVICES), types.KeyboardButton(text=BTN_INVITE)],
-            [types.KeyboardButton(text=BTN_HELP)],
-        ],
-        resize_keyboard=True,
-        is_persistent=True,
-        input_field_placeholder='Выберите действие',
+def main_keyboard(message: types.Message) -> types.InlineKeyboardMarkup:
+    russian = _is_russian(message)
+    free_text = BTN_FREE if russian else 'Get free VPN'
+    wizard_text = BTN_WIZARD if russian else 'Set up my own server'
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text=free_text, url=_free_vpn_url())],
+            [types.InlineKeyboardButton(
+                text=wizard_text,
+                web_app=types.WebAppInfo(url=_miniapp_url()),
+            )],
+        ]
     )
 
 
@@ -99,6 +98,27 @@ def _miniapp_url() -> str:
     if not value.startswith('https://'):
         return DEFAULT_MINIAPP_URL
     return value
+
+
+def _free_vpn_url() -> str:
+    base = (os.getenv('VPNW_AWG_PUBLIC_URL') or DEFAULT_AWG_PUBLIC_URL).strip().rstrip('/')
+    if not base.startswith('https://'):
+        base = DEFAULT_AWG_PUBLIC_URL
+    return f'{base}/connect/join.html'
+
+
+def _guide_url() -> str:
+    return f"{_free_vpn_url().rsplit('/', 1)[0]}/guide.html"
+
+
+def _portal_keyboard(message: types.Message) -> types.InlineKeyboardMarkup:
+    label = 'Открыть Fodder VPN' if _is_russian(message) else 'Open Fodder VPN'
+    return types.InlineKeyboardMarkup(inline_keyboard=[[
+        types.InlineKeyboardButton(
+            text=label,
+            web_app=types.WebAppInfo(url=_portal_url()),
+        )
+    ]])
 
 
 def _is_russian(message: types.Message) -> bool:
@@ -227,17 +247,7 @@ async def _family_picker_url(telegram_id: int) -> str | None:
 
 
 def _keyboard(message: types.Message) -> types.InlineKeyboardMarkup:
-    text = '🛡 Открыть Fodder VPN' if _is_russian(message) else '🛡 Open Fodder VPN'
-    return types.InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                types.InlineKeyboardButton(
-                    text=text,
-                    web_app=types.WebAppInfo(url=_portal_url()),
-                )
-            ]
-        ]
-    )
+    return main_keyboard(message)
 
 
 def _legacy_keyboard(message: types.Message) -> types.InlineKeyboardMarkup:
@@ -384,13 +394,13 @@ async def _send_family_link(message: types.Message, user: types.User | None) -> 
         await message.answer(
             unavailable.detail
             or 'Не удалось получить семейную ссылку. Попробуйте через минуту.',
-            reply_markup=main_keyboard(),
+            reply_markup=main_keyboard(message),
         )
         return
     if family_url is None:
         await message.answer(
             'Семейный доступ пока не настроен. Напишите в техподдержку.',
-            reply_markup=main_keyboard(),
+            reply_markup=main_keyboard(message),
         )
         return
     if _user_is_russian(user):
@@ -804,27 +814,22 @@ async def open_invite_callback(callback: types.CallbackQuery) -> None:
 
 
 async def _ensure_keyboard(message: types.Message) -> None:
-    """Put the action buttons on screen once, quietly."""
+    """Restore the two entry actions after a website deep link."""
     try:
-        note = await message.answer('⁣', reply_markup=main_keyboard())
-        await note.delete()
+        await message.answer(
+            'Выберите действие:' if _is_russian(message) else 'Choose an action:',
+            reply_markup=main_keyboard(message),
+        )
     except Exception:  # deletion is best-effort; the keyboard is what matters
         pass
 
 
 async def show_menu(message: types.Message) -> None:
     if _is_russian(message):
-        text = (
-            '🛡 <b>Fodder VPN</b>\n\n'
-            'Кнопки под полем ввода всегда на месте — ими и пользуйтесь:\n\n'
-            f'{BTN_CONNECT} — выбрать страну и получить конфиг\n'
-            f'{BTN_DEVICES} — кто подключён, переименовать, отключить\n'
-            f'{BTN_INVITE} — код для того, у кого не открывается Telegram\n'
-            f'{BTN_HELP} — все команды и ссылки'
-        )
+        text = '🛡 <b>Fodder VPN</b>\n\nВыберите, как подключиться:'
     else:
-        text = '🛡 <b>Fodder VPN</b>\n\nUse the buttons below the input field.'
-    await message.answer(text, reply_markup=main_keyboard(), parse_mode='HTML')
+        text = '🛡 <b>Fodder VPN</b>\n\nChoose how to connect:'
+    await message.answer(text, reply_markup=main_keyboard(message), parse_mode='HTML')
 
 
 async def open_managed_awg_message(message: types.Message) -> None:
@@ -849,86 +854,70 @@ async def open_family_callback(callback: types.CallbackQuery) -> None:
 
 async def open_portal(message: types.Message) -> None:
     if _is_russian(message):
-        offer = (
-            'Нидерланды бесплатно подписчикам Fodder’s Dev. '
-            if _channel_access_enabled()
-            else 'Бесплатные Нидерланды готовятся к запуску. '
-        )
-        text = (
-            '🛡 <b>Fodder VPN</b>\n\n'
-            + offer + 'Другие страны, '
-            'дополнительные устройства и прокси для приставок — по подписке. '
-            'Мастер для собственного VPS тоже находится здесь.'
-        )
+        text = '🛡 <b>Fodder VPN</b>\n\nОткройте бесплатный каталог и настройте собственный сервер.'
     else:
-        offer = (
-            'Netherlands is free for Fodder’s Dev followers. '
-            if _channel_access_enabled()
-            else 'Free Netherlands access is being prepared. '
-        )
-        text = (
-            '🛡 <b>Fodder VPN</b>\n\n'
-            + offer + 'Other countries, '
-            'additional devices, and console proxy setup are paid.'
-        )
-    await message.answer(text, reply_markup=_keyboard(message), parse_mode='HTML')
+        text = '🛡 <b>Fodder VPN</b>\n\nOpen the free VPN catalog or set up your own server.'
+    await message.answer(text, reply_markup=_portal_keyboard(message), parse_mode='HTML')
+
+
+async def open_free_vpn(message: types.Message) -> None:
+    label = BTN_FREE if _is_russian(message) else 'Get free VPN'
+    await message.answer(
+        'Откройте страницу бесплатного подключения:'
+        if _is_russian(message)
+        else 'Open the free VPN connection page:',
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
+            types.InlineKeyboardButton(text=label, url=_free_vpn_url())
+        ]]),
+    )
 
 
 async def open_legacy_miniapp(message: types.Message) -> None:
     if _is_russian(message):
         text = (
-            'Fodders VPN 1 сохранён и продолжает работать.\n\n'
-            'В старом мастере доступны подключение собственного VPS, выпуск '
-            'профилей AmneziaWG/Xray и диагностика сервера.\n'
-            + ('Бесплатные Нидерланды, ' if _channel_access_enabled() else '')
-            + 'Платные страны и оплата находятся в /start.'
+            'Fodders VPN 1 — прежний мастер настройки собственного сервера; '
+            'он по-прежнему доступен.\n\n'
+            'Бесплатный VPN — выберите сервер в каталоге. Промокод не нужен, '
+            'ограничения по числу устройств нет.'
         )
     else:
         text = (
-            'Fodders VPN 1 is preserved and remains available.\n\n'
-            'The original wizard still provides bring-your-own-VPS setup, '
-            'AmneziaWG/Xray profiles, and server diagnostics.\n'
-            'Use /start for '
-            + ('free Netherlands access, ' if _channel_access_enabled() else '')
-            + 'paid locations, and payments.'
+            'Fodders VPN 1 is the original wizard for setting up your own server; '
+            'it is still available.\n\n'
+            'For free VPN, choose a server in the catalog. No promo code or '
+            'device limit is required.'
         )
-    await message.answer(text, reply_markup=_legacy_keyboard(message))
+    base_markup = main_keyboard(message)
+    rows = [list(row) for row in base_markup.inline_keyboard]
+    rows.append([types.InlineKeyboardButton(
+        text='📖 Инструкция' if _is_russian(message) else '📖 Setup guide',
+        url=_guide_url(),
+    )])
+    markup = types.InlineKeyboardMarkup(inline_keyboard=rows)
+    await message.answer(text, reply_markup=markup)
 
 
 async def show_help(message: types.Message) -> None:
     if _is_russian(message):
-        start_label = (
-            'бесплатные Нидерланды, подписка, оплата и подключение'
-            if _channel_access_enabled()
-            else 'подписка, оплата и подключение'
-        )
         text = (
-            'Fodder VPN:\n'
-            f'• /start — {start_label}\n'
-            '• /awg — стабильное подключение через AmneziaWG\n'
-            '• /miniapp — единый портал Fodder VPN\n'
-            '• /vpn1 или /wizard — прежний мастер своего сервера\n\n'
-            # Ссылка на amnezia.org отсюда убрана намеренно: это сайт компании,
-            # которая продаёт свой VPN. Отправлять туда своего покупателя —
-            # значит показывать ему витрину конкурента. Ссылка на приложение
-            # выдаётся на шаге установки, где она к месту и ведёт в магазин.
-            'Установка приложения и конфиг — в разделе «Подключить VPN».'
+            'Бесплатный VPN: выберите сервер и скачайте профиль — без промокода '
+            'и ограничения по числу устройств.\n'
+            'Свой сервер: /wizard. Инструкция — кнопка ниже.'
         )
     else:
-        start_label = (
-            'free Netherlands, paid plans, payments, and connection'
-            if _channel_access_enabled()
-            else 'paid plans, payments, and connection'
-        )
         text = (
-            'Fodder VPN:\n'
-            f'• /start — {start_label}\n'
-            '• /awg — stable connection through AmneziaWG\n'
-            '• /miniapp — unified Fodder VPN portal\n'
-            '• /vpn1 or /wizard — original server wizard\n\n'
-            'App setup and config live under "Подключить VPN".'
+            'Free VPN: choose a server and download a profile — no promo code '
+            'or device limit.\n'
+            'Own server: /wizard. Setup guide: button below.'
         )
-    await message.answer(text, reply_markup=_keyboard(message))
+    base_markup = main_keyboard(message)
+    rows = [list(row) for row in base_markup.inline_keyboard]
+    rows.append([types.InlineKeyboardButton(
+        text='📖 Инструкция' if _is_russian(message) else '📖 Setup guide',
+        url=_guide_url(),
+    )])
+    markup = types.InlineKeyboardMarkup(inline_keyboard=rows)
+    await message.answer(text, reply_markup=markup)
 
 
 def _start_payload(text: str) -> str:
@@ -949,19 +938,18 @@ START_TOPICS = {
     ),
     'help': (
         '❓ <b>Помощь</b>\n\n'
-        'Опишите, что не получается — отвечу здесь же. '
-        'Быстрые действия — на кнопках под полем ввода.'
+        'Бесплатный VPN доступен без промокода и ограничения по числу устройств. '
+        'Выберите сервер в каталоге или настройте свой сервер кнопками ниже.'
     ),
     'promo': (
-        '🎁 <b>Промокод на ещё один профиль</b>\n\n'
-        'Бесплатный профиль — один на человека. Нужен второй, на планшет или '
-        'для близкого? Ваш запрос уже отправлен — ответим здесь же. Можно '
-        'добавить пару слов, для какого устройства нужен профиль.\n\n'
-        'Код вводится на той же странице, где вы получали первый профиль.'
+        '🎁 <b>Бесплатный VPN</b>\n\n'
+        'Промокод не нужен: выберите сервер и скачайте профиль. Ограничения '
+        'по числу устройств нет. Кнопки для каталога и настройки своего сервера — ниже.'
     ),
     'portal': (
-        '🛡 <b>Личный кабинет открыт.</b>\n\n'
-        'Подписка, устройства и приглашения — на кнопках ниже.'
+        '🛡 <b>С чего начать</b>\n\n'
+        'Выберите бесплатный сервер без промокода и ограничения по числу устройств '
+        'или настройте собственный сервер кнопками ниже.'
     ),
 }
 
@@ -986,8 +974,8 @@ def _start_followup_markup(topic: str) -> types.InlineKeyboardMarkup | None:
 def _start_followup_text(payload: str, russian: bool) -> str:
     if not russian:
         return (
-            '🛡 <b>Fodder VPN</b>\n\nUse the buttons below the input field, '
-            'or /help for every command.'
+            '🛡 <b>Fodder VPN</b>\n\nChoose a free server — no promo code or '
+            'device limit — or set up your own server below.'
         )
     topic = _start_topic(payload)
     if topic in START_TOPICS:
@@ -999,11 +987,9 @@ def _start_followup_text(payload: str, russian: bool) -> str:
     )
     return (
         opening
-        + 'Дальше всё делается этими кнопками:\n\n'
-        + f'{BTN_CONNECT} — выбрать страну, получить конфиг и QR\n'
-        + f'{BTN_DEVICES} — кто подключён, переименовать, отключить\n'
-        + f'{BTN_INVITE} — код для того, у кого не открывается Telegram\n'
-        + f'{BTN_HELP} — все команды и ссылки'
+        + 'Выберите, как подключиться:\n\n'
+        + f'• {BTN_FREE}\n'
+        + f'• {BTN_WIZARD}'
     )
 
 
@@ -1127,11 +1113,10 @@ async def start_followup_middleware(handler, event, data):
             return result
         await event.answer(
             _start_followup_text(payload, _is_russian(event)),
-            reply_markup=main_keyboard(),
+            reply_markup=main_keyboard(event),
             parse_mode='HTML',
         )
-        # A reply keyboard and an inline keyboard cannot ride on the same
-        # message, so the shortcut into payment goes in a second, short one.
+        # Deep links for existing paid flows keep their direct subscription shortcut.
         topic = _start_topic(payload)
         markup = _start_followup_markup(topic)
         if markup is not None:
@@ -1163,7 +1148,7 @@ async def purchase_followup_middleware(handler, event, data):
             '🛡 <b>Профиль уже готов</b>\n\n'
             'Нажмите кнопку ниже, выберите страну — и бот пришлёт файл профиля '
             'с инструкцией. Оплачены все страны, устройство одно.\n\n'
-            f'Позже профиль всегда можно забрать кнопкой {BTN_CONNECT} под полем ввода.',
+            'Позже профиль можно получить командой /awg.',
             reply_markup=types.InlineKeyboardMarkup(
                 inline_keyboard=[[
                     types.InlineKeyboardButton(
@@ -1181,13 +1166,8 @@ async def purchase_followup_middleware(handler, event, data):
 def register_handlers(dp: Dispatcher) -> None:
     dp.message.outer_middleware(start_followup_middleware)
     dp.callback_query.outer_middleware(purchase_followup_middleware)
-    # Exact-text only: these run before Bedolaga's own text handlers, so a loose
-    # filter here would swallow promocodes and support messages.
-    dp.message.register(open_managed_awg_message, F.text == BTN_CONNECT)
-    dp.message.register(open_devices_message, F.text == BTN_DEVICES)
-    dp.message.register(open_invite_message, F.text == BTN_INVITE)
-    dp.message.register(show_help, F.text == BTN_HELP)
     dp.message.register(show_menu, Command('menu', 'buttons'))
+    dp.message.register(open_free_vpn, Command('free', 'join'))
     dp.message.register(open_managed_awg_message, Command('awg', 'amnezia'))
     dp.callback_query.register(open_managed_awg_callback, F.data == 'fodders_awg')
     dp.callback_query.register(

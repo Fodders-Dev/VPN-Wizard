@@ -1,0 +1,33 @@
+/* Two obvious journeys; no account/paywall state on the public home. */
+.vpn-start.app { width: 100%; max-width: 960px; margin: 0 auto; padding: calc(24px + env(safe-area-inset-top, 0px)) 24px calc(32px + env(safe-area-inset-bottom, 0px)); }
+.start-intro { padding: 36px 0 28px; }
+.start-intro h1 { margin: 8px 0 0; font-size: clamp(2.25rem, 1.5rem + 3vw, 3.75rem); line-height: 1.08; letter-spacing: -.05em; font-weight: 550; }
+.start-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.start-choice { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 24px; border: 1px solid #9cae88; border-radius: 12px; color: var(--text); background: var(--surface); text-decoration: none; }
+.start-choice--free { color: #182016; background: #dce9c9; border-color: #dce9c9; }
+.start-choice__label { font-size: 1.3125rem; line-height: 1.3; letter-spacing: -.03em; font-weight: 650; }
+.start-choice__copy { max-width: 34ch; font-size: .875rem; line-height: 1.65; color: var(--text-dim); }
+.start-choice--free .start-choice__copy { color: #3c4a32; }
+.start-choice__end { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 16px; margin-top: auto; font-size: .8125rem; font-weight: 550; }
+.start-choice__end > span { font-size: 1.35rem; line-height: 1; }
+.start-choice:hover { border-color: #dce9c9; background: #253024; }
+.start-choice--free:hover { background: #e6f1d8; }
+.start-choice:focus-visible { outline: 3px solid #f0c979; outline-offset: 4px; }
+.start-note { margin: 18px 0 28px; color: var(--text-dim); font-size: .75rem; line-height: 1.65; }
+.vpn-start .project-support { padding: 18px 20px; }
+.vpn-start .project-support h2 { font-size: 1rem; }
+.vpn-start .project-support__actions a, .vpn-start .support-disclosure > summary { font-size: .75rem; padding-inline: 14px; }
+.vpn-start .vpn-footer { margin-top: 24px; }
+.vpn-start .vpn-footer a { color: var(--text-dim); }
+@media (max-width: 620px) {
+  .vpn-start.app { padding-inline: 16px; padding-top: calc(16px + env(safe-area-inset-top, 0px)); }
+  .start-intro { padding: 24px 0 20px; }
+  .start-choices { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .start-choice { padding: 18px; gap: 8px; }
+  .start-choice__label { font-size: 1.125rem; }
+  .start-choice__copy { max-width: none; font-size: .8125rem; }
+  .start-choice__end { padding-top: 8px; font-size: .75rem; }
+  .start-note { margin: 14px 0 22px; }
+  .vpn-start .project-support { padding: 16px; }
+}
+@media (forced-colors: active) { .start-choice { border-color: LinkText; } }

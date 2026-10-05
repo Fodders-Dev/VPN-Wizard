@@ -4270,8 +4270,8 @@ def public_vpn_entry() -> RedirectResponse:
 @app.get("/portal", include_in_schema=False)
 @app.get("/portal/", include_in_schema=False)
 def portal_entry() -> FileResponse:
-    # The liquid-glass cabinet. The previous portal keeps living at
-    # /connect/index.html as a reachable fallback while this one settles in.
+    # Public, free-first home. Retained private workflows live separately at
+    # /connect/account.html; neither primary journey requires portal login.
     return _entry_file("connect", "next.html")
 
 

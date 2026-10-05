@@ -1,5 +1,31 @@
 # RUNBOOK
 
+## Free home and illustrated guide (2026-10-05)
+
+`/portal/` offers two ungated routes: free profiles (`/connect/join.html`) and
+self-hosted setup (`/wizard/`). Telegram login in the master protects SSH-session ownership; old
+private account functionality remains at `/connect/account.html`. Paid bot entry
+actions are hidden, not deleted. For deployment/rollback see RUNBOOK-managed.md.
+
+Beginner instructions: `/connect/guide.html`. Current `and-3*` images are legacy
+illustrations; fresh emulator captures await a manual AVD start after an automatic
+launch was rejected. Do not call them freshly verified screenshots. For new
+captures use disposable demos. Confirm all images load and device steps remain
+reachable with JavaScript disabled. `profile-file.js` gives public downloads
+short unique ASCII names. Filename repair in `guide.js` stays entirely local;
+test `.conf.txt`, `(1).conf`, invalid/oversize files and quick selection changes,
+asserting byte-identical output and zero uploads. Never capture actual keys.
+
+Before publication run the full pytest suite and walk home → catalog → profile
+or QR → illustrated guide → rename repair, plus home → VPS master sign-in → home
+on a narrow mobile screen. Preserve real unavailable-server warnings.
+
+Release tests include canonical anonymous-cookie encoding: alternate Base64
+padding-bit spellings are rejected without rotating valid cookies or peer keys.
+Rollback backup before release: `/var/backups/bedolaga/free-ux-20261005T055439Z/`
+(both PostgreSQL databases plus web/Bedolaga overrides). Menu-layout snapshots
+are separately saved under `/var/backups/bedolaga` by the configuration helper.
+
 ## Managed server catalogue
 
 FI provider address changed to `46.38.156.229` on 2026-10-04. SSH host keys

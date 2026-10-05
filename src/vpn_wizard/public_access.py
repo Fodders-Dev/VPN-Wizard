@@ -243,7 +243,12 @@ def _decode_b64url(value: str) -> bytes:
     alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
     if not value or len(value) > 128 or any(char not in alphabet for char in value):
         raise ValueError("Malformed token payload")
-    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+    decoded = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+    # Reject alternate encodings with nonzero unused padding bits. Generated
+    # cookies are canonical; an edited final character must not be accepted.
+    if _b64url(decoded) != value:
+        raise ValueError("Noncanonical token payload")
+    return decoded
 
 
 class PublicAccessService:

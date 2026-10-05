@@ -25,8 +25,8 @@ class PortalMarkup(HTMLParser):
             self.options_closed = "open" not in values
 
 
-def test_portal_uses_shared_minimal_design_with_support_before_downloads():
-    html = (WEB / "next.html").read_text(encoding="utf-8")
+def test_legacy_account_keeps_shared_minimal_design():
+    html = (WEB / "account.html").read_text(encoding="utf-8")
     parser = PortalMarkup()
     parser.feed(html)
     assert len(parser.ids) == len(set(parser.ids))
@@ -42,7 +42,7 @@ def test_portal_uses_shared_minimal_design_with_support_before_downloads():
 
 
 def test_portal_disclosures_have_matching_accessible_controls():
-    html = (WEB / "next.html").read_text(encoding="utf-8")
+    html = (WEB / "account.html").read_text(encoding="utf-8")
     parser = PortalMarkup()
     parser.feed(html)
     for trigger, panel in (("t-devices", "devices"), ("t-countries", "countries"),
@@ -56,7 +56,7 @@ def test_portal_disclosures_have_matching_accessible_controls():
 
 
 def test_portal_keeps_auth_and_private_features_without_claiming_public_limits():
-    html = (WEB / "next.html").read_text(encoding="utf-8")
+    html = (WEB / "account.html").read_text(encoding="utf-8")
     for endpoint in ("/api/auth/telegram/miniapp", "/api/auth/me", "/api/portal/links",
                      "/api/portal/channel-access/verify", "/api/console-proxy/"):
         assert endpoint in html
@@ -73,3 +73,49 @@ def test_portal_keeps_auth_and_private_features_without_claiming_public_limits()
     assert "localStorage" not in html
     assert "createTextNode(label" in html
     assert "strong.textContent=value" in html
+
+
+def test_free_home_has_two_ungated_primary_paths_before_optional_support():
+    html = (WEB / "next.html").read_text(encoding="utf-8")
+    parser = PortalMarkup()
+    parser.feed(html)
+    assert len(parser.ids) == len(set(parser.ids))
+    assert parser.h1_count == 1
+    assert 'id="public-vpn-link" href="/connect/join.html"' in html
+    assert 'id="wizard-link-main" href="/wizard/"' in html
+    assert html.index('id="wizard-link-main"') < html.index('id="support-slot"')
+    assert "Получить бесплатный VPN" in html
+    assert "Настроить свой сервер" in html
+    for old in ('id="cabinet"', 'id="plan"', 'id="t-devices"', 'id="offer"',
+                'id="locked"', 'id="cta-connect"', 'id="t-family"'):
+        assert old not in html
+    js = (WEB / "free-home.js").read_text(encoding="utf-8")
+    for endpoint in ("/api/auth", "/api/portal", "localStorage", "sessionStorage"):
+        assert endpoint not in js
+    assert "sdk.async = true" in js
+    assert 'wizard.hash = launch.toString()' in js
+    assert 'free.target = "_blank"' in js
+    assert "tg.openLink(free.href)" in js
+    assert "tg.openTelegramLink(link.href)" in js
+
+
+def test_public_catalog_exposes_self_hosted_setup_without_disclosure():
+    html = (WEB / "join.html").read_text(encoding="utf-8")
+    assert 'class="vpn-product-nav"' in html
+    assert 'href="/wizard/">Настроить свой сервер' in html
+    assert html.index('href="/wizard/"') < html.index('id="server-grid"')
+    assert 'href="/portal/"' in html
+    wizard = (WEB.parent / "miniapp" / "index.html").read_text(encoding="utf-8")
+    assert 'id="product-managed-label">Бесплатный VPN' in wizard
+
+
+def test_self_hosted_master_explains_required_login_before_ssh_secrets():
+    html = (WEB.parent / "miniapp" / "index.html").read_text(encoding="utf-8")
+    js = (WEB.parent / "miniapp" / "app.js").read_text(encoding="utf-8")
+    assert 'id="auth-disclosure" open' in html
+    assert 'id="connect-fields" disabled' in html
+    assert html.index('id="auth-disclosure"') < html.index('id="password-input"')
+    assert "Для бесплатных готовых профилей вход не нужен" in html
+    assert "refs.connectFields.disabled = !canManageServer" in js
+    assert "account.authenticated && !account.pin_required" in js
+    assert "Можно настроить VPS без входа" not in html + js

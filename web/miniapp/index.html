@@ -18,9 +18,9 @@
 
   <main class="app-shell">
     <nav class="product-switcher glass-panel" aria-label="Разделы Fodder VPN">
-      <a class="product-switch-link" href="/portal/">
+      <a class="product-switch-link" id="product-free-link" href="/portal/">
         <span aria-hidden="true">🛡</span>
-        <span id="product-managed-label">VPN-подписка</span>
+        <span id="product-managed-label">Бесплатный VPN</span>
       </a>
       <a class="product-switch-link active" href="/wizard/" aria-current="page">
         <span aria-hidden="true">🛠</span>
@@ -31,8 +31,8 @@
     <header class="topbar glass-panel">
       <div>
         <div class="eyebrow" id="app-eyebrow">Telegram Mini App</div>
-        <h1 class="topbar-title">VPN Wizard</h1>
-        <p class="topbar-copy" id="topbar-copy">Сервер, профили и все действия на одном экране.</p>
+        <h1 class="topbar-title">Свой VPN-сервер</h1>
+        <p class="topbar-copy" id="topbar-copy">Введите данные арендованного VPS. Мастер установит VPN и выдаст профили.</p>
       </div>
       <div class="topbar-side">
         <div class="topbar-badge" id="topbar-badge">Гость</div>
@@ -60,7 +60,9 @@
     <div class="page-frame">
       <section class="page active" id="connect-page" data-page="connect">
         <div class="page-stack">
-          <section class="glass-panel compact-card" id="auth-card">
+          <details class="glass-panel compact-card" id="auth-disclosure" open>
+            <summary id="auth-summary">Шаг 1 · Войти через Telegram</summary>
+            <section id="auth-card">
             <div class="card-head">
               <div>
                 <div class="eyebrow" id="auth-eyebrow">Telegram account</div>
@@ -69,25 +71,29 @@
               <div class="status-pill" id="auth-state-pill">Не подключен</div>
             </div>
             <p class="card-copy" id="auth-copy">
-              Войдите через Telegram, чтобы выбирать свои серверы без повторного ввода IP и пароля.
+              Войдите через Telegram, чтобы доступ к настройке вашего VPS был только у вас. Для бесплатных готовых профилей вход не нужен.
             </p>
             <div class="auth-actions">
               <button type="button" class="primary-btn hidden" id="miniapp-login-btn">Войти через Telegram</button>
               <div id="telegram-widget-slot"></div>
               <button type="button" class="mini-btn subtle hidden" id="logout-btn">Выйти</button>
             </div>
-          </section>
+            </section>
+          </details>
 
           <section class="glass-panel connect-card">
             <div class="card-head">
               <div>
-                <div class="eyebrow" id="connect-eyebrow">Шаг 1</div>
+                <div class="eyebrow" id="connect-eyebrow">Шаг 2</div>
                 <h2 class="card-title" id="connect-title">Подключение к серверу</h2>
               </div>
               <div class="status-pill" id="connect-status-chip">Ожидание</div>
             </div>
 
+            <p class="card-copy" id="connect-auth-hint">Сначала войдите через Telegram выше. Затем здесь можно ввести данные вашего VPS.</p>
+            <button type="button" class="mini-btn hidden" id="unlock-pin-btn">Ввести PIN</button>
             <form id="connect-form" novalidate>
+              <fieldset class="connect-fields" id="connect-fields" disabled aria-describedby="connect-auth-hint">
               <div class="field-grid two">
                 <label class="field">
                   <span class="field-label">
@@ -237,6 +243,7 @@
                 <button type="button" class="mini-btn hidden" id="setup-btn">Настроить сервер</button>
                 <button type="button" class="mini-btn hidden" id="open-profiles-btn">Открыть профили</button>
               </div>
+              </fieldset>
             </form>
           </section>
         </div>

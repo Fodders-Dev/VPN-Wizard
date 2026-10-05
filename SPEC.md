@@ -1,5 +1,28 @@
 # VPN Wizard - SPEC
 
+## Free-first entry and illustrated onboarding (2026-10-05)
+
+- `/portal/` is an anonymous, static two-choice home: free profiles or setup of
+  your own rented VPS. Both navigation links precede optional support and work
+  without account login, Telegram SDK or catalog API; server administration
+  authenticates separately. Paid sales are paused, not deleted.
+- Bot chat buttons expose the free browser catalog and the self-hosted WebApp.
+  Existing accounts, tariffs, commands and private cabinet `/connect/account.html`
+  are retained; the old active bot layout is backed up before replacement.
+- `/wizard/` requires Telegram sign-in to protect ownership of SSH sessions.
+  Guests see sign-in first; SSH inputs remain disabled until account/PIN unlock.
+  This does not gate free ready-made profiles. Telegram return
+  navigation keeps only signed launch fields in a same-origin URL fragment.
+- `/connect/guide.html` explains exact AmneziaWG installation, import, VPN
+  permission, QR and file renaming for Android/iPhone/Windows. Real Android
+  screenshots must use disposable demonstration profiles, never user keys.
+- Download names are ASCII, at most 15 characters before `.conf`, with a random
+  suffix to avoid browser `(1)` duplicate names. Renaming repair is local only:
+  no upload/storage, bounded file size, profile structure checks, byte-identical
+  downloaded copy; invalid/stale selections cannot enable download.
+- Check the complete human journey after every change: mobile, keyboard, errors,
+  back navigation and the actual resulting file/QR, not merely button existence.
+
 ## Server catalogue and voluntary support
 
 - After an exit IP/listen-port change, downloads and QR reuse the same client
@@ -21,10 +44,8 @@
 - On the public page, compact voluntary support appears below the main heading
   and before server downloads in DOM order. The skip link still goes directly
   to server selection; donation details and costs stay collapsed by default.
-- The Telegram cabinet uses the same minimal dark design and compact support.
-  Public server selection is always available, independent of cabinet login.
-  Personal profiles, paid plans and device entitlements stay separate; secondary
-  family/console/self-hosted controls are collapsed, with accurate expanded states.
+- The old private cabinet keeps legacy entitlements separate from public free
+  profiles. Self-hosted setup is now a primary action, never buried with paid tools.
 
 ## Goal
 Turn a rented VPS into a fast VPN and anti-block proxy with ready configs/links/QR codes.

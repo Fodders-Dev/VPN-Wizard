@@ -17,10 +17,11 @@
 <a class="skip-link" href="#servers">К серверам</a>
 <main class="app app--plain vpn-home vpn-minimal">
   <header class="vpn-hero">
-    <a class="vpn-brand" href="join.html" aria-label="Fodder VPN — главная"><img src="assets/crest.svg" alt="" width="36" height="36"><span>Fodder<span class="vpn-wordmark-suffix"> VPN</span></span></a>
+    <a class="vpn-brand" href="/portal/" aria-label="Fodder VPN — главная"><img src="assets/crest.svg" alt="" width="36" height="36"><span>Fodder<span class="vpn-wordmark-suffix"> VPN</span></span></a>
     <span class="vpn-free">Бесплатно, для всех</span>
   </header>
-  <div class="vpn-intro"><div><p class="vpn-eyebrow">AmneziaWG · личный профиль</p><h1 id="servers-title">Куда подключимся?</h1><p class="vpn-intro-copy">Выберите сервер. Скачайте. Подключайтесь.</p></div><a class="vpn-help-link" href="#how">Первый раз? <span aria-hidden="true">↗</span></a></div>
+  <nav class="vpn-product-nav" aria-label="Как подключиться"><a href="/connect/join.html" aria-current="page">Бесплатный VPN</a><a href="/wizard/">Настроить свой сервер <span aria-hidden="true">↗</span></a></nav>
+  <div class="vpn-intro"><div><p class="vpn-eyebrow">AmneziaWG · личный профиль</p><h1 id="servers-title">Куда подключимся?</h1><p class="vpn-intro-copy">Выберите сервер. Скачайте. Подключайтесь.</p></div><a class="vpn-help-link" href="guide.html">Инструкция с картинками <span aria-hidden="true">↗</span></a></div>
   <div id="support-slot"></div>
   <section id="servers" tabindex="-1" aria-labelledby="server-choice-title">
     <div class="vpn-server__head"><h2 id="server-choice-title">Выберите сервер</h2><div class="vpn-catalog-tools"><span id="network-stats">Проверяем состояние</span><button id="refresh" type="button" aria-label="Обновить состояние серверов"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 6.6M20 4v7h-7"/></svg><span>Обновить</span></button></div></div>
@@ -48,6 +49,8 @@
       <a href="https://apps.apple.com/app/amneziawg/id6478942365" target="_blank" rel="noopener noreferrer">iPhone / macOS</a>
     </div>
     <p class="vpn-key-note">Не делитесь файлом: внутри ваш личный ключ.</p>
+    <a class="vpn-help-link" href="guide.html">Пошаговая инструкция с картинками →</a>
+    <a class="vpn-help-link" href="guide.html#filename">Файл не добавляется? Исправить имя файла →</a>
     <a class="vpn-help-link" href="https://t.me/foddervpnbot" target="_blank" rel="noopener noreferrer">Нужна помощь <span aria-hidden="true">↗</span></a>
   </details>
   <footer class="vpn-footer"><span>Fodder VPN</span><span>Без регистрации. Без лишнего.</span></footer>
@@ -60,6 +63,7 @@
   <p class="vpn-qr-private">Не пересылайте QR: внутри ваш личный ключ.</p>
 </dialog>
 <script src="server-catalog.js"></script>
+<script src="profile-file.js"></script>
 <script src="public-vpn.js"></script>
 </body>
 </html>

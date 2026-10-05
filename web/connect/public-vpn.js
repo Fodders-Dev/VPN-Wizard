@@ -123,8 +123,8 @@
         if(qrDialog.open){qrUrl=URL.createObjectURL(blob);qrImage.src=qrUrl;qrImage.hidden=false;document.getElementById('profile-qr-status').textContent='В AmneziaWG: + → Сканировать QR-код.';}
         message('QR и скачанный файл используют один личный профиль.');
       }else{
-        var url=URL.createObjectURL(blob), a=el('a','');a.href=url;a.download='FVPN-'+server.id.replace(/[^a-z0-9-]/gi,'').slice(0,6)+'.conf';document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},60000);
-        message('Откройте скачанный файл в AmneziaWG. Нет файла? Повторите в обычном браузере.');
+        FodderProfileFile.save(blob,FodderProfileFile.name(server.id));
+        message('Файл скачан. В AmneziaWG нажмите + → Импорт из файла. Не получается? Откройте инструкцию с картинками.');
       }
     }catch(e){var error=e.name==='TimeoutError'?'Сервер не успел ответить. Повторите: тот же профиль будет использован повторно.':e.message||'Нет связи. Попробуйте ещё раз.';message(error);if(format==='qr'&&qrDialog.open)document.getElementById('profile-qr-status').textContent=error;}
     finally{busy=false;activeServer=null;activeFormat=null;if(current)render(current);}
@@ -134,7 +134,6 @@
   if(!('closedBy' in HTMLDialogElement.prototype))qrDialog.addEventListener('click',function(e){if(e.target!==qrDialog)return;var r=qrDialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)qrDialog.close();});
   document.getElementById('refresh').addEventListener('click',refresh);
   document.getElementById('extra-profile').addEventListener('click',function(){var id=document.getElementById('extra-server').value,server=current&&current.servers.find(function(s){return s.id===id;});if(server)download(server,true);});
-  document.querySelector('.vpn-intro .vpn-help-link').addEventListener('click',function(){document.getElementById('how').open=true;});
   document.addEventListener('fodder:catalog',function(e){staleCatalog=false;render(e.detail);});
   document.addEventListener('fodder:catalog-error',stale);
   catalog.support({});catalog.watch();

@@ -1,3 +1,8 @@
+.vpn-product-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.vpn-product-nav a { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 10px 16px; border: 1px solid #849676; border-radius: 8px; color: #e8eedf; text-decoration: none; font-size: .8125rem; }
+.vpn-product-nav a[aria-current="page"] { background: #dce9c9; color: #182016; border-color: #dce9c9; }
+.vpn-product-nav a:focus-visible { outline: 3px solid #f0c979; outline-offset: 3px; }
+@media (max-width: 420px) { .vpn-product-nav { display: grid; grid-template-columns: 1fr; } }
 :root {
   --catalog-ink: var(--text, #e8f4f8);
   --catalog-muted: var(--text-dim, #9cb4c1);
