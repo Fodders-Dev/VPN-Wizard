@@ -25,6 +25,16 @@
 
 ## Server catalogue and voluntary support
 
+- A running interface with no VPN handshake in the last five minutes is
+  "Доступен", not confirmed working from a user's ISP. Explain the idle state
+  briefly and keep downloads/QR available; only recent handshakes mean "Работает".
+- NL's controller must not advertise its self-ping as useful latency. Its public
+  endpoint is measured from the enabled FI exit (US if FI is not configured).
+  Other exits retain the NL reference. Every card names the measurement origin;
+  different origins are not directly comparable and none measures the visitor.
+  Missing external telemetry is a gap, never zero or fabricated availability.
+  Positive sub-millisecond values display as <1 ms rather than rounded zero.
+
 - After an exit IP/listen-port change, downloads and QR reuse the same client
   and server keys with the current registry endpoint, including retained profiles.
   Moving an endpoint must not silently move a server ID to a different keypair.

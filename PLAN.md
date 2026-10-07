@@ -1,5 +1,8 @@
 # PLAN
 
+- [x] Убрать ложный NL self-ping: внешний замер с FI, честный источник и отсутствие замера вместо нуля.
+- [ ] Проверить и опубликовать понятный idle-статус NL и внешний пинг; Luna xhigh — UI, куратор — мониторинг и прод.
+
 - [x] Choose stack and repo layout
 - [x] Implement core provisioning and export
 - [x] Implement CLI commands

@@ -8,6 +8,7 @@ import math
 import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import tempfile
 import time
@@ -20,6 +21,11 @@ from vpn_wizard.awg_servers import AwgRegistry, free_server_choice_enabled
 MAX_AGE = 600
 RECENT_WINDOW = 300
 MAX_COUNTER = 2**64 - 1
+LATENCY_LABELS = {
+    "nl_monitor": "Пинг от монитора в Нидерландах; не с вашего устройства",
+    "fi_monitor": "Пинг от монитора в Финляндии; не с вашего устройства",
+    "us_monitor": "Пинг от монитора в США; не с вашего устройства",
+}
 STATES = {
     "online": "Есть VPN-подключения",
     "ready": "VPN запущен, ждёт подключения",
@@ -58,6 +64,50 @@ def _host_key(host: str) -> str:
         return host.lower().rstrip(".")
 
 
+def _ping_average(stdout: str) -> float | None:
+    replies = re.search(r"(\d+) (?:packets )?received", stdout)
+    summary = re.search(
+        r"(?:rtt|round-trip) min/avg/max/(?:mdev|stddev) = "
+        r"[0-9.]+/([0-9]+(?:\.[0-9]+)?)/[0-9.]+/[0-9.]+ ms", stdout,
+    )
+    if replies and int(replies[1]) > 0 and summary:
+        value = float(summary[1])
+        if math.isfinite(value) and 0 < value <= 60000:
+            return value
+    return None
+
+
+def measure_external_latency(host: str, monitor: Any, *, service: Any = None,
+                             now: int | None = None) -> dict[str, Any]:
+    """A bounded read-only ICMP probe from another registered exit; no self RTT."""
+    result = {"ms": None, "origin": monitor.id + "_monitor", "method": "icmp",
+              "scope": "remote", "checked_at": int(time.time() if now is None else now)}
+    try:
+        address = ipaddress.ip_address(host)
+        if (not monitor.enabled or not monitor.usable or monitor.id not in ("fi", "us")
+                or address.is_loopback or address.is_unspecified or address.is_multicast
+                or _host_key(host) == _host_key(monitor.endpoint_host)):
+            return result
+        try:
+            if ipaddress.ip_address(monitor.host).is_loopback:
+                return result
+        except ValueError:
+            if monitor.host.lower().rstrip(".") == "localhost":
+                return result
+        if service is None:
+            service = AwgFallbackService(None, AwgFallbackConfig.from_server(monitor, link_secret=""))
+        with service._ssh() as ssh:
+            output = ssh.run(
+                "LC_ALL=C ping -n -c 3 -W 1 -w 4 -- " + shlex.quote(str(address)) + " || true",
+                sudo=False, pty=False,
+            )
+        result["ms"] = _ping_average(output)
+    except Exception:
+        # Failed SSH/ICMP is missing telemetry, never zero RTT or VPN downtime.
+        pass
+    return result
+
+
 def measure_latency(host: str, *, local: bool = False, now: int | None = None) -> dict[str, Any]:
     """ICMP reference from the NL monitor process, never client/tunnel latency.
 
@@ -87,15 +137,8 @@ def measure_latency(host: str, *, local: bool = False, now: int | None = None) -
         )
         # A partial response is still a real measurement; deadline expiry can
         # return 1 despite receiving replies. A summary alone is not enough.
-        replies = re.search(r"(\d+) (?:packets )?received", response.stdout)
-        summary = re.search(
-            r"(?:rtt|round-trip) min/avg/max/(?:mdev|stddev) = "
-            r"[0-9.]+/([0-9]+(?:\.[0-9]+)?)/[0-9.]+/[0-9.]+ ms", response.stdout,
-        )
-        if response.returncode in (0, 1) and replies and int(replies[1]) > 0 and summary:
-            value = float(summary[1])
-            if math.isfinite(value) and 0 <= value <= 60000:
-                result["ms"] = round(value, 3)
+        if response.returncode in (0, 1):
+            result["ms"] = _ping_average(response.stdout)
     except (OSError, subprocess.SubprocessError, ValueError):
         pass
     return result
@@ -155,11 +198,19 @@ def probe(server: Any, *, now: int | None = None, service: Any = None) -> dict[s
 def refresh(registry: AwgRegistry, *, path: Path | None = None) -> dict[str, Any]:
     servers = [s for s in registry.servers if s.usable]
     hosts = list(dict.fromkeys(_host_key(s.endpoint_host) for s in servers if s.enabled))
+    controller = registry.get_server(os.getenv("VPNW_AWG_MONITOR_SERVER_ID", "").strip() or "nl")
+    controller_host = _host_key(controller.endpoint_host) if controller else None
+    external = next((s for country in ("fi", "us") for s in servers
+                     if s.id == country and s.enabled and _host_key(s.endpoint_host) != controller_host), None)
     with ThreadPoolExecutor(max_workers=4) as pool:
-        # Ping the public endpoint even for the monitor's own exit. This is a
-        # real reachability measurement of the address users receive, not the
-        # SSH/loopback address used to administer the box.
-        latency_jobs = {host: pool.submit(measure_latency, host, local=False) for host in hosts}
+        # The controller's own public IP is still local. Measure it from FI/US,
+        # or leave a gap rather than publishing an impressive but useless zero.
+        latency_jobs = {
+            host: pool.submit(measure_external_latency, host, external)
+            if host == controller_host and external else
+            pool.submit(measure_latency, host, local=host == controller_host)
+            for host in hosts
+        }
         results = list(pool.map(probe, servers))
         latencies = {host: job.result() for host, job in latency_jobs.items()}
     for server, result in zip(servers, results):
@@ -185,18 +236,20 @@ def _public_latency(value: Any, stamp: int, *, local: bool = False) -> dict[str,
     value = value if isinstance(value, dict) else {}
     checked = _counter(value.get("checked_at"))
     fresh = checked is not None and checked > 0 and 0 <= stamp - checked <= MAX_AGE
-    valid = (value.get("origin") == "nl_monitor" and value.get("method") == "icmp"
+    origin = value.get("origin")
+    known_origin = isinstance(origin, str) and origin in LATENCY_LABELS
+    valid = (known_origin and value.get("method") == "icmp"
              and value.get("scope") in ("local", "remote"))
     ms = value.get("ms")
-    valid_ms = type(ms) in (int, float) and 0 <= ms <= 60000 and math.isfinite(ms)
-    scope = "local" if local else value["scope"] if valid else "unknown"
+    valid_ms = type(ms) in (int, float) and 0 < ms <= 60000 and math.isfinite(ms)
+    scope = "local" if local and origin == "nl_monitor" else value["scope"] if valid else "unknown"
     return {
         "ms": ms if fresh and valid and valid_ms and scope == "remote" else None,
-        "origin": "nl_monitor", "method": "icmp",
+        "origin": origin if known_origin else "nl_monitor", "method": "icmp",
         "scope": scope,
-        "local": False,
+        "local": scope == "local",
         "checked_at": checked if fresh and valid else None,
-        "label": "Пинг от монитора в Нидерландах; не с вашего устройства",
+        "label": LATENCY_LABELS[origin] if known_origin and scope == "remote" else "Нет внешнего замера пинга",
     }
 
 
@@ -210,6 +263,8 @@ def public_catalog(registry: AwgRegistry, *, include_unavailable: bool = False, 
         notices = {}
     body = registry.public()
     choices = [s for s in registry.servers if s.usable] if include_unavailable else registry.offerable
+    controller = registry.get_server(os.getenv("VPNW_AWG_MONITOR_SERVER_ID", "").strip() or "nl")
+    controller_host = _host_key(controller.endpoint_host) if controller else None
     # Group alternate ports by the actual configured host, never publish its IP
     # or a hash of it. Prefer the primary's public ID regardless of list order.
     groups: dict[str, str] = {}
@@ -259,10 +314,8 @@ def public_catalog(registry: AwgRegistry, *, include_unavailable: bool = False, 
                 "recent_connections_label": "Число пиров с handshake за 5 минут до проверки",
                 "available_ports": ports,
                 "available_ports_label": "UDP-порты интерфейса VPN; доступность из вашей сети не проверена",
-                # The value is always a ping from the NL monitor to the public
-                # endpoint. It must not turn into the confusing word
-                # "Локально" merely because SSH happens on the same controller.
-                "latency": _public_latency(row.get("latency"), stamp, local=False),
+                "latency": _public_latency(row.get("latency"), stamp,
+                                           local=_host_key(server.endpoint_host) == controller_host),
                 "traffic": {"received_bytes": rx, "sent_bytes": tx,
                             "scope": "interface_current_peers", "direction": "server",
                             "label": "Сумма счётчиков текущих пиров; сбрасывается при перезапуске или удалении пиров"}

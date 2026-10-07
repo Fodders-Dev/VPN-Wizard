@@ -13,15 +13,50 @@
   var motionPreferenceObserved = false;
   var reducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)");
 
+  function formatLatency(value, stale) {
+    if (stale || typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > 60000) return "—";
+    return value < 1 ? "<1 мс" : Math.round(value) + " мс";
+  }
+
   function status(server) {
     var health = server.health || {};
+    var latency = health.latency || {};
+    var latencyOrigin = latency.origin;
+    var externalOrigin = latencyOrigin === "nl_monitor" || latencyOrigin === "fi_monitor" || latencyOrigin === "us_monitor";
+    var validLatency = externalOrigin && health.stale !== true && latency.scope !== "local" && latency.local !== true &&
+      typeof latency.ms === "number" && Number.isFinite(latency.ms) && latency.ms > 0 && latency.ms <= 60000;
+    var latencyLabel = "Нет доступного внешнего замера";
+    if (validLatency) {
+      if (typeof latency.label === "string" && latency.label.trim()) latencyLabel = latency.label.trim();
+      else if (latencyOrigin === "fi_monitor") latencyLabel = "Пинг от монитора в Финляндии; не с вашего устройства";
+      else if (latencyOrigin === "us_monitor") latencyLabel = "Пинг от монитора в США; не с вашего устройства";
+      else latencyLabel = "Пинг от NL-монитора";
+    }
     return {
       state: health.state || "unknown",
       label: health.label || "Статус не подтверждён",
       detail: health.detail || "",
       checked: health.checked_at,
-      latency: health.latency && health.latency.ms
+      latency: validLatency ? latency.ms : null,
+      latencyOrigin: validLatency ? latencyOrigin : null,
+      latencyLabel: latencyLabel
     };
+  }
+
+  function renderLatency(node, server, stale) {
+    var health = status(server);
+    var isStale = stale || server.health && server.health.stale === true;
+    var label = isStale ? "Нет свежего замера" : health.latencyLabel;
+    var value = formatLatency(health.latency, isStale);
+    if (value === "—") node.textContent = value;
+    else {
+      node.textContent = health.latency < 1 ? "<1" : String(Math.round(health.latency));
+      node.appendChild(document.createTextNode(" "));
+      var unit = document.createElement("span");
+      unit.textContent = "мс";
+      node.appendChild(unit);
+    }
+    return { value: value, label: label };
   }
 
   function selectable(server) {
@@ -227,8 +262,8 @@
       });
       document.querySelectorAll("[data-health-latency]").forEach(function (node) {
         if (node.dataset.healthLatency !== server.id) return;
-        if (typeof health.latency === "number") node.textContent = Math.round(health.latency) + " мс · от NL-монитора";
-        else node.textContent = "Нет сравнимого замера";
+        var latency = renderLatency(node, server);
+        node.textContent += " · " + latency.label;
       });
       document.querySelectorAll("button[data-catalog-id]").forEach(function (node) {
         if (node.dataset.catalogId === server.id) node.disabled = !selectable(server);
@@ -292,5 +327,5 @@
     else scheduleRefresh();
   }
 
-  window.FodderCatalog = { status: status, selectable: selectable, support: support, watch: watch };
+  window.FodderCatalog = { status: status, selectable: selectable, formatLatency: formatLatency, renderLatency: renderLatency, support: support, watch: watch };
 })();

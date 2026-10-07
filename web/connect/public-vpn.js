@@ -28,25 +28,30 @@
   function stateOf(server){return server.enabled===false?'maintenance':staleCatalog?'unknown':catalog.status(server).state;}
   function caution(state){return {degraded:'Не рекомендуем: у части пользователей нет соединения. Выберите другой сервер.',unavailable:'Не работает. Профили временно недоступны — выберите другой сервер.',maintenance:'Сервер отключён. Выберите другой сервер.',unknown:'Работа не подтверждена. Лучше выбрать сервер со статусом «Работает».'}[state]||'';}
   function metrics(server,card){
-    var h=server.health||{}, latency=h.latency||server.latency||{};
-    var measured=!staleCatalog&&typeof latency.ms==='number'&&Number.isFinite(latency.ms);
-    var block=el('div','vpn-latency'), value=el('p','vpn-latency-value',staleCatalog?'—':measured?String(Math.round(latency.ms)):'—');
-    if(measured)value.appendChild(el('span','','мс'));
-    block.appendChild(value);block.appendChild(el('p','vpn-latency-label',staleCatalog?'Нет свежего замера':latency.label||'Пинг от NL-монитора'));card.appendChild(block);
+    var block=el('div','vpn-latency'), value=el('p','vpn-latency-value');
+    var latency=catalog.renderLatency(value,server,staleCatalog);
+    block.appendChild(value);block.appendChild(el('p','vpn-latency-label',latency.label));card.appendChild(block);
     var meta=el('div','vpn-card-meta');
     meta.appendChild(el('span','',Number.isInteger(server.vpn_port)?'UDP '+server.vpn_port:'UDP'));
     card.appendChild(meta);
   }
   function cardFor(server,data){
     var h=catalog.status(server), place=country(server), card=el('li','vpn-server');
-    var labels={online:'Работает',ready:'Готов',degraded:'Не рекомендуем',maintenance:'Отключён',unavailable:'Не работает',unknown:'Не подтверждён'};
+    var labels={online:'Работает',ready:'Доступен',degraded:'Не рекомендуем',maintenance:'Отключён',unavailable:'Не работает',unknown:'Не подтверждён'};
     var state=stateOf(server);
     card.dataset.state=state;
     var top=el('div','vpn-card-top'), code=el('span','vpn-country-code',place[0]);code.setAttribute('aria-hidden','true');top.appendChild(code);
     var status=el('span','server-health server-health--'+state,labels[state]||labels.unknown);
+    var readyNote=null;
+    if(state==='ready'){
+      readyNote=el('p','vpn-card-note','VPN запущен; недавних подключений нет.');
+      readyNote.id='server-ready-hint-'+String(server.id).replace(/[^a-z0-9-]/gi,'');
+      status.setAttribute('aria-describedby',readyNote.id);
+    }
     if(!staleCatalog&&h.checked)status.title='Проверено '+new Date(h.checked*1000).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
     top.appendChild(status);card.appendChild(top);
     card.appendChild(el('h3','',place[1]));
+    if(readyNote)card.appendChild(readyNote);
     if(server.alt_port)card.appendChild(el('p','vpn-card-note','Альтернативный порт'));
     metrics(server,card);
     var warning=caution(state);
@@ -91,7 +96,7 @@
     document.getElementById('extra-profile').disabled=busy||!select.value||data.public_access===false;
     var checked=servers.map(function(s){return catalog.status(s).checked;}).filter(function(t){return typeof t==='number'&&Number.isFinite(t);});
     document.getElementById('network-stats').textContent=staleCatalog?'Нет свежих данных':checked.length?'Проверено '+new Date(Math.min.apply(Math,checked)*1000).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}):'Статус не подтверждён';
-    document.getElementById('monitor-note').textContent='Задержка — от монитора в NL, не с вашего устройства.';
+    document.getElementById('monitor-note').textContent='Пинг между серверами, не с вашего устройства. Источники разные — значения напрямую не сравнивайте.';
     document.getElementById('catalog-error').hidden=!staleCatalog;
   }
   function stale(){staleCatalog=true;var n=document.getElementById('catalog-error');n.hidden=false;n.textContent='Не удалось обновить состояние. Попробуйте ещё раз.';if(current)render(current);else{grid.setAttribute('aria-busy','false');document.getElementById('network-stats').textContent='Нет свежих данных';}}

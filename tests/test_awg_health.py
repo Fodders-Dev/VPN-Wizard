@@ -204,19 +204,26 @@ def test_local_or_invalid_host_never_runs_ping(monkeypatch, host, local, scope):
     assert result["ms"] is None and result["scope"] == scope
 
 
-def test_refresh_pings_public_host_once_and_keeps_nl_comparable(tmp_path, monkeypatch):
+def test_refresh_uses_external_nl_measurement_once_for_both_ports(tmp_path, monkeypatch):
     calls = []
     def latency(host, *, local):
         calls.append((host, local))
         return {"ms": None, "origin": "nl_monitor", "method": "icmp", "scope": "local" if local else "remote", "checked_at": 1000}
     monkeypatch.setattr(health, "measure_latency", latency)
+    external_calls = []
+    def external_latency(host, monitor):
+        external_calls.append((host, monitor.id))
+        return {"ms": 29.4, "origin": "fi_monitor", "method": "icmp", "scope": "remote", "checked_at": 1000}
+    monkeypatch.setattr(health, "measure_external_latency", external_latency)
     monkeypatch.setattr(health, "probe", lambda s: {"state": "ready", "checked_at": 1000})
     monkeypatch.setenv("VPNW_AWG_MONITOR_SERVER_ID", "nl")
     registry = AwgRegistry((node(), node(id="nl-alt", alt_port=True, listen_port=3478),
                             node(id="fi", host="192.0.2.2"), node(id="off", host="192.0.2.3", enabled=False)), (), "nl")
     result = refresh(registry, path=tmp_path / "health.json")["servers"]
-    assert sorted(calls) == [("192.0.2.1", False), ("192.0.2.2", False)]
+    assert calls == [("192.0.2.2", False)]
+    assert external_calls == [("192.0.2.1", "fi")]
     assert result["nl"]["latency"] == result["nl-alt"]["latency"]
+    assert result["nl"]["latency"]["ms"] == 29.4
     assert result["fi"]["state"] == "ready"  # ICMP silence is not VPN downtime.
     assert "latency" not in result["off"]
 
@@ -248,8 +255,8 @@ def test_public_aggregates_group_ports_and_drop_private_payload(monkeypatch):
 
 @pytest.mark.parametrize("change", [
     {"ms": True}, {"ms": "12"}, {"ms": float("nan")}, {"ms": float("inf")},
-    {"ms": -1}, {"ms": 60001}, {"scope": "local"}, {"scope": {}},
-    {"origin": "PRIVATE"}, {"method": "ssh"}, {"checked_at": 399}, {"checked_at": 1001},
+    {"ms": -1}, {"ms": 0}, {"ms": 60001}, {"scope": "local"}, {"scope": {}},
+    {"origin": "PRIVATE"}, {"origin": {}}, {"method": "ssh"}, {"checked_at": 399}, {"checked_at": 1001},
 ])
 def test_public_latency_rejects_forged_stale_or_local_numbers(monkeypatch, change):
     monkeypatch.setenv("VPNW_AWG_MONITOR_SERVER_ID", "monitor")
@@ -260,17 +267,88 @@ def test_public_latency_rejects_forged_stale_or_local_numbers(monkeypatch, chang
     assert "PRIVATE" not in json.dumps(result)
 
 
-def test_nl_and_same_host_alternatives_publish_the_public_ping(monkeypatch):
+def test_nl_discards_old_self_ping_even_when_snapshot_claims_remote(monkeypatch):
     monkeypatch.setenv("VPNW_AWG_MONITOR_SERVER_ID", "nl")
     row = {"state": "online", "checked_at": 950,
            "latency": {"ms": 0.03, "origin": "nl_monitor", "method": "icmp",
                        "scope": "remote", "checked_at": 950}}
     body = catalog_with(monkeypatch, row, servers=(node(), node(id="nl-alt", alt_port=True)))
     server_row = body["servers"][0]
-    assert server_row["health"]["latency"]["ms"] == 0.03
-    assert server_row["health"]["latency"]["scope"] == "remote"
-    assert server_row["health"]["latency"]["local"] is False
-    assert "Пинг от монитора" in server_row["health"]["latency"]["label"]
+    assert server_row["health"]["latency"]["ms"] is None
+    assert server_row["health"]["latency"]["scope"] == "local"
+    assert server_row["health"]["latency"]["local"] is True
+    assert server_row["health"]["latency"]["label"] == "Нет внешнего замера пинга"
+    assert body["servers"][1]["health"]["latency"]["ms"] is None
+
+
+def test_nl_publishes_real_external_ping_without_private_data(monkeypatch):
+    row = {"state": "ready", "checked_at": 950,
+           "latency": {"ms": 29.4, "origin": "fi_monitor", "method": "icmp",
+                       "scope": "remote", "checked_at": 950, "host": "PRIVATE"}}
+    monkeypatch.setenv("VPNW_AWG_MONITOR_SERVER_ID", "nl")
+    result = catalog_with(monkeypatch, row)["servers"][0]["health"]
+    assert result["state"] == "ready"  # External ICMP cannot manufacture VPN handshakes.
+    assert result["latency"]["ms"] == 29.4
+    assert result["latency"]["origin"] == "fi_monitor"
+    assert "Финляндии" in result["latency"]["label"]
+    assert "не с вашего устройства" in result["latency"]["label"]
+    assert "PRIVATE" not in json.dumps(result)
+
+
+def test_refresh_without_external_monitor_does_not_ping_self(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(health, "probe", lambda s: {"state": "ready", "checked_at": 1000})
+    monkeypatch.setattr(health, "measure_latency", lambda host, *, local: calls.append(local) or {"ms": None})
+    monkeypatch.setenv("VPNW_AWG_MONITOR_SERVER_ID", "nl")
+    refresh(AwgRegistry((node(),), (), "nl"), path=tmp_path / "health.json")
+    assert calls == [True]
+
+
+def test_disabled_fi_uses_registered_us_external_monitor(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setenv("VPNW_AWG_MONITOR_SERVER_ID", "nl")
+    monkeypatch.setattr(health, "probe", lambda s: {"state": "ready", "checked_at": 1000})
+    monkeypatch.setattr(health, "measure_latency", lambda *args, **kw: {"ms": None})
+    monkeypatch.setattr(health, "measure_external_latency",
+                        lambda host, monitor: calls.append((host, monitor.id)) or {"ms": 140.1})
+    reg = AwgRegistry((node(), node(id="fi", host="192.0.2.2", enabled=False),
+                       node(id="us", host="192.0.2.3")), (), "nl")
+    assert refresh(reg, path=tmp_path / "health.json")["servers"]["nl"]["latency"]["ms"] == 140.1
+    assert calls == [("192.0.2.1", "us")]
+
+
+@pytest.mark.parametrize("output,expected", [
+    ("3 packets transmitted, 3 received\nrtt min/avg/max/mdev = 29.000/29.400/30.000/0.400 ms", 29.4),
+    ("3 packets transmitted, 1 received\nrtt min/avg/max/mdev = 0.001/0.002/0.003/0.001 ms", 0.002),
+    ("3 packets transmitted, 0 received\nrtt min/avg/max/mdev = 29.000/29.400/30.000/0.400 ms", None),
+    ("3 packets transmitted, 3 received\nrtt min/avg/max/mdev = 0.000/0.000/0.000/0.000 ms", None),
+    ("bad output PRIVATE", None),
+])
+def test_external_ping_uses_bounded_read_only_command(output, expected):
+    service = FakeService(handshakes=output)
+    result = health.measure_external_latency("192.0.2.1", node(id="fi", host="192.0.2.2"),
+                                            service=service, now=1000)
+    assert result["ms"] == expected and result["origin"] == "fi_monitor"
+    assert service.commands == ["LC_ALL=C ping -n -c 3 -W 1 -w 4 -- 192.0.2.1 || true"]
+    assert "PRIVATE" not in json.dumps(result) and "192.0.2" not in json.dumps(result)
+
+
+def test_external_monitor_failure_does_not_fall_back_to_self():
+    result = health.measure_external_latency("192.0.2.1", node(id="fi", host="192.0.2.2"),
+                                            service=FakeService(failure=True), now=1000)
+    assert result["ms"] is None and result["origin"] == "fi_monitor"
+
+
+@pytest.mark.parametrize("target,monitor", [
+    ("host; echo secret", node(id="fi", host="192.0.2.2")),
+    ("127.0.0.1", node(id="fi", host="192.0.2.2")),
+    ("192.0.2.1", node(id="fi")),
+    ("192.0.2.1", node(id="fi", host="192.0.2.2", enabled=False)),
+])
+def test_external_ping_rejects_unsafe_self_or_disabled_targets(target, monitor):
+    service = FakeService()
+    assert health.measure_external_latency(target, monitor, service=service)["ms"] is None
+    assert service.commands == []
 
 
 def test_valid_empty_runtime_has_zero_measured_counters():

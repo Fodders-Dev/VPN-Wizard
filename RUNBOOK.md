@@ -101,6 +101,16 @@ defaults to `awg-health.json` next to `VPNW_STATE_DB` (override with
 `/api/awg/servers?include_unavailable=true` shows disabled locations too, while
 the default API remains compatible with bot clients that expect offerable exits.
 
+Latency origin: the health timer runs on NL (controller server ID defaults to
+`nl`, override `VPNW_AWG_MONITOR_SERVER_ID`). For that same public host, run
+read-only ICMP from enabled FI, or US if FI is absent/disabled. Grouped ports share
+one measurement. Remote SSH/ICMP failure leaves RTT unknown, never a self-ping
+fallback; normal VPN availability still follows interface/handshake evidence.
+The catalog discards old NL self-ping snapshots immediately. Origin is named on
+each card: RTTs from different monitors are not directly comparable and do not
+test the user's ISP. After deployment trigger the existing health service once
+and verify both NL ports use `fi_monitor` (or `us_monitor`) with a positive RTT.
+
 Manual partial-outage notices live in `web/connect/status.json` under
 `server_statuses.<id>={"state":"degraded","detail":"..."}`. Remove the notice
 only after rechecking affected networks. Server-side handshakes do not guarantee
