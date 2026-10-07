@@ -111,6 +111,16 @@ each card: RTTs from different monitors are not directly comparable and do not
 test the user's ISP. After deployment trigger the existing health service once
 and verify both NL ports use `fi_monitor` (or `us_monitor`) with a positive RTT.
 
+Published 2026-10-07 at commit `6676afc`: NL public RTT now comes from FI,
+roughly 29–31 ms during verification, with its origin clearly labelled. Idle
+interfaces show "Доступен" with an explanation, not a fake confirmed handshake.
+589 tests passed, including Node-rendered latency edge cases; live 320/390/1280px
+checks had no horizontal overflow. Free downloads and QR remain enabled for
+working/idle exits, disabled for TR. Source rollback archive:
+`/opt/vpn-wizard/shared/backups/nl-health-20261007-073249/source.tar`, old commit
+`fc72ad2`. Fast-forward source deploy plus web-service restart and one health
+refresh only; no AWG ports, interfaces, keys or firewall changes.
+
 Manual partial-outage notices live in `web/connect/status.json` under
 `server_statuses.<id>={"state":"degraded","detail":"..."}`. Remove the notice
 only after rechecking affected networks. Server-side handshakes do not guarantee
