@@ -1,6 +1,6 @@
 # PLAN
 
-- [ ] Make AmneziaWG and installation immediately obvious on the public catalog; verify mobile/keyboard and publish.
+- [x] Make AmneziaWG and installation immediately obvious on the public catalog; published, 590 tests and 320/390/1280px plus keyboard/guide checks passed.
 - [x] Audit existing alternative listeners without touching AWG: NL ShadowTLS v3 TCP 10443 and VLESS/XHTTP/TLS TCP 9443 already exist.
 - [ ] Trial Hiddify + existing ShadowTLS privately on the owner's home/mobile networks; no public alternative until real traffic is verified.
 
@@ -67,4 +67,4 @@
 - [x] Опубликовать бесплатное меню бота/сайта с резервной копией; live-выдача .conf и QR проверена, бот healthy, команды free/wizard/help, обе главные кнопки подтверждены через API.
 - [ ] После ручного запуска эмулятора заменить старые иллюстрации новыми Android-снимками, включая переименование. Автоматический запуск AVD отклонён инструментом.
 
-Next: Publish the clear AmneziaWG installation entry, then a private alternative-protocol client trial; fresh Android screenshots still await a manual emulator start.
+Next: Owner tests the exported Hiddify/ShadowTLS profile on home Wi-Fi and mobile hotspot. Keep alternatives private until traffic is confirmed; fresh Android screenshots still await a manual emulator start.

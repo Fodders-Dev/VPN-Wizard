@@ -9,6 +9,10 @@ Downloads/QR, server telemetry and the self-hosted entry must remain unchanged.
 Pre-release source rollback archive:
 `/opt/vpn-wizard/shared/backups/awg-onboarding-20261007-075942/source.tar`
 (production head before release: `0fb30a8`).
+Published UI release `d62e5be`: 590 tests passed. Verified visible requirement and
+official installer controls at 320/390/1280px, keyboard Windows → Android, and
+guide `#install` → catalog return. Version the catalog stylesheet URL when changing
+it: an existing browser can otherwise combine new HTML with cached old styling.
 
 Read-only NL inventory: sing-box 1.12.22 already serves ShadowTLS v3 on TCP
 10443 with a loopback Shadowsocks inbound on 20000; Xray 26.2.6 has VLESS/Reality
@@ -20,6 +24,11 @@ An ephemeral loopback-only client validated the existing ShadowTLS + SS2022
 chain: HTTPS through SOCKS returned HTTP 200 and 577 bytes from example.com.
 The temporary process/config were removed; this server-local check does not
 establish reachability from an RF provider or a user's device.
+A private Hiddify JSON was exported to the owner's Downloads from the existing
+`client1` credentials, without creating a client or changing/restarting sing-box.
+The outbound chain passed `sing-box check`; omit unused legacy `block` and direct
+`domain_strategy` fields for client compatibility. Actual Hiddify/home/mobile
+traffic remains pending the owner's test; do not mark this protocol publicly online.
 
 First suggested alternative trial: Hiddify + the existing ShadowTLS/SS2022
 service. Export a private test profile only for the owner, then verify actual
