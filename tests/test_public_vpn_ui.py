@@ -77,7 +77,9 @@ def test_public_page_keeps_server_choice_and_collapsed_helpers() -> None:
 
 def test_public_install_requirement_and_links_are_visible_before_server_choice() -> None:
     markup = _PublicMarkup()
-    markup.feed((WEB / "join.html").read_text(encoding="utf-8"))
+    html = (WEB / "join.html").read_text(encoding="utf-8")
+    markup.feed(html)
+    assert 'server-catalog.css?v=awg-onboarding-20261007' in html
     visible_copy = " ".join(" ".join(markup.visible_text).split())
     assert "Сначала установите AmneziaWG" in visible_copy
     assert "VPN для AmneziaWG" in visible_copy
