@@ -1,5 +1,9 @@
 # PLAN
 
+- [ ] Make AmneziaWG and installation immediately obvious on the public catalog; verify mobile/keyboard and publish.
+- [x] Audit existing alternative listeners without touching AWG: NL ShadowTLS v3 TCP 10443 and VLESS/XHTTP/TLS TCP 9443 already exist.
+- [ ] Trial Hiddify + existing ShadowTLS privately on the owner's home/mobile networks; no public alternative until real traffic is verified.
+
 - [x] Убрать ложный NL self-ping: внешний замер с FI, честный источник и отсутствие замера вместо нуля.
 - [x] Проверить и опубликовать понятный idle-статус NL и внешний пинг; Luna xhigh — UI, куратор — мониторинг и прод. 589 тестов; mobile 320/390 и desktop 1280 без переполнения.
 
@@ -63,4 +67,4 @@
 - [x] Опубликовать бесплатное меню бота/сайта с резервной копией; live-выдача .conf и QR проверена, бот healthy, команды free/wizard/help, обе главные кнопки подтверждены через API.
 - [ ] После ручного запуска эмулятора заменить старые иллюстрации новыми Android-снимками, включая переименование. Автоматический запуск AVD отклонён инструментом.
 
-Next: Новые Android-скриншоты, включая переименование, после ручного запуска эмулятора. Старые картинки пока остаются иллюстрациями.
+Next: Publish the clear AmneziaWG installation entry, then a private alternative-protocol client trial; fresh Android screenshots still await a manual emulator start.

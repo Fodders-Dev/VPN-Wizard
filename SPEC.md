@@ -2,6 +2,14 @@
 
 ## Free-first entry and illustrated onboarding (2026-10-05)
 
+- The catalog states visibly, before server selection, that its current `.conf`
+  and QR profiles are intended for AmneziaWG. Installation is a direct first step,
+  not a requirement hidden inside a closed help section. Keep the first-visit
+  path short and preserve the own-VPS entry and unrestricted free downloads.
+- Other clients/transports are a separate experimental path, not interchangeable
+  imports of AWG profiles. Validate real internet access from the owner's home
+  and mobile networks before adding any alternative to public onboarding.
+
 - `/portal/` is an anonymous, static two-choice home: free profiles or setup of
   your own rented VPS. Both navigation links precede optional support and work
   without account login, Telegram SDK or catalog API; server administration

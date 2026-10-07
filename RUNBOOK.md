@@ -1,5 +1,39 @@
 # RUNBOOK
 
+## First-visit app requirement and alternative protocol audit (2026-10-07)
+
+Before server choice the public catalog must identify AmneziaWG and expose
+installation links without opening help. Verify mobile 320/390px, desktop,
+keyboard access, official app links and the illustrated-guide return route.
+Downloads/QR, server telemetry and the self-hosted entry must remain unchanged.
+Pre-release source rollback archive:
+`/opt/vpn-wizard/shared/backups/awg-onboarding-20261007-075942/source.tar`
+(production head before release: `0fb30a8`).
+
+Read-only NL inventory: sing-box 1.12.22 already serves ShadowTLS v3 on TCP
+10443 with a loopback Shadowsocks inbound on 20000; Xray 26.2.6 has VLESS/Reality
+on TCP 8443 and VLESS/XHTTP/TLS on TCP 9443. The public website occupies TCP 443;
+never replace it with an experimental listener. No experimental service was
+installed, updated or restarted by this audit. Existing configurations contain
+credentials: report only listener/protocol/version metadata, never full JSON.
+An ephemeral loopback-only client validated the existing ShadowTLS + SS2022
+chain: HTTPS through SOCKS returned HTTP 200 and 577 bytes from example.com.
+The temporary process/config were removed; this server-local check does not
+establish reachability from an RF provider or a user's device.
+
+First suggested alternative trial: Hiddify + the existing ShadowTLS/SS2022
+service. Export a private test profile only for the owner, then verify actual
+HTTPS/data transfer (not merely TCP connect) from home Wi-Fi and mobile hotspot,
+including DNS, reconnect and sustained transfer. Keep AWG intact. Only after
+client confirmation should an alternative enter the anonymous public catalog.
+Historical Reality failure notes are observations/hypotheses, not proof of a
+specific ISP filter; do not promise that a new client or TCP guarantees access.
+Current primary references:
+- https://hiddify.com/app/How-to-install-Hiddify-app/
+- https://sing-box.sagernet.org/configuration/outbound/shadowtls/
+- https://xtls.github.io/en/config/transports/xhttp.html
+
+
 ## Free home and illustrated guide (2026-10-05)
 
 `/portal/` offers two ungated routes: free profiles (`/connect/join.html`) and

@@ -16,6 +16,11 @@ class _PublicMarkup(HTMLParser):
         self.ids: list[str] = []
         self.scripts: list[str] = []
         self.open_details = 0
+        self.details_depth = 0
+        self.before_servers = True
+        self.visible_text: list[str] = []
+        self.visible_links: dict[str, str] = {}
+        self.current_visible_link: str | None = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = dict(attrs)
@@ -25,6 +30,25 @@ class _PublicMarkup(HTMLParser):
             self.scripts.append(values["src"])
         if tag == "details" and "open" in values:
             self.open_details += 1
+        if tag == "details":
+            self.details_depth += 1
+        if tag == "section" and values.get("id") == "servers":
+            self.before_servers = False
+        if self.before_servers and self.details_depth == 0 and tag == "a" and values.get("href"):
+            self.current_visible_link = values["href"]
+            self.visible_links[self.current_visible_link] = ""
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "a":
+            self.current_visible_link = None
+        if tag == "details":
+            self.details_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self.before_servers and self.details_depth == 0:
+            self.visible_text.append(data)
+            if self.current_visible_link:
+                self.visible_links[self.current_visible_link] += data
 
 
 def test_public_markup_has_unique_ids_and_closed_disclosures() -> None:
@@ -49,6 +73,19 @@ def test_public_page_keeps_server_choice_and_collapsed_helpers() -> None:
     assert 'server-catalog.js' in html
     assert 'lang="ru"' in html
     assert 'name="referrer" content="no-referrer"' in html
+
+
+def test_public_install_requirement_and_links_are_visible_before_server_choice() -> None:
+    markup = _PublicMarkup()
+    markup.feed((WEB / "join.html").read_text(encoding="utf-8"))
+    visible_copy = " ".join(" ".join(markup.visible_text).split())
+    assert "Сначала установите AmneziaWG" in visible_copy
+    assert "VPN для AmneziaWG" in visible_copy
+    assert "Скачанный профиль или QR-код добавьте в это приложение." in visible_copy
+    assert markup.visible_links["https://github.com/amnezia-vpn/amneziawg-windows-client/releases/latest"] == "Windows"
+    assert markup.visible_links["https://play.google.com/store/apps/details?id=org.amnezia.awg"] == "Android"
+    assert markup.visible_links["https://apps.apple.com/app/amneziawg/id6478942365"] == "iPhone · App Store"
+    assert "guide.html#install" in markup.visible_links
 
 
 def test_support_precedes_server_downloads_without_blocking_skip_link() -> None:
