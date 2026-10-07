@@ -79,14 +79,14 @@ def test_public_install_requirement_and_links_are_visible_before_server_choice()
     markup = _PublicMarkup()
     html = (WEB / "join.html").read_text(encoding="utf-8")
     markup.feed(html)
-    assert 'server-catalog.css?v=awg-onboarding-20261007' in html
+    assert 'server-catalog.css?v=awg-onboarding-20261007b' in html
     visible_copy = " ".join(" ".join(markup.visible_text).split())
     assert "Сначала установите AmneziaWG" in visible_copy
     assert "VPN для AmneziaWG" in visible_copy
     assert "Скачанный профиль или QR-код добавьте в это приложение." in visible_copy
     assert markup.visible_links["https://github.com/amnezia-vpn/amneziawg-windows-client/releases/latest"] == "Windows"
     assert markup.visible_links["https://play.google.com/store/apps/details?id=org.amnezia.awg"] == "Android"
-    assert markup.visible_links["https://apps.apple.com/app/amneziawg/id6478942365"] == "iPhone · App Store"
+    assert markup.visible_links["https://apps.apple.com/app/amneziawg/id6478942365"] == "iPhone / Mac"
     assert "guide.html#install" in markup.visible_links
 
 

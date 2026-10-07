@@ -526,8 +526,6 @@
 .vpn-minimal .vpn-setup p { margin: 4px 0 0; color: var(--text-dim); font-size: .875rem; line-height: 1.6; }
 .vpn-minimal .vpn-setup__actions { grid-column: 2; grid-row: 1; justify-content: flex-end; gap: 8px; margin: 0; }
 .vpn-minimal .vpn-setup__actions a { min-height: 44px; padding: .5rem .8rem; border: 1px solid var(--line-strong); border-radius: 7px; color: var(--text); background: transparent; font-size: .875rem; }
-.vpn-minimal .vpn-setup__guide { display: inline-flex; grid-column: 1; align-items: center; gap: 8px; width: fit-content; max-width: 100%; min-height: 44px; color: var(--text-dim); font-size: .875rem; text-decoration: none; }
-.vpn-minimal .vpn-setup__guide:hover { color: var(--text); }
 @media (max-width: 760px) {
   .vpn-minimal .vpn-setup { grid-template-columns: 1fr; }
   .vpn-minimal .vpn-setup__actions { grid-column: 1; grid-row: auto; justify-content: flex-start; }
