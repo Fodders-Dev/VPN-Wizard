@@ -1,5 +1,16 @@
 # VPN Wizard - SPEC
 
+## Current NL endpoint (2026-10-25)
+
+The existing NL server now uses `82.25.60.19`; the canonical public origin is
+`https://82-25-60-19.nip.io`. Public profile issuance remains anonymous and free.
+Address migration must retain keys, peer status, existing accounts and VPN ports;
+registry-backed downloads/QR must emit the new endpoint, and already imported
+profiles require re-import or an Endpoint edit. The catalog keeps NL UDP 3478
+and its UDP 443 alternative. All runtime changes require private backups.
+XHTTP trial certificates now synchronize hourly from Caddy with verified rollback;
+this certificate repair does not establish RF-client transport reliability.
+
 ## Free-first entry and illustrated onboarding (2026-10-05)
 
 - The catalog states visibly, before server selection, that its current `.conf`

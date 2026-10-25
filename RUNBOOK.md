@@ -1,5 +1,60 @@
 # RUNBOOK
 
+## NL replacement address and certificate renewal (2026-10-25)
+
+The owner changed the address of the existing NL212295 VPS from
+`77.67.89.164` to `82.25.60.19`; its SSH host key and existing AWG identities
+were verified before migration. Current public entry points:
+- `https://82-25-60-19.nip.io/portal/`
+- `https://82-25-60-19.nip.io/connect/join.html`
+- `https://82.25.60.19/portal/` (short-lived IP certificate managed by Caddy)
+- panel/subscription: `panel-vpn.82-25-60-19.nip.io` and
+  `sub-vpn.82-25-60-19.nip.io`.
+
+Migration backup: `/opt/vpn-wizard/shared/backups/nl-address-20261025-111639`.
+It contains both PostgreSQL dumps, online snapshots of state.db and
+public-access.db, runtime/certificate archives, and original selected files
+under `files/`. Restore selected files with metadata; do not replace live
+SQLite files with a stale copy while the API is writing.
+
+`deploy/scripts/move-nl-endpoint.py` defaults to dry-run and accepts explicit
+`--file` and direct `--client-dir` allowlists. `--apply` requires a new absolute
+private backup directory. Production updated 224 active/suspended profile files
+and 9 runtime files; existing AWG key/peer fingerprints matched before QA issued
+two new owner profiles. Suspended peers stayed suspended. Cached encrypted
+configs retain keys and render the current registry endpoint on download.
+Existing imported device profiles need an Endpoint edit or a fresh import;
+changing the server cannot update a file already imported into an app.
+
+Caddy, API CORS/public URLs, bot URLs/menu, Remnawave host/node addresses, one
+saved-server address, and the installed watchdog target now use the new address.
+The public catalog retains NL UDP 3478 and alternative UDP 443. Six old owner
+exports in Downloads were backed up and updated without changing credentials;
+running client-generated files were not edited. Private owner exports are in
+local `output/82.25.60.19/`, excluded from Git.
+
+The XHTTP trial on TCP 9443 now uses the new site's verified TLS/h2 certificate
+(expiry 2027-01-23). `xhttp-certificate-sync.service` and its hourly timer
+synchronize Caddy renewals with private backups, config validation, and rollback
+of both config and cert/key on failure. An unchanged run does not restart Xray.
+Staged Xray configs must end in `.json`: auto format detection rejects a temp
+filename without a recognized extension. Production apply, no-op, and systemd
+execution passed; automatic renewal integration is now installed, replacing the
+older manual-copy limitation described in the historical notes below.
+
+Owner completed BotFather Main App and legacy `/setdomain` for @foddervpnbot.
+Verified Main App enabled, default menu at the new portal, and browser login
+widget with no `Bot domain invalid`. New OIDC Allowed URLs alone do not configure
+the legacy iframe widget. No messages were sent to users.
+
+Validation: 606 pytest tests passed, plus focused certificate regression tests
+after the real Xray staging-format fix; new-domain and bare-IP HTTPS return 200
+from Windows. Mobile/desktop entry, catalog, repeated identical-key config
+download, and 890x890 QR passed. Actual RF-client AWG traffic still requires
+importing the refreshed profile on the owner's device; successful HTTPS and
+server health alone do not establish tunnel usability. The separate XHTTP trial
+also remains experimental, despite its repaired TLS endpoint.
+
 ## First-visit app requirement and alternative protocol audit (2026-10-07)
 
 Before server choice the public catalog must identify AmneziaWG and expose

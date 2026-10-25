@@ -62,7 +62,7 @@ VPNW_AWG_LINK_SECRET="<random string>"
 # different public endpoint (for example, a controller-managed local exit).
 VPNW_AWG_DEFAULT_SERVER="nl"
 VPNW_AWG_SERVERS='[
-  {"id":"nl","label":"Нидерланды","flag":"🇳🇱","host":"127.0.0.1","public_host":"77.67.89.164","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":443},
+  {"id":"nl","label":"Нидерланды","flag":"🇳🇱","host":"127.0.0.1","public_host":"82.25.60.19","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":443},
   {"id":"fi","label":"Финляндия","flag":"🇫🇮","host":"203.0.113.20","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":3478},
   {"id":"tr","label":"Турция","flag":"🇹🇷","host":"203.0.113.30","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":3478},
   {"id":"us","label":"США","flag":"🇺🇸","host":"203.0.113.40","user":"root","key_path":"/etc/vpn-wizard-awg/id_ed25519","listen_port":3478}

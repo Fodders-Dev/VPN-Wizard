@@ -33,9 +33,9 @@
 
 | Поддомен              | Тип | Значение (IP VPS) | Proxy      |
 |-----------------------|-----|-------------------|------------|
-| `vpn.example.com`     | A   | 77.67.89.164     | **OFF** (DNS only) |
-| `panel.example.com`   | A   | 77.67.89.164     | **OFF** |
-| `sub.example.com`     | A   | 77.67.89.164     | **OFF** |
+| `vpn.example.com`     | A   | 82.25.60.19     | **OFF** (DNS only) |
+| `panel.example.com`   | A   | 82.25.60.19     | **OFF** |
+| `sub.example.com`     | A   | 82.25.60.19     | **OFF** |
 
 - `vpn.` — API vpn_wizard: отдаёт `/connect`, `/miniapp`, AWG-эндпоинты.
 - `panel.` — админка Remnawave.
