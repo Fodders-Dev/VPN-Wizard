@@ -1,0 +1,8 @@
+[Unit]
+Description=Synchronize the NL XHTTP trial certificate from Caddy
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/python3 /opt/vpn-wizard/app/deploy/scripts/refresh-xhttp-test-certificate.py --apply

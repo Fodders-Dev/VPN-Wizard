@@ -1,0 +1,10 @@
+[Unit]
+Description=Hourly NL XHTTP trial certificate synchronization
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+Unit=xhttp-certificate-sync.service
+
+[Install]
+WantedBy=timers.target
