@@ -133,6 +133,8 @@ def mock_tools(
             return b""
         if command[0] == "/usr/local/bin/xray":
             staged_config = Path(command[-1])
+            assert staged_config.suffix == ".json"
+            assert command[1:4] == ["run", "-test", "-config"]
             staged = json.loads(staged_config.read_bytes())
             inbound = staged["inbounds"][0]
             tls = inbound["streamSettings"]["tlsSettings"]
@@ -234,9 +236,12 @@ def test_failed_new_tls_restores_both_cert_files_and_config_then_verifies_rollba
         tls_names.append(server_name)
         if len(tls_names) == 1:
             raise RuntimeError("new certificate verification failed")
+        if len(tls_names) == 2:
+            raise ConnectionRefusedError("old listener is still restarting")
         return {"tls_verified": True, "alpn": "h2", "not_after": "old certificate"}
 
     monkeypatch.setattr(MODULE, "verified_tls", verify)
+    monkeypatch.setattr(MODULE.time, "sleep", lambda _seconds: None)
 
     assert MODULE.main(["--apply"]) == 1
 
@@ -247,7 +252,7 @@ def test_failed_new_tls_restores_both_cert_files_and_config_then_verifies_rollba
     assert state["config"].read_bytes() == state["original_config"]
     assert (state["cert_dir"] / "fullchain.pem").read_bytes() == OLD_CERT
     assert (state["cert_dir"] / "key.pem").read_bytes() == OLD_KEY
-    assert tls_names == [MODULE.DOMAIN, "old-nl.example"]
+    assert tls_names == [MODULE.DOMAIN, "old-nl.example", "old-nl.example"]
     assert [call[1] for call in calls if call[0] == "systemctl"].count("restart") == 2
     assert OLD_KEY.decode().strip() not in output
 
@@ -308,7 +313,6 @@ def test_unsafe_backup_rejects_rotation_before_target_mutation(
     assert (state["cert_dir"] / "key.pem").read_bytes() == OLD_KEY
     assert not any(call[0] == "systemctl" for call in calls)
 
-
 def test_unexpected_target_file_is_rejected_before_backup_or_mutation(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys
 ) -> None:
@@ -349,4 +353,3 @@ def test_symlink_in_target_certificate_directory_is_rejected(
     assert result["error"] == "certificate preflight failed"
     assert not state["backups"].exists()
     assert not any(call[0] == "systemctl" for call in calls)
-

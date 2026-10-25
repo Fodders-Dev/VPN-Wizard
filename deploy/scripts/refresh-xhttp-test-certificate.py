@@ -328,8 +328,9 @@ def _stage_bytes(
     gid: int,
     mode: int,
     times: tuple[int, int] | None = None,
+    suffix: str = "",
 ) -> Path:
-    descriptor, raw_temp = tempfile.mkstemp(prefix=prefix, dir=directory)
+    descriptor, raw_temp = tempfile.mkstemp(prefix=prefix, suffix=suffix, dir=directory)
     temporary = Path(raw_temp)
     try:
         _write_all(descriptor, data)
@@ -438,16 +439,16 @@ def _rollback(
     try:
         checked(["systemctl", "restart", "xray"])
         checked(["systemctl", "is-active", "--quiet", "xray"])
-        verified_tls(server_name=previous_domain)
+        _verify_after_restart(previous_domain)
     except Exception as exc:
         errors.append(exc)
     return not errors
 
 
-def _verify_after_restart() -> dict[str, Any]:
+def _verify_after_restart(server_name: str = DOMAIN) -> dict[str, Any]:
     for attempt in range(10):
         try:
-            return verified_tls()
+            return verified_tls(server_name=server_name)
         except (ConnectionRefusedError, ConnectionResetError, TimeoutError):
             if attempt == 9:
                 raise
@@ -573,6 +574,7 @@ def _sync(apply: bool) -> tuple[int, dict[str, Any]]:
             gid=getattr(original_config.metadata, "st_gid", 0),
             mode=stat.S_IMODE(original_config.metadata.st_mode),
             times=(original_config.metadata.st_atime_ns, original_config.metadata.st_mtime_ns),
+            suffix=".json",
         )
         checked(["/usr/local/bin/xray", "run", "-test", "-config", str(staged_config)])
         if config_changed:
