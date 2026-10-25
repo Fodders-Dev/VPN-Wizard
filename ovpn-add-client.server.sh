@@ -35,7 +35,7 @@ fi
 
 SERVER_IP=$(curl -4 -fsS https://ifconfig.co 2>/dev/null \
           || curl -4 -fsS https://api.ipify.org 2>/dev/null \
-          || echo "77.67.89.164")
+          || echo "82.25.60.19")
 
 OUTPUT_FILE="${OUTPUT_DIR}/${CLIENT_NAME}.ovpn"
 {

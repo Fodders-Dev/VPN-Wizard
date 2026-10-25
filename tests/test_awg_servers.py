@@ -97,11 +97,11 @@ def test_json_registry_parses_all_servers(monkeypatch: pytest.MonkeyPatch) -> No
 def test_registry_keeps_private_ssh_host_separate_from_public_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(
         "VPNW_AWG_SERVERS",
-        _servers_json({"id": "nl", "host": "127.0.0.1", "public_host": "77.67.89.164", "password": "p"}),
+        _servers_json({"id": "nl", "host": "127.0.0.1", "public_host": "82.25.60.19", "password": "p"}),
     )
     server = AwgRegistry.from_env().default_server
     assert server.host == "127.0.0.1"
-    assert server.endpoint_host == "77.67.89.164"
+    assert server.endpoint_host == "82.25.60.19"
 
 
 def test_unknown_server_id_is_rejected_not_silently_defaulted(monkeypatch: pytest.MonkeyPatch) -> None:

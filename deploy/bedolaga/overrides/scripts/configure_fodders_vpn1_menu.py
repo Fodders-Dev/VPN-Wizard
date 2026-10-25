@@ -27,8 +27,8 @@ FREE_BUTTON_ID = 'fodders_free_vpn'
 FREE_ROW_ID = 'fodders_free_vpn_row'
 WIZARD_BUTTON_ID = 'fodders_vpn1'
 WIZARD_ROW_ID = 'fodders_vpn1_row'
-DEFAULT_PORTAL_URL = 'https://77-67-89-164.nip.io/portal/'
-DEFAULT_LEGACY_URL = 'https://77-67-89-164.nip.io/wizard/'
+DEFAULT_PORTAL_URL = 'https://82-25-60-19.nip.io/portal/'
+DEFAULT_LEGACY_URL = 'https://82-25-60-19.nip.io/wizard/'
 
 
 async def main() -> None:

@@ -55,7 +55,7 @@ def test_bot_uses_canonical_wizard_url_by_default(monkeypatch) -> None:
     monkeypatch.delenv("VPNW_MINIAPP_URL", raising=False)
     monkeypatch.delenv("VPNW_PUBLIC_BASE_URL", raising=False)
     monkeypatch.delenv("VPNW_WIZARD_URL", raising=False)
-    assert tg_bot._miniapp_url() == "https://77-67-89-164.nip.io/wizard/"
+    assert tg_bot._miniapp_url() == "https://82-25-60-19.nip.io/wizard/"
 
 
 def test_entry_menu_has_free_link_and_native_wizard_webapp(monkeypatch) -> None:
@@ -69,9 +69,9 @@ def test_entry_menu_has_free_link_and_native_wizard_webapp(monkeypatch) -> None:
     free_action = keyboard.inline_keyboard[0][0]
     wizard_action = keyboard.inline_keyboard[1][0]
     assert free_action.text == "Получить бесплатный VPN"
-    assert free_action.url == "https://77-67-89-164.nip.io/connect/join.html"
+    assert free_action.url == "https://82-25-60-19.nip.io/connect/join.html"
     assert wizard_action.text == "Настроить свой сервер"
-    assert wizard_action.web_app.url == "https://77-67-89-164.nip.io/wizard/"
+    assert wizard_action.web_app.url == "https://82-25-60-19.nip.io/wizard/"
     assert wizard_action.url is None
 
 

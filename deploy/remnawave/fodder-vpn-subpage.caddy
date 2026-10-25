@@ -8,7 +8,7 @@ handle @hidden {
 }
 
 handle / {
-	redir https://77-67-89-164.nip.io/miniapp 302
+	redir https://82-25-60-19.nip.io/miniapp 302
 }
 
 handle /fodder-vpn-logo.svg {

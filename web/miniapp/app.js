@@ -1,4 +1,4 @@
-const CANONICAL_API_BASE = "https://77-67-89-164.nip.io";
+const CANONICAL_API_BASE = "https://82-25-60-19.nip.io";
 const CANONICAL_MINIAPP_URL = `${CANONICAL_API_BASE}/wizard/`;
 const CANONICAL_PORTAL_URL = `${CANONICAL_API_BASE}/portal/`;
 const API_OVERRIDE_KEY = "vpnw_api_base";
