@@ -7,6 +7,10 @@ migration: retain loopback SSH registry hosts and all AWG identities while
 updating public endpoints, runtime public URLs, TLS, Xray, Remnawave and bot
 menu URLs. Validate staged configurations and back up affected files plus both
 SQLite databases and both PostgreSQL databases before mutation.
+Serialize NL operations with flock. Persist original source/target and service
+recovery needs before the first live write; resume a pending same-target move
+even if the registry already contains the target. Clear the private journal
+only after final runtime and TLS verification; refuse another target meanwhile.
 
 The main-site VPN button uses `https://fodders.ru/vpn/`. The launcher verifies
 the new HTTPS catalog before changing the exact `/vpn` and `/vpn/` redirects,

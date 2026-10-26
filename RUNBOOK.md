@@ -8,6 +8,25 @@ controller helper with a private pending migration journal and service recovery;
 other exits retain their existing strict remote identity checks. US fallback
 administration resolves the local `vpn-us` SSH alias rather than a fixed IP.
 
+Release: VPN `83a916a` installed on NL. Full suite: 714 passed; Node syntax and
+Python compilation checks passed. Astra independently accepted recovery and
+ran 45 tests. A live Windows check exposed a missing dynamic-loader import;
+fixed it and added a regression exercising the default loader with mocked I/O.
+Windows PowerShell 5.1 then passed NL CheckOnly and repeated apply at
+`82.25.60.19`: no file/profile/menu/database changes, no service restart, no
+SSH alias change, no website change or Caddy reload. API PID stayed `3889394`.
+The CMD entry used by the Desktop shortcut also passed NL CheckOnly. US
+CheckOnly at `147.45.125.36` passed. The Linux standalone NL repeat was a
+verified no-op too. Health returned ok; autodeploy, AWG health and certificate
+timers remain active. No actual new NL address was provided or assigned during
+this release; changed-address and interrupted-recovery paths used fixtures.
+
+Deployment backup: `/opt/vpn-wizard/shared/backups/all-server-launcher-20261026-190658`.
+Pending NL journal: `/var/backups/vpn-wizard/nl-endpoint.pending.json`;
+rerun the same target to complete recovery. Original private migration backups
+remain available. The hourly XHTTP unit now reads `/etc/vpn-wizard.env` and
+its synchronization service was exercised successfully after installation.
+
 The main-site project button now uses `/vpn/`, published as Site commit
 `ab32fe18545f30912bf0144785e741800734f9ac`. The installed Caddy snippet is
 `/etc/caddy/fodder-vpn-link.caddy` on SSH alias `fodders`. Initial private backup:
