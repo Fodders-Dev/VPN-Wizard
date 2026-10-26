@@ -1,5 +1,19 @@
 # VPN Wizard - SPEC
 
+## FI address and owner-operated migration (2026-10-26)
+
+FI uses `185.202.207.126`: public awg9/UDP3478, alternative awg8/UDP4500;
+personal awg0/UDP443 and awg1/UDP3479 retain their identities. IP changes are
+administrative operations on an existing machine, with trusted SSH host-key,
+cached AWG public-key and runtime-listener checks. Refuse another server or
+ambiguous interface selection; preserve keys, ports, peer states and other exits.
+
+Provide a local double-click launcher and `Set-VpnServerIp.ps1` for future
+fi/us/tr moves, including read-only check and idempotent repeated apply.
+The NL website/controller remains a separate migration workflow. Monitoring
+reads current addresses from the registry. Existing app imports need an updated
+Endpoint or re-import; server configuration cannot rewrite an imported file.
+
 ## Current NL endpoint (2026-10-25)
 
 The existing NL server now uses `82.25.60.19`; the canonical public origin is

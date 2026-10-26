@@ -1,5 +1,50 @@
 # RUNBOOK
 
+## FI address replacement and owner launcher (2026-10-26)
+
+The existing FI server changed from `46.38.156.229` to `185.202.207.126`.
+Its trusted SSH key matched, and decrypted cached profiles matched runtime AWG
+public keys: 122 primary profiles on awg9/UDP3478 and one alternative on
+awg8/UDP4500. All four existing interface key/peer/port fingerprints matched
+before and after the address-only migration; personal awg0/UDP443 and
+awg1/UDP3479 were retained without an AWG restart.
+
+Backups: control `/opt/vpn-wizard/shared/backups/fi-address-20261026-175107`
+contains env, known_hosts, installed watchdog, both SQLite snapshots and both
+PostgreSQL dumps. FI `/var/backups/vpn-wizard/fi-address-20261026-175114`
+contains the complete AWG archive, identity fingerprints and original selected
+profile files. Updated 124 persisted active/suspended profiles, both registry
+entries, one saved-server host and six owner exports in Downloads. The dormant
+legacy Remnawave tables had no matching old FI addresses to change.
+
+Public FI download emits `185.202.207.126:3478`; repeat download retained the
+same bytes/key, and the same-browser QR returned an 890x890 PNG. Public profile
+export: local ignored `output/185.202.207.126/FVPN-FI-3478.conf`. Existing imported
+profiles still need an Endpoint edit or re-import. These server/browser checks
+do not establish VPN traffic from the owner's RF device.
+
+Owner workflow: Desktop shortcut `Сменить IP VPN` opens `Set-VpnServerIp.cmd`,
+which launches the Russian PowerShell prompts. `Set-VpnServerIp.ps1 fi <IP>`
+applies; add `-CheckOnly` to verify without changes. See
+[`deploy/IP-CHANGE.md`](deploy/IP-CHANGE.md). The installed controller tool is
+`deploy/scripts/change-exit-ip.py`, executed with the existing project venv.
+No private credential appears in command arguments or output.
+
+The launcher resolves controller SSH alias `rodnya`, including its HostKeyAlias,
+and uses strict host validation; unreachable direct SSH falls back through the
+existing USA administrative connection. Linux env paths must be passed in POSIX
+form from Windows. Cached profiles may contain old IPs and ports indefinitely;
+verify their unique server public keys rather than treating stale Endpoint as
+the current listener. Runtime listener and server-key checks remain mandatory.
+
+The reusable workflow manages remote AWG exits fi/us/tr and their alternative
+entries. A missing explicit interface is resolved only by a unique runtime port
+and the expected cached key. It does not migrate the NL website/controller.
+It backs up changed profiles and control env/known_hosts, retains all ports and
+keys, refreshes the API/health snapshot, and reports rollback outcomes separately.
+The watchdog now reads the same registry for NL/FI probe targets; future IP moves
+do not require editing its source or republishing the website.
+
 ## NL replacement address and certificate renewal (2026-10-25)
 
 The owner changed the address of the existing NL212295 VPS from

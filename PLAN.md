@@ -1,5 +1,16 @@
 # PLAN
 
+## FI replacement and reusable IP workflow (2026-10-26)
+
+- [x] Verified trusted SSH and cached AWG identities at 185.202.207.126.
+- [x] Backed up all four control databases and FI AWG state; updated 124 profiles,
+      registry, saved host and six owner Downloads exports without rotating keys.
+- [x] Verified live FI download, retained key on repeat download and private QR.
+- [x] Replaced hardcoded watchdog targets with registry-derived addresses.
+- [x] Added owner PowerShell/CMD launcher and Desktop shortcut, with strict
+      verification, backups, no-op repeats and truthful rollback reporting.
+- [ ] Owner imports the refreshed FI profile and confirms real RF-device traffic.
+
 ## NL IP replacement (2026-10-25)
 
 - [x] Verified the same SSH identity and retained AWG keys/peers at 82.25.60.19.
@@ -77,4 +88,4 @@
 - [x] Опубликовать бесплатное меню бота/сайта с резервной копией; live-выдача .conf и QR проверена, бот healthy, команды free/wizard/help, обе главные кнопки подтверждены через API.
 - [ ] После ручного запуска эмулятора заменить старые иллюстрации новыми Android-снимками, включая переименование. Автоматический запуск AVD отклонён инструментом.
 
-Next: Confirm actual RF-device AWG traffic after importing the refreshed NL profile; continue the private XHTTP transport trial only after sustained delivery succeeds. Fresh Android screenshots still await a manual emulator start.
+Next: Owner imports the refreshed FI profile and confirms actual RF-device traffic; use the Desktop IP launcher for future remote-exit address changes.
