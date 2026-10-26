@@ -863,6 +863,65 @@ def test_windows_nl_noop_still_runs_site_repair_callback(capsys):
     assert report["website"]["site_updated"] is True
 
 
+def test_windows_nl_default_site_loader_runs_with_mocked_io(capsys, monkeypatch: pytest.MonkeyPatch):
+    target = "https://82-25-60-19.nip.io/connect/join.html"
+    requests = []
+
+    class Controller:
+        def run(self, _command):
+            return 0, json.dumps({"server": "nl", "old_ip": "82.25.60.19", "new_ip": "82.25.60.19",
+                                 "changed": False, "applied": False, "verified": True}), None
+        def close(self): pass
+
+    class RemoteStdin:
+        def write(self, _script): pass
+        def flush(self): pass
+
+    class RemoteStdout:
+        channel = SimpleNamespace(recv_exit_status=lambda: 0)
+        def read(self):
+            return json.dumps({"ok": True, "target_current": True, "would_change": False,
+                               "missing_route": False}).encode()
+
+    class SiteClient:
+        def exec_command(self, command, timeout):
+            assert command == "python3 -"
+            assert timeout == 120
+            return RemoteStdin(), RemoteStdout(), SimpleNamespace(read=lambda: b"")
+        def close(self): pass
+
+    def http_get(url, *, timeout):
+        assert timeout == 15.0
+        requests.append(url)
+        if url.endswith("/api/awg/servers?include_unavailable=true"):
+            return SimpleNamespace(status=200, headers={}, body=b'{"servers":[{"id":"nl"}]}')
+        if url.startswith("https://fodders.ru/vpn"):
+            return SimpleNamespace(status=302, headers={"Location": target, "Cache-Control": "no-store"}, body=b"")
+        return SimpleNamespace(status=200, headers={}, body=b"profile")
+
+    real_loader = change_ip._load_site_link_sync
+
+    def load_with_mocked_site_io():
+        sync = real_loader()
+        module = sys.modules["_update_site_vpn_link"]
+        monkeypatch.setattr(module, "_http_get", http_get)
+        monkeypatch.setattr(module, "_connect_fodders", lambda **_kwargs: SiteClient())
+        return sync
+
+    monkeypatch.setattr(change_ip, "_load_site_link_sync", load_with_mocked_site_io)
+    code = change_ip._windows_main(
+        "nl", "82.25.60.19", False, controller_factory=lambda: Controller(),
+        alias_updater=lambda alias, ip: {"alias": alias, "would_change": True},
+    )
+
+    assert code == 0
+    assert "https://82-25-60-19.nip.io/connect/join.html" in requests
+    assert "https://fodders.ru/vpn?codex_probe=must-drop" in requests
+    report = json.loads(capsys.readouterr().out)
+    assert report["website"]["verified"] is True
+    assert report["website"]["endpoint_verified"] is True
+
+
 def test_ssh_controller_filters_stderr_to_one_backend_error_line():
     channel = SimpleNamespace(recv_exit_status=lambda: 1)
     stdout = SimpleNamespace(read=lambda: b"", channel=channel)
