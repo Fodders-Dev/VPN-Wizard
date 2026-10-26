@@ -754,4 +754,3 @@ def test_refuses_control_node_even_when_requested_country_is_remote():
     nodes[0]["host"] = OLD_IP
     with pytest.raises(change_ip.ChangeError, match="Netherlands control server"):
         change_ip.select_nodes(nodes, "fi", NEW_IP)
-

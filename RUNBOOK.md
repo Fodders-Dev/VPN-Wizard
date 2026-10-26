@@ -2,6 +2,13 @@
 
 ## FI address replacement and owner launcher (2026-10-26)
 
+Validation: 649 tests passed. The installed Linux tool verified the current FI
+without changes; Windows PowerShell 5.1 completed CheckOnly and repeated apply
+against production, reporting changed=false and service_restarted=false. The
+actual API PID stayed unchanged. The CMD launcher also completed CheckOnly with
+exit code 0. The Desktop shortcut targets that launcher and the project's working
+directory; direct SSH and strict USA fallback are covered by transport tests.
+
 The existing FI server changed from `46.38.156.229` to `185.202.207.126`.
 Its trusted SSH key matched, and decrypted cached profiles matched runtime AWG
 public keys: 122 primary profiles on awg9/UDP3478 and one alternative on
