@@ -17,7 +17,14 @@ def test_port_swap_retains_keys_and_peers():
 
 def test_endpoint_keeps_all_other_profile_fields():
     text = '[Interface]\nPrivateKey = client-key\n[Peer]\nEndpoint = 193.222.97.50:443 # server\nPublicKey = same-key\n'
-    assert module.replace_endpoint(text, 3478) == text.replace('193.222.97.50:443', '46.38.156.229:3478')
+    assert module.replace_endpoint(text, 3478) == text.replace('193.222.97.50:443', '185.202.207.126:3478')
+
+
+def test_endpoint_target_can_be_overridden():
+    text = '[Peer]\nEndpoint = 193.222.97.50:443\n'
+    assert module.replace_endpoint(text, 3478, '203.0.113.42') == (
+        '[Peer]\nEndpoint = 203.0.113.42:3478\n'
+    )
 
 
 def test_port_swap_rejects_missing_or_duplicate_field():

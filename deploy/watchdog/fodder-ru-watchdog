@@ -32,7 +32,9 @@ VPNW_TELEGRAM_AUTH_TOKEN (или VPNW_BOT_TOKEN) и VPNW_OWNER_IDS.
 from __future__ import annotations
 
 import json
+import ipaddress
 import os
+import re
 import subprocess
 import sys
 import time
@@ -44,10 +46,9 @@ STATE_DIR = os.environ.get("STATE_DIRECTORY") or "/var/lib/fodder-ru-watchdog"
 STATE_PATH = os.path.join(STATE_DIR, "state.json")
 REMIND_SECONDS = 6 * 3600
 
-TARGETS = [
-    ("NL · сайт и панель", "82.25.60.19:443"),
-    ("FI · экзит", "46.38.156.229:22"),
-]
+DEFAULT_NL_HOST = "82.25.60.19"
+DEFAULT_FI_HOST = "185.202.207.126"
+DEFAULT_FI_PORT = 22
 # ru4 на check-host почти всегда мёртв, поэтому его нет: молчащая нода не
 # должна ни поднимать тревогу, ни маскировать её.
 RU_NODES = [
@@ -56,6 +57,118 @@ RU_NODES = [
     "ru3.node.check-host.net",
 ]
 CONTROL_NODES = ["il2.node.check-host.net", "ro1.node.check-host.net"]
+
+
+_HOSTNAME_RE = re.compile(
+    r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*\.?$"
+)
+
+
+def _public_host(raw) -> str | None:
+    """Return a safe host for a TCP probe, or None for malformed/loopback input."""
+    if not isinstance(raw, str):
+        return None
+    value = raw.strip()
+    if (
+        not value
+        or len(value) > 255
+        or "%" in value
+        or any(ord(char) < 33 for char in value)
+    ):
+        return None
+    if value.startswith("[") and value.endswith("]"):
+        value = value[1:-1]
+        try:
+            address = ipaddress.ip_address(value)
+        except ValueError:
+            return None
+        if address.version != 6 or address.is_loopback or address.is_unspecified:
+            return None
+        return f"[{address.compressed}]"
+    if "[" in value or "]" in value:
+        return None
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        hostname = value.rstrip(".").lower()
+        if (
+            not _HOSTNAME_RE.fullmatch(value)
+            or hostname == "localhost"
+            or hostname.endswith(".localhost")
+        ):
+            return None
+        return value
+    if address.is_loopback or address.is_unspecified:
+        return None
+    return f"[{address.compressed}]" if address.version == 6 else str(address)
+
+
+def _valid_port(raw) -> int | None:
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int):
+        port = raw
+    elif isinstance(raw, str) and 1 <= len(raw) <= 5 and raw.isascii() and raw.isdecimal():
+        port = int(raw)
+    else:
+        return None
+    return port if 1 <= port <= 65535 else None
+
+
+def _registry_entries() -> list[dict]:
+    """Read only the registry structure; never expose its raw contents in errors."""
+    raw = os.environ.get("VPNW_AWG_SERVERS")
+    if not raw:
+        return []
+    try:
+        entries = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(entries, list) or not all(isinstance(item, dict) for item in entries):
+        return []
+    return entries
+
+
+def _registry_entry(entries: list[dict], server_id: str) -> dict | None:
+    matches = [entry for entry in entries if entry.get("id") == server_id]
+    return matches[0] if len(matches) == 1 else None
+
+
+def reachability_targets() -> list[tuple[str, str]]:
+    """Build public TCP probe targets from stable registry ids with safe defaults."""
+    entries = _registry_entries()
+
+    nl_host = DEFAULT_NL_HOST
+    nl = _registry_entry(entries, "nl")
+    if nl is not None and nl.get("enabled") is not False:
+        # Client endpoints use public_host when SSH is routed through localhost.
+        nl_host = (
+            _public_host(nl.get("public_host"))
+            or _public_host(nl.get("host"))
+            or DEFAULT_NL_HOST
+        )
+
+    fi_host, fi_port = DEFAULT_FI_HOST, DEFAULT_FI_PORT
+    fi = _registry_entry(entries, "fi")
+    if fi is not None and fi.get("enabled") is not False:
+        candidate_host = _public_host(fi.get("host"))
+        candidate_port = _valid_port(fi.get("port", DEFAULT_FI_PORT))
+        if candidate_host is not None and candidate_port is not None:
+            fi_host, fi_port = candidate_host, candidate_port
+
+    return [
+        ("NL · сайт и панель", f"{nl_host}:443"),
+        ("FI · экзит", f"{fi_host}:{fi_port}"),
+    ]
+
+
+def test_message() -> str:
+    targets = dict(reachability_targets())
+    return (
+        "🔔 Тест сторожа Fodder VPN: алерты доходят. Каждые 10 минут проверяю "
+        f"NL {targets['NL · сайт и панель']} и FI {targets['FI · экзит']} из ru1/ru2/ru3."
+    )
 
 
 def http_json(url: str):
@@ -526,10 +639,7 @@ def main() -> int:
         return 0
 
     if "--test" in sys.argv:
-        notify(
-            "🔔 Тест сторожа Fodder VPN: алерты доходят. Каждые 10 минут проверяю "
-            "NL 82.25.60.19:443 и FI 46.38.156.229:22 из ru1/ru2/ru3."
-        )
+        notify(test_message())
         return 0
 
     try:
@@ -539,7 +649,7 @@ def main() -> int:
         state = {}
 
     now = int(time.time())
-    for name, host in TARGETS:
+    for name, host in reachability_targets():
         try:
             verdicts = run_check(host)
             status = classify(verdicts)

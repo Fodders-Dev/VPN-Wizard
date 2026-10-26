@@ -2,15 +2,22 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 from pathlib import Path
 import shutil
 
+DEFAULT_FI_IP = "185.202.207.126"
+HISTORICAL_FI_IPS = {"193.222.97.50", "46.38.156.229"}
 
-def migrate(text: str, port: int | None = None) -> str:
+def migrate(text: str, port: int | None = None, new_ip: str = DEFAULT_FI_IP) -> str:
     if port is not None and port not in (443, 3478):
         raise ValueError("Expected FI public port 443 or 3478")
+    try:
+        new_ip = str(ipaddress.ip_address(new_ip))
+    except ValueError:
+        raise ValueError("Expected a valid FI IP address") from None
     lines = text.splitlines(keepends=True)
     matches = [i for i, line in enumerate(lines)
                if line.partition("=")[0].strip() == "VPNW_AWG_SERVERS"]
@@ -29,11 +36,11 @@ def migrate(text: str, port: int | None = None) -> str:
         raise ValueError("Expected unique fi and fi-alt")
     for node in fi:
         expected = "awg9" if node["id"] == "fi" else "awg8"
-        if node.get("host") not in {"193.222.97.50", "46.38.156.229"}:
+        if node.get("host") not in HISTORICAL_FI_IPS | {DEFAULT_FI_IP, new_ip}:
             raise ValueError("Unexpected FI host; inspect before migrating")
         if node.get("interface") != expected:
             raise ValueError("Unexpected FI interface; keys must not be remapped")
-        node["host"] = "46.38.156.229"
+        node["host"] = new_ip
         if node["id"] == "fi" and port is not None:
             node["listen_port"] = port
     updated = "VPNW_AWG_SERVERS='" + json.dumps(nodes, separators=(",", ":"), ensure_ascii=True) + "'\n"
@@ -49,12 +56,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--env", type=Path, default=Path("/etc/vpn-wizard.env"))
     parser.add_argument("--port", type=int)
+    parser.add_argument("--new-ip", default=DEFAULT_FI_IP,
+                        help="New FI public IP (default: %(default)s)")
     parser.add_argument("--backup-dir", type=Path)
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
     source = args.env.resolve(strict=True)
     original = source.read_text(encoding="utf-8")
-    updated = migrate(original, args.port)
+    updated = migrate(original, args.port, args.new_ip)
     if args.apply and updated != original:
         if not args.backup_dir:
             raise ValueError("A new private backup directory is required")
@@ -70,7 +79,7 @@ def main() -> None:
         shutil.copystat(source, temporary)
         temporary.replace(source)
     print(json.dumps({"changed": updated != original, "applied": args.apply,
-                      "host": "46.38.156.229", "port": args.port,
+                      "host": str(ipaddress.ip_address(args.new_ip)), "port": args.port,
                       "identities_preserved": True}))
 
 

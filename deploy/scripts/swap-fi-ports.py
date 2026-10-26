@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -12,6 +13,7 @@ import subprocess
 
 ROOT = Path('/etc/amnezia/amneziawg')
 DESIRED = {'awg0': 443, 'awg9': 3478}
+DEFAULT_FI_IP = '185.202.207.126'
 
 
 def run(*args: str) -> str:
@@ -24,9 +26,11 @@ def replace_port(text: str, port: int) -> str:
     return re.sub(r'^(ListenPort\s*=\s*)\d+', lambda m: m[1] + str(port), text, flags=re.M)
 
 
-def replace_endpoint(text: str, port: int) -> str:
+def replace_endpoint(text: str, port: int, new_ip: str = DEFAULT_FI_IP) -> str:
+    address = ipaddress.ip_address(new_ip)
+    host = f'[{address.compressed}]' if address.version == 6 else str(address)
     return re.sub(r'^(Endpoint\s*=\s*)[^\s#;]+',
-                  lambda m: m[1] + f'46.38.156.229:{port}', text, flags=re.M)
+                  lambda m: m[1] + f'{host}:{port}', text, flags=re.M)
 
 
 def atomic(path: Path, content: str) -> None:
@@ -50,7 +54,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--backup-dir', type=Path)
+    parser.add_argument('--new-ip', default=DEFAULT_FI_IP,
+                        help='New FI public IP (default: %(default)s)')
     args = parser.parse_args()
+    new_ip = str(ipaddress.ip_address(args.new_ip))
     ports = {r.split()[0]: int(r.split()[1]) for r in run('awg', 'show', 'all', 'listen-port').splitlines()}
     before = {iface: ports[iface] for iface in DESIRED}
     if before not in ({'awg0': 3478, 'awg9': 443}, DESIRED):
@@ -67,7 +74,7 @@ def main() -> None:
         clients = ROOT / ('clients' if iface == 'awg0' else 'clients_awg9')
         for path in sorted(clients.glob('*.conf*')):
             if path.name.endswith(('.conf', '.conf.suspended')):
-                changes[path] = replace_endpoint(path.read_text(), port)
+                changes[path] = replace_endpoint(path.read_text(), port, new_ip)
     changes = {p: c for p, c in changes.items() if p.read_text() != c}
     print(json.dumps({'ports_before': before, 'ports_after': DESIRED, 'files_to_update': len(changes), 'apply': args.apply}))
     if not args.apply:
