@@ -13,9 +13,11 @@ import shlex
 import shutil
 import socket
 import sqlite3
+import stat
 import subprocess
 import sys
 import tempfile
+import time
 from typing import Any, Callable
 from urllib.parse import quote
 
@@ -27,6 +29,7 @@ DEFAULT_ENV = Path("/etc/vpn-wizard.env")
 DEFAULT_ENV_POSIX = "/etc/vpn-wizard.env"
 BACKUP_ROOT = Path("/var/backups/vpn-wizard")
 SERVER_IDS = {"fi", "us", "tr"}
+LAUNCHER_SERVER_IDS = SERVER_IDS | {"nl"}
 IFACE_RE = re.compile(r"^[a-z][a-z0-9]{1,14}$")
 ENV_ASSIGN_RE = re.compile(r"^(?P<prefix>\ufeff?\s*[A-Za-z_][A-Za-z0-9_]*\s*=)(?P<value>.*)$")
 REMOTE_CODE = r'''
@@ -703,30 +706,36 @@ def _systemctl(action: str, unit: str, runner: Callable[..., Any] = subprocess.r
 
 
 def build_controller_command(server_id: str, new_ip: str, apply: bool, *, env_path: str = DEFAULT_ENV_POSIX) -> str:
-    if server_id not in SERVER_IDS:
-        raise ChangeError("Only fi, us, or tr exits can be migrated.")
+    if server_id not in LAUNCHER_SERVER_IDS:
+        raise ChangeError("Only nl, fi, us, or tr servers can be migrated.")
     new_ip = validate_public_ipv4(new_ip)
-    args = [
-        "cd /opt/vpn-wizard/app && /opt/vpn-wizard/venv/bin/python deploy/scripts/change-exit-ip.py",
-        "--server", shlex.quote(server_id), "--new-ip", shlex.quote(new_ip),
-        "--env", shlex.quote(env_path),
-    ]
+    if server_id == "nl":
+        args = [
+            "cd /opt/vpn-wizard/app && /opt/vpn-wizard/venv/bin/python deploy/scripts/change-controller-ip.py",
+            "--new-ip", shlex.quote(new_ip), "--env", shlex.quote(env_path),
+        ]
+    else:
+        args = [
+            "cd /opt/vpn-wizard/app && /opt/vpn-wizard/venv/bin/python deploy/scripts/change-exit-ip.py",
+            "--server", shlex.quote(server_id), "--new-ip", shlex.quote(new_ip),
+            "--env", shlex.quote(env_path),
+        ]
     if apply:
         args.append("--apply")
     return " ".join(args)
 
 
-def read_controller_ssh_config(config_path: Path | None = None, *, home: Path | None = None) -> dict[str, Any]:
+def read_ssh_alias_config(alias: str, config_path: Path | None = None, *, home: Path | None = None) -> dict[str, Any]:
     home = home or Path.home()
     config_path = config_path or (home / ".ssh" / "config")
     if config_path.is_symlink() or not config_path.is_file():
-        raise ChangeError("Local SSH config for controller alias rodnya was not found.")
+        raise ChangeError("Local SSH config was not found.")
     try:
         with config_path.open("r", encoding="utf-8") as handle:
             ssh_config = paramiko.SSHConfig.from_file(handle)
-        entry = ssh_config.lookup("rodnya")
+        entry = ssh_config.lookup(alias)
     except Exception:
-        raise ChangeError("Local SSH config for controller alias rodnya could not be read.") from None
+        raise ChangeError("Local SSH config could not be read.") from None
     hostname = str(entry.get("hostname") or "").strip()
     host_key_alias = str(entry.get("hostkeyalias") or "").strip()
     port_raw = entry.get("port", 22)
@@ -739,12 +748,19 @@ def read_controller_ssh_config(config_path: Path | None = None, *, home: Path | 
     if isinstance(identity_files, str):
         identity_files = [identity_files]
     identity_files = [os.path.expanduser(str(path)) for path in identity_files]
-    if not hostname or not host_key_alias or not user or not 1 <= port <= 65535:
-        raise ChangeError("Controller alias rodnya needs HostName, User, Port, and HostKeyAlias.")
+    if not hostname or not user or not 1 <= port <= 65535:
+        raise ChangeError(f"SSH alias {alias} needs HostName, User, and a valid Port.")
     return {
         "hostname": hostname, "hostkeyalias": host_key_alias,
         "port": port, "user": user, "identityfile": identity_files,
     }
+
+
+def read_controller_ssh_config(config_path: Path | None = None, *, home: Path | None = None) -> dict[str, Any]:
+    config = read_ssh_alias_config("rodnya", config_path, home=home)
+    if not config["hostkeyalias"]:
+        raise ChangeError("Controller alias rodnya needs HostKeyAlias for strict validation.")
+    return config
 
 
 class SSHController:
@@ -753,7 +769,8 @@ class SSHController:
 
     def run(self, command: str) -> tuple[int, str, str | None]:
         try:
-            _stdin, stdout, stderr = self.client.exec_command(command, timeout=300)
+            timeout = 1200 if "change-controller-ip.py" in command and "--apply" in command else 300
+            _stdin, stdout, stderr = self.client.exec_command(command, timeout=timeout)
             result = stdout.read().decode("utf-8", "strict")
             error_text = stderr.read(4096).decode("utf-8", "replace")
             status = stdout.channel.recv_exit_status()
@@ -771,9 +788,11 @@ class SSHController:
 
 def connect_controller(*, config_path: Path | None = None, known_hosts_path: Path | None = None,
                        home: Path | None = None, socket_connect: Callable[..., Any] = socket.create_connection,
-                       ssh_factory: Callable[[], paramiko.SSHClient] = paramiko.SSHClient) -> SSHController:
+                       ssh_factory: Callable[[], paramiko.SSHClient] = paramiko.SSHClient,
+                       server_id: str = "fi", candidate_ip: str | None = None) -> SSHController:
     home = home or Path.home()
     config = read_controller_ssh_config(config_path, home=home)
+    target_host = validate_public_ipv4(candidate_ip) if server_id == "nl" and candidate_ip else config["hostname"]
     known_hosts = known_hosts_path or (home / ".ssh" / "known_hosts")
     if known_hosts.is_symlink() or not known_hosts.is_file():
         raise ChangeError("Strict local SSH known_hosts file is unavailable.")
@@ -790,7 +809,7 @@ def connect_controller(*, config_path: Path | None = None, known_hosts_path: Pat
 
     direct_socket = None
     try:
-        direct_socket = socket_connect((config["hostname"], config["port"]), timeout=6)
+        direct_socket = socket_connect((target_host, config["port"]), timeout=6)
     except OSError:
         direct_socket = None
     if direct_socket is not None:
@@ -810,21 +829,31 @@ def connect_controller(*, config_path: Path | None = None, known_hosts_path: Pat
                 pass
             raise ChangeError("Direct strict SSH authentication to controller alias rodnya failed.") from None
 
-    key_path = home / ".ssh" / "radiopp_github_deploy"
+    try:
+        gateway = read_ssh_alias_config("vpn-us", config_path, home=home)
+    except ChangeError:
+        raise ChangeError("Direct SSH timed out and SSH alias vpn-us is unavailable for the gateway fallback.") from None
+    key_path = Path(gateway["identityfile"][0]) if gateway["identityfile"] else home / ".ssh" / "radiopp_github_deploy"
     if not key_path.is_file():
         raise ChangeError("Direct SSH timed out and the configured US gateway key is unavailable.")
+    gateway_host = validate_public_ipv4(candidate_ip) if server_id == "us" and candidate_ip else gateway["hostname"]
     jump_client = strict_client()
     target_client = None
     try:
+        try:
+            gateway_socket = socket_connect((gateway_host, gateway["port"]), timeout=6)
+        except OSError:
+            raise ChangeError("The configured US gateway is not accepting a connection.") from None
         jump_client.connect(
-            hostname="147.45.125.36", port=22, username="root", key_filename=str(key_path),
+            hostname=gateway["hostkeyalias"] or gateway_host, port=gateway["port"], username=gateway["user"], key_filename=str(key_path),
+            sock=gateway_socket,
             allow_agent=False, look_for_keys=False, timeout=15, banner_timeout=15, auth_timeout=15,
         )
         transport = jump_client.get_transport()
         if transport is None or not transport.is_active():
             raise ChangeError("Strict SSH connection to the US gateway failed.")
         channel = transport.open_channel(
-            "direct-tcpip", (config["hostname"], config["port"]), ("127.0.0.1", 0), timeout=15
+            "direct-tcpip", (target_host, config["port"]), ("127.0.0.1", 0), timeout=15
         )
         target_client = strict_client()
         target_client.connect(
@@ -845,11 +874,87 @@ def connect_controller(*, config_path: Path | None = None, known_hosts_path: Pat
         raise ChangeError("Strict SSH fallback through the US gateway failed.") from None
 
 
+def _update_local_ssh_alias(alias: str, new_ip: str, *, config_path: Path | None = None,
+                            home: Path | None = None, backup_root: Path | None = None) -> dict[str, Any]:
+    home = home or Path.home()
+    config_path = config_path or (home / ".ssh" / "config")
+    if config_path.is_symlink() or not config_path.is_file():
+        raise ChangeError("Cannot safely update a missing or symlinked SSH config.")
+    try:
+        text = config_path.read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        raise ChangeError("Local SSH config is not readable UTF-8.") from None
+    lines = text.splitlines(keepends=True)
+    starts = [i for i, line in enumerate(lines) if re.match(r"^\s*Host\s+", line, re.I)]
+    target: tuple[int, int] | None = None
+    for pos, start in enumerate(starts):
+        end = starts[pos + 1] if pos + 1 < len(starts) else len(lines)
+        names = re.split(r"\s+", lines[start].strip(), maxsplit=1)[1].split()
+        if alias in names:
+            target = (start, end)
+            break
+    if target is None:
+        raise ChangeError(f"SSH alias {alias} was not found for safe update.")
+    start, end = target
+    host_name_line = next((i for i in range(start + 1, end) if re.match(r"^\s*HostName\s+", lines[i], re.I)), None)
+    if host_name_line is None:
+        lines.insert(start + 1, f"  HostName {new_ip}\n")
+    else:
+        old_line = lines[host_name_line]
+        ending = "\r\n" if old_line.endswith("\r\n") else ("\n" if old_line.endswith("\n") else "")
+        lines[host_name_line] = re.sub(r"(?i)(^\s*HostName\s+)\S+", r"\g<1>" + new_ip, old_line.rstrip("\r\n")) + ending
+    updated = "".join(lines).encode("utf-8")
+    old = text.encode("utf-8")
+    if updated == old:
+        return {"changed": False, "alias": alias}
+    backup_root = backup_root or (home / ".ssh" / "backups")
+    backup_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if backup_root.is_symlink():
+        raise ChangeError("Local SSH backup directory cannot be a symlink.")
+    os.chmod(backup_root, 0o700)
+    backup = backup_root / f"config-before-{alias}-{int(time.time())}.bak"
+    if backup.exists():
+        raise ChangeError("Local SSH backup already exists; refusing to overwrite it.")
+    backup.write_bytes(old)
+    os.chmod(backup, 0o600)
+    metadata = config_path.stat(follow_symlinks=False)
+    fd, temp_name = tempfile.mkstemp(prefix=".config-nl-ip-", dir=str(config_path.parent))
+    temp = Path(temp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(updated)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.chmod(temp, stat.S_IMODE(metadata.st_mode))
+        except OSError:
+            pass
+        os.replace(temp, config_path)
+    finally:
+        temp.unlink(missing_ok=True)
+    return {"changed": True, "alias": alias, "backup": str(backup)}
+
+
+def _load_site_link_sync() -> Callable[..., dict[str, Any]]:
+    path = Path(__file__).with_name("update-site-vpn-link.py")
+    module_name = "_update_site_vpn_link"
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise ChangeError("Site VPN link synchronizer is unavailable.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module.sync_site_link
+
+
 def _windows_main(server_id: str, new_ip: str, apply: bool, env_path: str = DEFAULT_ENV_POSIX,
-                  controller_factory: Callable[..., SSHController] = connect_controller) -> int:
+                  controller_factory: Callable[..., SSHController] = connect_controller,
+                  site_sync: Callable[..., dict[str, Any]] | None = None,
+                  alias_updater: Callable[..., dict[str, Any]] = _update_local_ssh_alias) -> int:
     try:
         command = build_controller_command(server_id, new_ip, apply, env_path=env_path)
-        controller = controller_factory()
+        controller = (controller_factory(server_id=server_id, candidate_ip=new_ip) if controller_factory is connect_controller
+                      else controller_factory())
         try:
             status, output, diagnostic = controller.run(command)
         finally:
@@ -857,14 +962,65 @@ def _windows_main(server_id: str, new_ip: str, apply: bool, env_path: str = DEFA
     except ChangeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
-    if output:
-        print(output.strip())
     if status != 0:
+        if output:
+            print(output.strip())
         if diagnostic:
             print(diagnostic, file=sys.stderr)
         else:
             print("ERROR: The controller reported that the migration did not complete.", file=sys.stderr)
         return status or 1
+    if server_id == "nl":
+        try:
+            report = json.loads(output) if output else {}
+            if not isinstance(report, dict) or report.get("verified") is not True or (apply and report.get("applied") is not True):
+                print("ERROR: NL controller did not confirm a verified migration result.", file=sys.stderr)
+                return 1
+            alias_name = "rodnya"
+            alias_error = None
+            try:
+                alias_status = alias_updater(alias_name, new_ip) if apply else {"changed": False, "alias": alias_name, "would_change": True}
+            except Exception as exc:
+                alias_status = {"changed": False, "alias": alias_name, "error": str(exc)[:240]}
+                alias_error = exc
+            sync = site_sync or _load_site_link_sync()
+            try:
+                site_status = sync(new_ip, apply=apply)
+                site_ok = site_status.get("verified") is True and (not apply or site_status.get("applied") is True)
+            except Exception as exc:
+                site_status = getattr(exc, "result", None) or {"verified": False, "applied": False, "error": str(exc)[:240]}
+                site_ok = False
+            report["local_source_alias"] = alias_status
+            report["website"] = site_status
+            if apply and report.get("old_ip") != new_ip:
+                domain = new_ip.replace(".", "-") + ".nip.io"
+                report["botfather_actions"] = [f"/setdomain {domain}", f"MainAppURL https://{domain}/portal/"]
+            print(json.dumps(report, separators=(",", ":")))
+            if not site_ok:
+                print("ERROR: NL migration succeeded, but the website link update or verification failed.", file=sys.stderr)
+                return 1
+            if alias_error is not None:
+                print("ERROR: NL migration and website sync succeeded, but the local SSH alias update failed.", file=sys.stderr)
+                return 1
+        except Exception:
+            print("ERROR: NL controller succeeded, but launcher status processing failed.", file=sys.stderr)
+            if output:
+                print(output.strip())
+            return 1
+    elif apply and server_id in {"fi", "us"}:
+        alias_name = {"fi": "fi-new", "us": "vpn-us"}[server_id]
+        try:
+            alias_status = alias_updater(alias_name, new_ip)
+        except Exception as exc:
+            print(json.dumps({"server": server_id, "verified": True, "applied": True,
+                              "local_source_alias": {"alias": alias_name, "error": str(exc)[:240]}}, separators=(",", ":")))
+            print(f"ERROR: {server_id} migration succeeded, but local SSH alias update failed.", file=sys.stderr)
+            return 1
+        report = json.loads(output) if output else {"server": server_id, "verified": True, "applied": True}
+        report["local_source_alias"] = alias_status
+        print(json.dumps(report, separators=(",", ":")))
+    elif output:
+        print(output.strip())
     return 0
 
 
@@ -994,6 +1150,21 @@ def migrate(server_id: str, new_ip: str, *, env_path: Path = DEFAULT_ENV, apply:
 
 
 def _run_linux(args: argparse.Namespace) -> int:
+    if args.server == "nl":
+        path = Path(__file__).with_name("change-controller-ip.py")
+        spec = importlib.util.spec_from_file_location("_change_controller_ip", path)
+        if spec is None or spec.loader is None:
+            print("ERROR: NL controller migration helper is unavailable.", file=sys.stderr)
+            return 1
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        try:
+            result = module.migrate_controller(args.new_ip, env_path=args.env, apply=args.apply)
+        except module.ChangeError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+        print(json.dumps(result, separators=(",", ":")))
+        return 0
     try:
         result = migrate(args.server, args.new_ip, env_path=args.env, apply=args.apply)
     except ChangeError as exc:
@@ -1005,7 +1176,7 @@ def _run_linux(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--server", required=True, choices=sorted(SERVER_IDS))
+    parser.add_argument("--server", required=True, choices=sorted(LAUNCHER_SERVER_IDS))
     parser.add_argument("--new-ip", required=True)
     parser.add_argument("--env", type=Path, default=DEFAULT_ENV)
     parser.add_argument("--apply", action="store_true", help="apply after verification; default is dry-run")

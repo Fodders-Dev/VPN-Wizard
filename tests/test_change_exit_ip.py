@@ -507,6 +507,15 @@ def test_windows_remote_command_is_shell_safe_and_never_carries_credentials():
         change_ip.build_controller_command("fi", "185.202.207.126;whoami", False)
 
 
+def test_nl_launcher_dispatches_to_dedicated_controller_helper():
+    command = change_ip.build_controller_command("nl", "82.25.60.19", True)
+
+    assert "deploy/scripts/change-controller-ip.py" in command
+    assert "--new-ip 82.25.60.19" in command
+    assert "--server" not in command
+    assert "--apply" in command
+
+
 def test_windows_direct_connection_uses_stock_alias_hostkeyalias_and_strict_policy(tmp_path: Path):
     ssh_dir = tmp_path / ".ssh"
     ssh_dir.mkdir()
@@ -547,7 +556,9 @@ def test_windows_direct_timeout_uses_paramiko_us_gateway_fallback(tmp_path: Path
     config_file = ssh_dir / "config"
     config_file.write_text(
         "Host rodnya\n  HostName 77.67.89.164\n  User root\n  Port 22\n"
-        f"  HostKeyAlias 77.67.89.164\n  IdentityFile {ssh_dir / 'controller_key'}\n",
+        f"  HostKeyAlias 77.67.89.164\n  IdentityFile {ssh_dir / 'controller_key'}\n"
+        "Host vpn-us\n  HostName 147.45.125.36\n  User root\n  Port 22\n"
+        f"  HostKeyAlias 147.45.125.36\n  IdentityFile {ssh_dir / 'radiopp_github_deploy'}\n",
         encoding="utf-8",
     )
     known_hosts = ssh_dir / "known_hosts"
@@ -571,8 +582,10 @@ def test_windows_direct_timeout_uses_paramiko_us_gateway_fallback(tmp_path: Path
         def get_transport(self): return JumpTransport()
         def close(self): observed.setdefault("closed", 0); observed["closed"] += 1
 
-    def socket_timeout(*_args, **_kwargs):
-        raise TimeoutError("direct timeout")
+    def socket_timeout(address, **_kwargs):
+        if address[0] == "77.67.89.164":
+            raise TimeoutError("direct timeout")
+        return _NullSocket()
 
     controller = change_ip.connect_controller(
         config_path=config_file, known_hosts_path=known_hosts, home=tmp_path,
@@ -589,6 +602,114 @@ def test_windows_direct_timeout_uses_paramiko_us_gateway_fallback(tmp_path: Path
     assert observed["channels"][0][1] == ("77.67.89.164", 22)
     assert all(isinstance(policy, paramiko.RejectPolicy) for policy in observed["policies"])
     controller.close()
+
+
+def test_nl_controller_connects_to_candidate_ip_pinned_by_current_hostkeyalias(tmp_path: Path):
+    ssh_dir = tmp_path / ".ssh"
+    ssh_dir.mkdir()
+    config_file = ssh_dir / "config"
+    config_file.write_text(
+        "Host rodnya\n  HostName retired.example\n  User root\n  Port 2222\n"
+        f"  HostKeyAlias 77-67-89-164.nip.io\n  IdentityFile {ssh_dir / 'controller_key'}\n"
+        "Host vpn-us\n  HostName 147.45.125.36\n  User root\n  Port 22\n"
+        f"  HostKeyAlias 147.45.125.36\n  IdentityFile {ssh_dir / 'radiopp_github_deploy'}\n",
+        encoding="utf-8",
+    )
+    known_hosts = ssh_dir / "known_hosts"
+    known_hosts.write_text("77-67-89-164.nip.io ssh-rsa AAAA\n", encoding="ascii")
+    observed = {}
+
+    class Client:
+        def load_host_keys(self, path): observed["known_hosts"] = path
+        def set_missing_host_key_policy(self, policy): observed["policy"] = policy
+        def connect(self, **kwargs): observed["connect"] = kwargs
+        def close(self): pass
+
+    controller = change_ip.connect_controller(
+        server_id="nl", candidate_ip="82.25.60.19", config_path=config_file,
+        known_hosts_path=known_hosts, home=tmp_path,
+        socket_connect=lambda address, **kwargs: observed.update(socket=(address, kwargs)) or _NullSocket(),
+        ssh_factory=Client,
+    )
+
+    assert observed["socket"] == (("82.25.60.19", 2222), {"timeout": 6})
+    assert observed["connect"]["hostname"] == "77-67-89-164.nip.io"
+    assert observed["connect"]["port"] == 2222
+    assert isinstance(observed["policy"], paramiko.RejectPolicy)
+    controller.close()
+
+
+def test_us_candidate_ip_is_used_as_gateway_when_direct_controller_times_out(tmp_path: Path):
+    ssh_dir = tmp_path / ".ssh"
+    ssh_dir.mkdir()
+    config_file = ssh_dir / "config"
+    config_file.write_text(
+        "Host rodnya\n  HostName controller.example\n  User root\n  Port 22\n"
+        f"  HostKeyAlias rodnya-pin\n  IdentityFile {ssh_dir / 'controller_key'}\n"
+        "Host vpn-us\n  HostName retired-us.example\n  User root\n  Port 2200\n"
+        f"  HostKeyAlias vpn-us-pin\n  IdentityFile {ssh_dir / 'radiopp_github_deploy'}\n",
+        encoding="utf-8",
+    )
+    known_hosts = ssh_dir / "known_hosts"
+    known_hosts.write_text("rodnya-pin ssh-rsa AAAA\nvpn-us-pin ssh-rsa BBBB\n", encoding="ascii")
+    (ssh_dir / "radiopp_github_deploy").write_text("fixture key path only", encoding="ascii")
+    seen = {"channels": []}
+
+    class Transport:
+        def is_active(self): return True
+        def open_channel(self, kind, destination, origin, timeout):
+            channel = object()
+            seen["channels"].append((kind, destination, origin, timeout, channel))
+            return channel
+
+    class Client:
+        def __init__(self): seen.setdefault("clients", []).append(self)
+        def load_host_keys(self, _path): pass
+        def set_missing_host_key_policy(self, policy): seen.setdefault("policies", []).append(policy)
+        def connect(self, **kwargs): seen.setdefault("connects", []).append(kwargs)
+        def get_transport(self): return Transport()
+        def close(self): pass
+
+    def socket_timeout(address, **_kwargs):
+        if address[0] == "controller.example":
+            raise TimeoutError("direct timeout")
+        seen["gateway_socket_address"] = address
+        return _NullSocket()
+
+    controller = change_ip.connect_controller(
+        server_id="us", candidate_ip="185.202.207.126", config_path=config_file,
+        known_hosts_path=known_hosts, home=tmp_path,
+        socket_connect=socket_timeout,
+        ssh_factory=Client,
+    )
+
+    assert seen["connects"][0]["hostname"] == "vpn-us-pin"
+    assert seen["connects"][0]["port"] == 2200
+    assert seen["gateway_socket_address"] == ("185.202.207.126", 2200)
+    assert seen["channels"][0][1] == ("controller.example", 22)
+    assert seen["connects"][1]["hostname"] == "rodnya-pin"
+    assert all(isinstance(policy, paramiko.RejectPolicy) for policy in seen["policies"])
+    controller.close()
+
+
+def test_local_ssh_alias_update_preserves_hostkeyalias_and_other_blocks(tmp_path: Path):
+    ssh_dir = tmp_path / ".ssh"
+    ssh_dir.mkdir()
+    config = ssh_dir / "config"
+    original = (
+        "Host rodnya\r\n  HostName old.example\r\n  User root\r\n"
+        "  HostKeyAlias 77-67-89-164.nip.io\r\n\r\n"
+        "Host other\r\n  HostName other.example\r\n  IdentityFile ~/.ssh/other\r\n"
+    )
+    config.write_bytes(original.encode())
+
+    result = change_ip._update_local_ssh_alias("rodnya", "82.25.60.19", config_path=config, home=tmp_path)
+
+    updated = config.read_bytes()
+    assert b"HostName 82.25.60.19\r\n" in updated
+    assert b"HostKeyAlias 77-67-89-164.nip.io\r\n" in updated
+    assert b"Host other\r\n  HostName other.example\r\n  IdentityFile ~/.ssh/other\r\n" in updated
+    assert Path(result["backup"]).read_bytes() == original.encode()
 
 
 def test_paramiko_remote_preserves_failure_metadata_from_nonzero_channel():
@@ -689,6 +810,59 @@ def test_windows_caller_receives_only_bounded_backend_error_diagnostic(capsys):
     assert "PASSWORD_DO_NOT_PRINT" not in captured.err
 
 
+def test_windows_nl_site_failure_is_reported_after_backend_without_claiming_rollback(capsys):
+    calls = []
+
+    class Controller:
+        def run(self, _command):
+            return 0, json.dumps({"server": "nl", "old_ip": OLD_IP, "new_ip": "82.25.60.19",
+                                 "changed": True, "applied": True, "verified": True}), None
+        def close(self): pass
+
+    def site_sync(ip, apply=False):
+        calls.append((ip, apply))
+        return {"verified": False, "applied": False, "site_updated": False, "error": "site_verify_failed"}
+
+    code = change_ip._windows_main(
+        "nl", "82.25.60.19", True, controller_factory=lambda: Controller(),
+        site_sync=site_sync, alias_updater=lambda alias, ip: {"alias": alias, "changed": True},
+    )
+
+    assert code == 1
+    assert calls == [("82.25.60.19", True)]
+    out, err = capsys.readouterr()
+    report = json.loads(out.splitlines()[0])
+    assert report["changed"] is True
+    assert report["website"]["verified"] is False
+    assert "rollback" not in report
+    assert report["botfather_actions"][0] == "/setdomain 82-25-60-19.nip.io"
+    assert "NL migration succeeded" in err
+
+
+def test_windows_nl_noop_still_runs_site_repair_callback(capsys):
+    calls = []
+
+    class Controller:
+        def run(self, _command):
+            return 0, json.dumps({"server": "nl", "changed": False, "applied": True, "verified": True}), None
+        def close(self): pass
+
+    def site_sync(ip, apply=False):
+        calls.append((ip, apply))
+        return {"verified": True, "applied": True, "site_updated": True}
+
+    code = change_ip._windows_main(
+        "nl", "82.25.60.19", True, controller_factory=lambda: Controller(),
+        site_sync=site_sync, alias_updater=lambda alias, ip: {"alias": alias, "changed": False},
+    )
+
+    assert code == 0
+    assert calls == [("82.25.60.19", True)]
+    report = json.loads(capsys.readouterr().out)
+    assert report["changed"] is False
+    assert report["website"]["site_updated"] is True
+
+
 def test_ssh_controller_filters_stderr_to_one_backend_error_line():
     channel = SimpleNamespace(recv_exit_status=lambda: 1)
     stdout = SimpleNamespace(read=lambda: b"", channel=channel)
@@ -709,6 +883,26 @@ def test_ssh_controller_filters_stderr_to_one_backend_error_line():
     assert status == 1 and output == ""
     assert diagnostic == "ERROR: No cached encrypted AWG identity exists for fi; refusing to guess."
     assert "password" not in diagnostic
+
+
+def test_nl_controller_apply_gets_bounded_time_for_cert_and_service_checks():
+    observed = {}
+    channel = SimpleNamespace(recv_exit_status=lambda: 0)
+    stdout = SimpleNamespace(read=lambda: b"{}", channel=channel)
+    stderr = SimpleNamespace(read=lambda _size: b"")
+
+    class Client:
+        def exec_command(self, command, timeout):
+            observed["command"] = command
+            observed["timeout"] = timeout
+            return object(), stdout, stderr
+
+        def close(self): pass
+
+    status, output, diagnostic = change_ip.SSHController(Client()).run("python change-controller-ip.py --new-ip 82.25.60.19 --apply")
+
+    assert (status, output, diagnostic) == (0, "{}", None)
+    assert observed["timeout"] == 1200
 
 
 def test_partial_control_restart_failure_reports_each_rollback_result_truthfully(tmp_path: Path):

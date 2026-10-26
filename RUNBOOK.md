@@ -1,5 +1,27 @@
 # RUNBOOK
 
+## All-server launcher and stable website entry (2026-10-26)
+
+Use the existing Desktop shortcut `Сменить IP VPN` and choose `nl/fi/us/tr`.
+The detailed owner procedure is `deploy/IP-CHANGE.md`. NL uses a dedicated
+controller helper with a private pending migration journal and service recovery;
+other exits retain their existing strict remote identity checks. US fallback
+administration resolves the local `vpn-us` SSH alias rather than a fixed IP.
+
+The main-site project button now uses `/vpn/`, published as Site commit
+`ab32fe18545f30912bf0144785e741800734f9ac`. The installed Caddy snippet is
+`/etc/caddy/fodder-vpn-link.caddy` on SSH alias `fodders`. Initial private backup:
+`/var/backups/fodders-site/vpn-link-20261026-185926-f0c266c70308`.
+Only one import line was added to the existing Caddyfile. Independent Astra
+review accepted staged full-config validation, flock, applied-state CAS rollback
+and disk/runtime reconciliation. 18 focused helper tests passed. Isolated Astro
+build passed after fetching current Site main; 375/768/1024 screenshots checked.
+Live keyboard selection and CTA click opened the HTTPS VPN catalog through
+`https://fodders.ru/vpn/`. Query parameters were discarded; 302/no-store verified.
+Desk and RadioAtlas returned 200. Repeated sync reported no files changed and
+no Caddy reload. Existing cached homepages may retain their prior href for the
+pre-existing 300-second cache lifetime; a fresh request serves `/vpn/`.
+
 ## FI address replacement and owner launcher (2026-10-26)
 
 Validation: 649 tests passed. The installed Linux tool verified the current FI

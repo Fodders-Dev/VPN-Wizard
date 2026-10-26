@@ -1,4 +1,8 @@
-const CANONICAL_API_BASE = "https://82-25-60-19.nip.io";
+const LEGACY_API_BASE = "https://82-25-60-19.nip.io";
+const CANONICAL_API_BASE =
+  normalizeApiBaseCandidate(window.API_BASE) ||
+  normalizeApiBaseCandidate(window.location?.origin) ||
+  LEGACY_API_BASE;
 const CANONICAL_MINIAPP_URL = `${CANONICAL_API_BASE}/wizard/`;
 const CANONICAL_PORTAL_URL = `${CANONICAL_API_BASE}/portal/`;
 const API_OVERRIDE_KEY = "vpnw_api_base";

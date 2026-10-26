@@ -5,9 +5,11 @@ import argparse
 import copy
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import ipaddress
 import json
 import os
 from pathlib import Path
+import re
 try:
     import pwd
 except ImportError:  # Windows test workstation; production runs on Linux.
@@ -19,17 +21,83 @@ import subprocess
 import tempfile
 import time
 from typing import Any, Sequence
+from urllib.parse import urlparse
 
 
 CONFIG = Path("/usr/local/etc/xray/config.json")
-DOMAIN = "82-25-60-19.nip.io"
-SOURCE = Path(
+LEGACY_DOMAIN = "82-25-60-19.nip.io"
+DOMAIN = LEGACY_DOMAIN
+SOURCE_ROOT_DEFAULT = Path(
     "/var/lib/caddy/.local/share/caddy/certificates/"
     "acme-v02.api.letsencrypt.org-directory"
-) / DOMAIN
+)
+SOURCE_ROOT = SOURCE_ROOT_DEFAULT
+SOURCE = SOURCE_ROOT / DOMAIN
 CERT_DIR = Path("/usr/local/etc/xray/fvpn-test-certs")
 BACKUPS = Path("/opt/vpn-wizard/shared/backups")
 _EXPECTED_CERT_FILES = {"fullchain.pem", "key.pem"}
+_DNS_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+
+
+def _validate_dns_name(value: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError("Expected a DNS name")
+    raw = value.strip()
+    if not raw or raw.endswith(".."):
+        raise ValueError("Expected a public DNS name")
+    try:
+        domain = (raw[:-1] if raw.endswith(".") else raw).encode("idna").decode("ascii").lower()
+    except UnicodeError:
+        raise ValueError("Expected a DNS name") from None
+    if not domain or len(domain) > 253:
+        raise ValueError("Expected a public DNS name")
+    try:
+        ipaddress.ip_address(domain)
+    except ValueError:
+        pass
+    else:
+        raise ValueError("Expected a DNS name, not an IP address")
+    labels = domain.split(".")
+    if (
+        len(labels) < 2
+        or any(not _DNS_LABEL_RE.fullmatch(label) for label in labels)
+        or domain == "localhost"
+        or domain.endswith(".localhost")
+    ):
+        raise ValueError("Expected a public DNS name")
+    return domain
+
+
+def _domain_from_public_base_url(value: str) -> str:
+    try:
+        parsed = urlparse(value.strip())
+        port = parsed.port
+    except (AttributeError, ValueError):
+        raise ValueError("Invalid VPNW_PUBLIC_BASE_URL") from None
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+        or port == 0
+        or parsed.query
+        or parsed.fragment
+        or not parsed.hostname
+    ):
+        raise ValueError("Invalid VPNW_PUBLIC_BASE_URL")
+    return _validate_dns_name(parsed.hostname)
+
+
+def configure_domain(domain: str | None = None) -> str:
+    """Set the trial domain, or derive it from the public base URL environment."""
+    global DOMAIN, SOURCE
+    if domain is None:
+        public_base_url = (os.environ.get("VPNW_PUBLIC_BASE_URL") or "").strip()
+        domain = _domain_from_public_base_url(public_base_url) if public_base_url else LEGACY_DOMAIN
+    selected = _validate_dns_name(domain)
+    DOMAIN = selected
+    SOURCE = SOURCE_ROOT / selected
+    return selected
 
 
 @dataclass(frozen=True)
@@ -50,7 +118,8 @@ def checked(command: list[str]) -> bytes:
     return result.stdout
 
 
-def verified_tls(server_name: str = DOMAIN) -> dict[str, Any]:
+def verified_tls(server_name: str | None = None) -> dict[str, Any]:
+    server_name = server_name or DOMAIN
     ctx = ssl.create_default_context()
     ctx.set_alpn_protocols(["h2", "http/1.1"])
     with socket.create_connection(("127.0.0.1", 9443), timeout=8) as raw:
@@ -164,11 +233,14 @@ def _certificate_metadata_matches(snapshot: Snapshot, nobody_gid: int) -> bool:
     )
 
 
-def _validate_source(source_cert: Path, source_key: Path) -> tuple[Snapshot, Snapshot]:
+def _validate_source(
+    source_cert: Path, source_key: Path, domain: str | None = None
+) -> tuple[Snapshot, Snapshot]:
+    domain = domain or DOMAIN
     cert = _read_snapshot(source_cert, "Caddy certificate")
     key = _read_snapshot(source_key, "Caddy private key")
     checked(["openssl", "x509", "-in", str(source_cert), "-noout", "-checkend", "604800"])
-    checked(["openssl", "x509", "-in", str(source_cert), "-noout", "-checkhost", DOMAIN])
+    checked(["openssl", "x509", "-in", str(source_cert), "-noout", "-checkhost", domain])
     cert_public = checked(["openssl", "x509", "-in", str(source_cert), "-pubkey", "-noout"])
     key_public = checked(["openssl", "pkey", "-in", str(source_key), "-pubout"])
     if cert_public != key_public:
@@ -178,7 +250,10 @@ def _validate_source(source_cert: Path, source_key: Path) -> tuple[Snapshot, Sna
     return cert, key
 
 
-def _build_config(original: Snapshot) -> tuple[dict[str, Any], bytes, bool]:
+def _build_config(
+    original: Snapshot, domain: str | None = None
+) -> tuple[dict[str, Any], bytes, bool]:
+    domain = domain or DOMAIN
     try:
         conf = json.loads(original.data)
         inbounds = conf["inbounds"]
@@ -207,7 +282,7 @@ def _build_config(original: Snapshot) -> tuple[dict[str, Any], bytes, bool]:
         raise RuntimeError("Invalid XHTTP/TLS trial configuration") from None
     if not isinstance(tls, dict):
         raise RuntimeError("Invalid XHTTP/TLS trial configuration")
-    tls["serverName"] = DOMAIN
+    tls["serverName"] = domain
     tls["certificates"] = [
         {
             "certificateFile": str(CERT_DIR / "fullchain.pem"),
@@ -445,7 +520,8 @@ def _rollback(
     return not errors
 
 
-def _verify_after_restart(server_name: str = DOMAIN) -> dict[str, Any]:
+def _verify_after_restart(server_name: str | None = None) -> dict[str, Any]:
+    server_name = server_name or DOMAIN
     for attempt in range(10):
         try:
             return verified_tls(server_name=server_name)
@@ -475,12 +551,15 @@ def _configured_trial_domain(snapshot: Snapshot) -> str:
     return DOMAIN
 
 
-def _sync(apply: bool) -> tuple[int, dict[str, Any]]:
+def _sync(apply: bool, domain: str | None = None) -> tuple[int, dict[str, Any]]:
+    if domain is not None and domain != DOMAIN:
+        configure_domain(domain)
+    domain = DOMAIN
     original_config = _read_snapshot(CONFIG, "Xray configuration")
-    original_conf, updated_bytes, config_changed = _build_config(original_config)
-    source_cert = SOURCE / (DOMAIN + ".crt")
-    source_key = SOURCE / (DOMAIN + ".key")
-    cert, key = _validate_source(source_cert, source_key)
+    original_conf, updated_bytes, config_changed = _build_config(original_config, domain)
+    source_cert = SOURCE / (domain + ".crt")
+    source_key = SOURCE / (domain + ".key")
+    cert, key = _validate_source(source_cert, source_key, domain)
     certificate_dir_existed, old_certificates = _validate_certificate_directory()
     nobody_gid = _nobody_gid()
 
@@ -496,7 +575,7 @@ def _sync(apply: bool) -> tuple[int, dict[str, Any]]:
     if not changed:
         if apply:
             try:
-                tls = verified_tls()
+                tls = verified_tls(server_name=domain)
             except Exception:
                 return 1, {
                     "applied": False,
@@ -507,14 +586,14 @@ def _sync(apply: bool) -> tuple[int, dict[str, Any]]:
                 "applied": False,
                 "changed": False,
                 "trial_port": 9443,
-                "domain": DOMAIN,
+                "domain": domain,
                 **tls,
             }
         return 0, {
             "ready": True,
             "changed": False,
             "trial_port": 9443,
-            "domain": DOMAIN,
+            "domain": domain,
         }
 
     if not apply:
@@ -524,7 +603,7 @@ def _sync(apply: bool) -> tuple[int, dict[str, Any]]:
             "certificates_changed": certificates_changed,
             "config_changed": config_changed,
             "trial_port": 9443,
-            "domain": DOMAIN,
+            "domain": domain,
         }
 
     snapshots = {"config.json": original_config}
@@ -586,7 +665,7 @@ def _sync(apply: bool) -> tuple[int, dict[str, Any]]:
 
         checked(["systemctl", "restart", "xray"])
         checked(["systemctl", "is-active", "--quiet", "xray"])
-        tls = _verify_after_restart()
+        tls = _verify_after_restart(domain)
         return 0, {
             "applied": True,
             "changed": True,
@@ -594,7 +673,7 @@ def _sync(apply: bool) -> tuple[int, dict[str, Any]]:
             "config_changed": config_changed,
             "backup": str(backup),
             "trial_port": 9443,
-            "domain": DOMAIN,
+            "domain": domain,
             **tls,
         }
     except Exception:
@@ -648,9 +727,16 @@ def _sync(apply: bool) -> tuple[int, dict[str, Any]]:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--domain", help="Trial certificate DNS name")
     args = parser.parse_args(argv)
     try:
-        status, result = _sync(args.apply)
+        if args.domain is not None:
+            domain = configure_domain(args.domain)
+        elif (os.environ.get("VPNW_PUBLIC_BASE_URL") or "").strip():
+            domain = configure_domain()
+        else:
+            domain = DOMAIN
+        status, result = _sync(args.apply, domain)
     except Exception:
         # No command diagnostics, config, or private key bytes reach stdout or
         # systemd's journal.

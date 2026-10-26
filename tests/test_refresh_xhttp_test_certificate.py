@@ -30,6 +30,14 @@ NEW_CERT = b"NEW PUBLIC CERTIFICATE BYTES\n"
 NEW_KEY = b"NEW PRIVATE KEY MATERIAL\n"
 
 
+@pytest.fixture(autouse=True)
+def reset_runtime_domain(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("VPNW_PUBLIC_BASE_URL", raising=False)
+    monkeypatch.setattr(MODULE, "DOMAIN", MODULE.LEGACY_DOMAIN)
+    monkeypatch.setattr(MODULE, "SOURCE_ROOT", MODULE.SOURCE_ROOT_DEFAULT)
+    monkeypatch.setattr(MODULE, "SOURCE", MODULE.SOURCE_ROOT_DEFAULT / MODULE.LEGACY_DOMAIN)
+
+
 def config_for(domain: str, cert_path: Path, key_path: Path) -> bytes:
     config = {
         "inbounds": [
@@ -68,6 +76,7 @@ def setup_case(
     target_cert: bytes = OLD_CERT,
     target_key: bytes = OLD_KEY,
     target_domain: str = "old-nl.example",
+    source_domain: str | None = None,
     target_dir: bool = True,
 ) -> dict[str, Any]:
     xray = tmp_path / "xray"
@@ -87,10 +96,12 @@ def setup_case(
     )
     config_path.write_bytes(old_config)
 
-    source_dir = tmp_path / "caddy" / MODULE.DOMAIN
+    source_domain = source_domain or MODULE.DOMAIN
+    source_root = tmp_path / "caddy"
+    source_dir = source_root / source_domain
     source_dir.mkdir(parents=True)
-    source_cert = source_dir / (MODULE.DOMAIN + ".crt")
-    source_key = source_dir / (MODULE.DOMAIN + ".key")
+    source_cert = source_dir / (source_domain + ".crt")
+    source_key = source_dir / (source_domain + ".key")
     source_cert.write_bytes(NEW_CERT)
     source_key.write_bytes(NEW_KEY)
 
@@ -101,6 +112,7 @@ def setup_case(
 
     backups = tmp_path / "backups"
     monkeypatch.setattr(MODULE, "CONFIG", config_path)
+    monkeypatch.setattr(MODULE, "SOURCE_ROOT", source_root)
     monkeypatch.setattr(MODULE, "SOURCE", source_dir)
     monkeypatch.setattr(MODULE, "CERT_DIR", cert_dir)
     monkeypatch.setattr(MODULE, "BACKUPS", backups)
@@ -222,6 +234,173 @@ def test_unchanged_certificate_still_verifies_tls_without_backup_or_restart(
     assert verified == [MODULE.DOMAIN]
     assert not state["backups"].exists()
     assert not any(call[0] in {"systemctl", "/usr/local/bin/xray"} for call in calls)
+
+
+def test_runtime_public_base_selects_certificate_domain_and_repeats_cleanly(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys
+) -> None:
+    domain = "nl-current.example"
+    state = setup_case(tmp_path, monkeypatch, source_domain=domain)
+    monkeypatch.setenv("VPNW_PUBLIC_BASE_URL", f"https://{domain}/api")
+    calls = mock_tools(monkeypatch, state)
+    monkeypatch.setattr(MODULE, "_certificate_metadata_matches", lambda *_args: True)
+    verified: list[str | None] = []
+
+    def verify(server_name: str | None = None) -> dict[str, Any]:
+        verified.append(server_name)
+        return {"tls_verified": True, "alpn": "h2", "not_after": "Jun 30 2027 GMT"}
+
+    monkeypatch.setattr(MODULE, "verified_tls", verify)
+
+    assert MODULE.main(["--apply"]) == 0
+    first = json.loads(capsys.readouterr().out)
+    assert first["domain"] == domain
+    assert first["config_changed"] is True
+    assert json.loads(state["config"].read_bytes())["inbounds"][0]["streamSettings"]["tlsSettings"]["serverName"] == domain
+
+    assert MODULE.main(["--apply"]) == 0
+    second = json.loads(capsys.readouterr().out)
+    assert second["domain"] == domain
+    assert second["changed"] is False
+    assert verified == [domain, domain]
+    assert [call[1] for call in calls if call[0] == "systemctl"] == [
+        "restart",
+        "is-active",
+    ]
+
+
+def test_runtime_domain_failure_rolls_back_and_verifies_previous_domain(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys
+) -> None:
+    domain = "nl-new.example"
+    previous_domain = "nl-previous.example"
+    state = setup_case(
+        tmp_path,
+        monkeypatch,
+        target_domain=previous_domain,
+        source_domain=domain,
+    )
+    monkeypatch.setenv("VPNW_PUBLIC_BASE_URL", f"https://{domain}")
+    calls = mock_tools(monkeypatch, state)
+    monkeypatch.setattr(MODULE, "_certificate_metadata_matches", lambda *_args: True)
+    verified: list[str | None] = []
+
+    def verify(server_name: str | None = None) -> dict[str, Any]:
+        verified.append(server_name)
+        if server_name == domain:
+            raise RuntimeError("new certificate verification failed")
+        return {"tls_verified": True}
+
+    monkeypatch.setattr(MODULE, "verified_tls", verify)
+
+    assert MODULE.main(["--apply"]) == 1
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["rolled_back"] is True
+    assert verified == [domain, previous_domain]
+    assert state["config"].read_bytes() == state["original_config"]
+    assert (state["cert_dir"] / "fullchain.pem").read_bytes() == OLD_CERT
+    assert (state["cert_dir"] / "key.pem").read_bytes() == OLD_KEY
+    assert [call[1] for call in calls if call[0] == "systemctl"].count("restart") == 2
+
+
+def test_configure_domain_accepts_helper_argument_and_rejects_non_dns_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert MODULE.configure_domain("New-NL.Example.") == "new-nl.example"
+    assert MODULE.SOURCE == MODULE.SOURCE_ROOT / "new-nl.example"
+    for invalid in (
+        "https://nl.example",
+        "../outside",
+        "127.0.0.1",
+        "localhost",
+        "trial.localhost",
+    ):
+        with pytest.raises(ValueError):
+            MODULE.configure_domain(invalid)
+
+
+def test_configure_domain_rejects_invalid_public_base_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for value in (
+        "ftp://nl.example",
+        "https://127.0.0.1",
+        "https://user:secret@nl.example",
+        "https://localhost",
+        "https://nl.example:invalid",
+    ):
+        monkeypatch.setenv("VPNW_PUBLIC_BASE_URL", value)
+        with pytest.raises(ValueError):
+            MODULE.configure_domain()
+
+
+def test_main_domain_option_uses_matching_caddy_source_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys
+) -> None:
+    domain = "manual-nl.example"
+    state = setup_case(tmp_path, monkeypatch, source_domain=domain)
+    calls = mock_tools(monkeypatch, state)
+
+    assert MODULE.main(["--domain", domain]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["ready"] is True
+    assert result["domain"] == domain
+    assert state["source_cert"].name == domain + ".crt"
+    assert not any(call[0] in {"systemctl", "/usr/local/bin/xray"} for call in calls)
+
+
+def test_tls_verifiers_use_runtime_domain_when_server_name_is_omitted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    domain = MODULE.configure_domain("runtime-nl.example")
+    verified_names: list[str] = []
+
+    class FakeRaw:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+    class FakeSecure:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def selected_alpn_protocol(self):
+            return "h2"
+
+        def getpeercert(self):
+            return {"notAfter": "Jun 30 2027 GMT"}
+
+    class FakeContext:
+        def set_alpn_protocols(self, _protocols):
+            return None
+
+        def wrap_socket(self, raw, *, server_hostname):
+            verified_names.append(server_hostname)
+            return FakeSecure()
+
+    monkeypatch.setattr(MODULE.ssl, "create_default_context", FakeContext)
+    monkeypatch.setattr(MODULE.socket, "create_connection", lambda *_args, **_kwargs: FakeRaw())
+
+    assert MODULE.verified_tls()["tls_verified"] is True
+    assert MODULE._verify_after_restart()["tls_verified"] is True
+    assert verified_names == [domain, domain]
+
+
+def test_certificate_sync_service_loads_runtime_public_base_environment() -> None:
+    service = (
+        Path(__file__).resolve().parents[1]
+        / "deploy"
+        / "xhttp-certificate-sync.service"
+    ).read_text(encoding="utf-8")
+    assert "EnvironmentFile=/etc/vpn-wizard.env" in service
+    assert "refresh-xhttp-test-certificate.py --apply" in service
 
 
 def test_failed_new_tls_restores_both_cert_files_and_config_then_verifies_rollback(

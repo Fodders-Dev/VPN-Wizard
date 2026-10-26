@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import importlib.util
 import re
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -9,18 +12,112 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_miniapp_uses_canonical_api_fallback_and_test_hooks() -> None:
     js = (ROOT / "web" / "miniapp" / "app.js").read_text(encoding="utf-8")
-    assert 'const CANONICAL_API_BASE = "https://82-25-60-19.nip.io";' in js
+    assert 'const LEGACY_API_BASE = "https://82-25-60-19.nip.io";' in js
+    assert "normalizeApiBaseCandidate(window.API_BASE) ||" in js
+    assert "normalizeApiBaseCandidate(window.location?.origin) ||" in js
     assert 'const CANONICAL_MINIAPP_URL = `${CANONICAL_API_BASE}/wizard/`;' in js
     assert 'new URL("/wizard/", window.location.origin)' in js
     assert 'new URL("/portal/", window.location.origin)' in js
     assert "tg.BackButton?.show()" in js
     assert "tg.BackButton?.onClick(returnToPortal)" in js
     assert "function resolveApiBaseFrom" in js
+    assert "normalizedParam || normalizedStored || normalizedRuntime || normalizedOrigin || CANONICAL_API_BASE" in js
     assert "window.__VPNW_TEST__" in js
     config_js = (ROOT / "web" / "miniapp" / "config.js").read_text(encoding="utf-8")
     assert "vercel" in config_js
     assert "window.location.hostname" in config_js
-    assert 'window.API_BASE = "https://82-25-60-19.nip.io";' in config_js
+    assert re.search(r'window\.API_BASE\s*=\s*["\']https://', config_js)
+
+
+def test_xhttp_export_uses_the_current_pinned_ssh_target(tmp_path: Path) -> None:
+    exporter_path = ROOT / "deploy" / "scripts" / "export-nl-xhttp-trial.py"
+    source = exporter_path.read_text(encoding="utf-8")
+    assert 'config.lookup("rodnya")' in source
+    assert 'config.lookup("vpn-us")' in source
+    assert 'entry.get("hostkeyalias"' in source
+    assert "nip_domain_for_ip(nl_host)" in source
+    assert "paramiko.RejectPolicy()" in source
+    assert "AutoAddPolicy" not in source
+    assert "82.25.60.19" not in source
+    assert "82-25-60-19.nip.io" not in source
+    assert "147.45.125.36" not in source
+
+    spec = importlib.util.spec_from_file_location("export_nl_xhttp_trial", exporter_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    ssh_config = tmp_path / "config"
+    ssh_config.write_text(
+        "Host rodnya\n"
+        "  HostName 185.202.207.126\n"
+        "  HostKeyAlias nl-pinned-key\n"
+        "  User root\n"
+        "  Port 2222\n"
+        "  IdentityFile ~/.ssh/rodnya-key\n",
+        encoding="utf-8",
+    )
+    assert module.rodnya_ssh_target(ssh_config) == (
+        "185.202.207.126",
+        "nl-pinned-key",
+        "root",
+        2222,
+        [str(Path.home() / ".ssh" / "rodnya-key")],
+    )
+    assert module.nip_domain_for_ip("185.202.207.126") == "185-202-207-126.nip.io"
+
+
+def test_xhttp_export_resolves_vpn_us_target_from_strict_ssh_alias(tmp_path: Path) -> None:
+    exporter_path = ROOT / "deploy" / "scripts" / "export-nl-xhttp-trial.py"
+    spec = importlib.util.spec_from_file_location("export_nl_xhttp_gateway", exporter_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    ssh_config = tmp_path / "config"
+    ssh_config.write_text(
+        "Host vpn-us\n"
+        "  HostName 198.51.100.44\n"
+        "  HostKeyAlias us-gateway-pin\n"
+        "  User gateway-user\n"
+        "  Port 2207\n"
+        "  IdentityFile ~/.ssh/us-gateway-key\n",
+        encoding="utf-8",
+    )
+
+    assert module.vpn_us_ssh_target(ssh_config) == (
+        "198.51.100.44",
+        "us-gateway-pin",
+        "gateway-user",
+        2207,
+        [str(Path.home() / ".ssh" / "us-gateway-key")],
+    )
+
+    for missing_option in ("HostName", "HostKeyAlias", "User", "IdentityFile"):
+        lines = [
+            "Host vpn-us",
+            "  HostName 198.51.100.44",
+            "  HostKeyAlias us-gateway-pin",
+            "  User gateway-user",
+            "  Port 2207",
+            "  IdentityFile ~/.ssh/us-gateway-key",
+        ]
+        ssh_config.write_text(
+            "\n".join(line for line in lines if not line.lstrip().startswith(missing_option)),
+            encoding="utf-8",
+        )
+        with pytest.raises(RuntimeError, match="SSH alias vpn-us"):
+            module.vpn_us_ssh_target(ssh_config)
+
+    for nonpublic_host in ("localhost", "127.0.0.1", "0.0.0.0"):
+        ssh_config.write_text(
+            "Host vpn-us\n"
+            f"  HostName {nonpublic_host}\n"
+            "  HostKeyAlias us-gateway-pin\n"
+            "  User gateway-user\n"
+            "  IdentityFile ~/.ssh/us-gateway-key\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(RuntimeError, match="SSH alias vpn-us"):
+            module.vpn_us_ssh_target(ssh_config)
 
 
 def test_miniapp_shell_is_single_flow_and_has_diagnostics_panel() -> None:

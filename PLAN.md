@@ -1,5 +1,14 @@
 # PLAN
 
+## All-server launcher and stable website entry (2026-10-26)
+
+- [x] Add dedicated NL controller migration with unchanged loopback/AWG identities.
+- [x] Resolve public URLs and XHTTP certificates from deployment configuration.
+- [x] Make the US administration gateway follow the owner SSH alias.
+- [x] Independently review and release the stable `/vpn/` entry on fodders.ru.
+- [ ] Complete interrupted NL migration recovery and release the launcher.
+- [ ] Verify Windows NL check and repeated apply against the current live IP.
+
 ## FI replacement and reusable IP workflow (2026-10-26)
 
 - [x] Verified trusted SSH and cached AWG identities at 185.202.207.126.
@@ -88,4 +97,4 @@
 - [x] Опубликовать бесплатное меню бота/сайта с резервной копией; live-выдача .conf и QR проверена, бот healthy, команды free/wizard/help, обе главные кнопки подтверждены через API.
 - [ ] После ручного запуска эмулятора заменить старые иллюстрации новыми Android-снимками, включая переименование. Автоматический запуск AVD отклонён инструментом.
 
-Next: Owner imports the refreshed FI profile and confirms actual RF-device traffic; use the Desktop IP launcher for future remote-exit address changes.
+Next: Finish and verify the all-server launcher and stable website entry; owner still confirms actual RF-device VPN traffic after importing the refreshed profile.

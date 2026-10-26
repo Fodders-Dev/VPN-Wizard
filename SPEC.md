@@ -1,5 +1,22 @@
 # VPN Wizard - SPEC
 
+## One launcher for all server addresses (2026-10-26)
+
+The owner launcher supports `nl/fi/us/tr`. NL is a dedicated local-controller
+migration: retain loopback SSH registry hosts and all AWG identities while
+updating public endpoints, runtime public URLs, TLS, Xray, Remnawave and bot
+menu URLs. Validate staged configurations and back up affected files plus both
+SQLite databases and both PostgreSQL databases before mutation.
+
+The main-site VPN button uses `https://fodders.ru/vpn/`. The launcher verifies
+the new HTTPS catalog before changing the exact `/vpn` and `/vpn/` redirects,
+with 302/no-store and no query forwarding. Site activation is independently
+retryable after the controller migration. Conditional rollback must preserve
+later concurrent site changes. Local `rodnya` and `vpn-us` aliases follow
+successful NL and US migrations without replacing pinned SSH identities.
+BotFather Main App and legacy `/setdomain` remain explicit owner actions when
+the NL domain changes. Imported client profiles still need refresh.
+
 ## FI address and owner-operated migration (2026-10-26)
 
 FI uses `185.202.207.126`: public awg9/UDP3478, alternative awg8/UDP4500;
@@ -9,8 +26,8 @@ cached AWG public-key and runtime-listener checks. Refuse another server or
 ambiguous interface selection; preserve keys, ports, peer states and other exits.
 
 Provide a local double-click launcher and `Set-VpnServerIp.ps1` for future
-fi/us/tr moves, including read-only check and idempotent repeated apply.
-The NL website/controller remains a separate migration workflow. Monitoring
+nl/fi/us/tr moves, including read-only check and idempotent repeated apply.
+The NL website/controller uses its own branch in the same launcher. Monitoring
 reads current addresses from the registry. Existing app imports need an updated
 Endpoint or re-import; server configuration cannot rewrite an imported file.
 

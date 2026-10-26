@@ -1,0 +1,7 @@
+# The updater writes the current nip.io target into this imported snippet.
+# Keep the exact matcher paths and no-store header when reviewing its output.
+@fodderVpnEntry path /vpn /vpn/
+handle @fodderVpnEntry {
+    header Cache-Control "no-store"
+    redir https://203-0-113-10.nip.io/connect/join.html 302
+}
