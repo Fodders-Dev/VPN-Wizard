@@ -1,5 +1,11 @@
 # PLAN
 
+## FI address refresh (2026-10-30)
+
+- [x] Wait for provider IP replacement, then verify the original SSH/AWG keys.
+- [x] Update 151 stored profiles and both FI entries on the NL controller.
+- [x] Synchronize the separate public API on 77.91.113.109 and verify download.
+
 ## All-server launcher and stable website entry (2026-10-26)
 
 - [x] Add dedicated NL controller migration with unchanged loopback/AWG identities.
@@ -97,4 +103,4 @@
 - [x] Опубликовать бесплатное меню бота/сайта с резервной копией; live-выдача .conf и QR проверена, бот healthy, команды free/wizard/help, обе главные кнопки подтверждены через API.
 - [ ] После ручного запуска эмулятора заменить старые иллюстрации новыми Android-снимками, включая переименование. Автоматический запуск AVD отклонён инструментом.
 
-Next: Use the Desktop launcher for future nl/fi/us/tr address changes; owner confirms actual RF-device VPN traffic after importing the refreshed profile.
+Next: Import the refreshed FI profile and confirm device traffic; synchronize both NL and public API registries on future exit IP changes.

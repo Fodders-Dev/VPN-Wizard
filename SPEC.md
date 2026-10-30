@@ -1,5 +1,11 @@
 # VPN Wizard - SPEC
 
+## Current FI endpoint (2026-10-30)
+
+FI now uses `193.8.114.209`, retaining primary UDP3478 and alternate UDP4500
+and the existing AWG/SSH identities. Both the NL controller and the separately
+installed public API on 77.91.113.109 must carry the current exit registry.
+
 ## One launcher for all server addresses (2026-10-26)
 
 The owner launcher supports `nl/fi/us/tr`. NL is a dedicated local-controller

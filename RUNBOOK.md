@@ -1,5 +1,29 @@
 # RUNBOOK
 
+## FI address refresh (2026-10-30)
+
+Moved FI from 185.202.207.126 to 193.8.114.209 with the existing owner launcher.
+The provider initially reported a queued move and refused TCP22; retried after
+it became active. Strict original SSH and cached AWG identities matched.
+Updated 151 persisted profiles and fi/fi-alt registry entries (UDP3478/4500).
+NL backups: /var/backups/vpn-wizard/change-exit-ip-kdu653qo;
+FI profile backup: /var/backups/vpn-wizard/exit-ip-3lujrhpe.
+
+The public site at https://77-91-113-109.nip.io now runs a separate API copy.
+Its registry was stale and its root known_hosts lacked the old FI entry.
+Seeded that entry from the original locally pinned 46.38.156.229 identity,
+with a known_hosts.pre-fi-20261030 backup; no trust-on-first-use bypass.
+Ran the existing migration helper there too: registry/host key updated, zero
+remaining profile rewrites, backup change-exit-ip-9yelmi1k. Future exit moves
+must synchronize this public API as well as the NL controller; the current
+Windows launcher still targets NL. No application code changed in this move.
+
+The real Chrome download produced FVPN-fi-b0de04.conf in the owner's Downloads;
+verified Endpoint=193.8.114.209:3478 without printing private contents. Website
+shows FI available (18ms monitor latency). API health returned ok and a second
+public-host preflight reported no pending registry/profile/host-key changes.
+Actual traffic from the owner's imported VPN profile remains a device check.
+
 ## All-server launcher and stable website entry (2026-10-26)
 
 Use the existing Desktop shortcut `Сменить IP VPN` and choose `nl/fi/us/tr`.
