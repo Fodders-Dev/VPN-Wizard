@@ -1,5 +1,19 @@
 # VPN Wizard - SPEC
 
+## Public server IP-age display (2026-10-30)
+
+The public server catalog shows elapsed whole calendar days since each exit's
+last known public-IP change. This describes the IP address, not machine uptime,
+handshake activity or guaranteed availability. Alternate ports inherit their
+country's date. Initial dates: NL 2026-10-25, FI 2026-10-30, US 2026-08-30
+(owner-approved estimate), and TR unknown. The public JSON is
+`web/connect/server-address-history.json`; its deployed copy is served from
+`/var/www/fodders-site/connect/server-address-history.json` on the `fodders`
+host. The `Сменить IP VPN` Windows shortcut advances a date only after a
+verified actual address change; idempotent repeats keep it unchanged, and a
+confirmed local pending record lets the same country/IP retry a failed site sync.
+
+
 ## Current FI endpoint (2026-10-30)
 
 FI now uses `193.8.114.209`, retaining primary UDP3478 and alternate UDP4500

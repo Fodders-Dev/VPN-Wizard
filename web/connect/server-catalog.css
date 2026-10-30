@@ -327,6 +327,7 @@
 .vpn-minimal .vpn-server { display: flex; flex-direction: column; gap: 0; padding: 22px 20px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: none; transition: border-color .2s ease, background-color .2s ease; }
 .vpn-minimal .vpn-server:focus-within { border-color: var(--line-strong); }
 .vpn-minimal .vpn-card-top { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: 24px; line-height: 1.4; }
+.vpn-minimal .vpn-server-age { display: block; margin: .3rem 0 1rem; color: var(--text-mute); font-size: .6875rem; line-height: 1.45; font-variant-numeric: tabular-nums; }
 .vpn-minimal .vpn-country-code { font-family: ui-monospace, 'Cascadia Code', monospace; font-size: .75rem; letter-spacing: .07em; color: var(--text-dim); }
 .vpn-minimal .server-health { display: inline-flex; align-items: center; gap: .4rem; font-size: .6875rem; line-height: 1.4; }
 .vpn-minimal .server-health::before { content: ''; width: 5px; height: 5px; flex-shrink: 0; border-radius: 50%; background: currentColor; }
@@ -363,6 +364,7 @@
 .vpn-minimal #alternate-grid .vpn-card-top { grid-column: 1 / -1; margin-bottom: 14px; }
 .vpn-minimal #alternate-grid h3 { grid-column: 1; }
 .vpn-minimal #alternate-grid .vpn-card-note { grid-column: 1; }
+.vpn-minimal #alternate-grid .vpn-server-age { grid-column: 1 / -1; margin: .3rem 0 .75rem; }
 .vpn-minimal #alternate-grid .vpn-latency { grid-column: 2; grid-row: 2 / 4; margin: 0; text-align: right; }
 .vpn-minimal #alternate-grid .vpn-card-meta { grid-column: 1 / -1; margin-top: 18px; }
 .vpn-minimal #alternate-grid .btn, .vpn-minimal #alternate-grid .vpn-server-notice { grid-column: 1 / -1; }

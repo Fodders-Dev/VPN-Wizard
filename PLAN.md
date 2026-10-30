@@ -1,5 +1,15 @@
 # PLAN
 
+## Public server IP-age display (2026-10-30)
+
+- [x] Add accessible whole-day IP-age labels to main and alternate exit cards.
+- [x] Seed NL/FI dates, owner-approved US estimate and honest unknown TR date.
+- [x] Publish to the Caddy-served static site and visually verify Chrome cards,
+      including the FI alternate port.
+- [x] Extend the one-shortcut migration workflow to update dates only on actual
+      verified changes, with safe site backups and retry after sync failure.
+
+
 ## FI address refresh (2026-10-30)
 
 - [x] Wait for provider IP replacement, then verify the original SSH/AWG keys.

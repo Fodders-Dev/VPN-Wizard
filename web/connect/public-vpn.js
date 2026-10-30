@@ -3,6 +3,7 @@
   'use strict';
   var catalog=window.FodderCatalog, grid=document.getElementById('server-grid');
   var busy=false, current=null, loading=false, staleCatalog=false, activeServer=null, activeFormat=null;
+  var addressHistory={};
   var qrDialog=document.getElementById('profile-qr-dialog'), qrImage=document.getElementById('profile-qr'), qrUrl=null, qrFocusKey=null;
   var telegram=window.Telegram&&window.Telegram.WebApp;
   if(telegram||window.TelegramWebviewProxy){
@@ -27,6 +28,44 @@
   }
   function stateOf(server){return server.enabled===false?'maintenance':staleCatalog?'unknown':catalog.status(server).state;}
   function caution(state){return {degraded:'Не рекомендуем: у части пользователей нет соединения. Выберите другой сервер.',unavailable:'Не работает. Профили временно недоступны — выберите другой сервер.',maintenance:'Сервер отключён. Выберите другой сервер.',unknown:'Работа не подтверждена. Лучше выбрать сервер со статусом «Работает».'}[state]||'';}
+  function serverBaseId(server){
+    var raw=String(server.alt_of||server.host_group||server.id||'').toLowerCase();
+    var id=raw.split('-')[0];
+    if(id==='usa')id='us';
+    return /^[a-z0-9]{1,8}$/.test(id)?id:'';
+  }
+  function elapsedCalendarDays(dateText){
+    if(typeof dateText!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(dateText))return null;
+    var parts=dateText.split('-').map(Number), changed=Date.UTC(parts[0],parts[1]-1,parts[2]);
+    var parsed=new Date(changed);
+    if(parsed.getUTCFullYear()!==parts[0]||parsed.getUTCMonth()!==parts[1]-1||parsed.getUTCDate()!==parts[2])return null;
+    var now=new Date(), today=Date.UTC(now.getFullYear(),now.getMonth(),now.getDate());
+    return Math.floor((today-changed)/86400000);
+  }
+  function dayWord(days){
+    var lastTwo=days%100, last=days%10;
+    if(lastTwo>=11&&lastTwo<=14)return 'дней';
+    if(last===1)return 'день';
+    if(last>=2&&last<=4)return 'дня';
+    return 'дней';
+  }
+  function updateServerAge(node){
+    var dateText=addressHistory[node.dataset.serverAgeId];
+    if(!dateText){node.textContent='Дата смены IP не записана';node.removeAttribute('datetime');return;}
+    var days=elapsedCalendarDays(dateText);
+    if(days===null){node.textContent='Дата смены IP указана неверно';node.removeAttribute('datetime');return;}
+    if(days<0){node.textContent='Дата смены IP ещё не наступила';node.removeAttribute('datetime');return;}
+    node.dateTime=dateText;
+    node.title='Последняя смена IP: '+new Date(dateText+'T00:00:00').toLocaleDateString('ru-RU');
+    node.textContent='IP не менялся: '+days+' '+dayWord(days);
+  }
+  function refreshServerAges(){document.querySelectorAll('[data-server-age-id]').forEach(updateServerAge);}
+  function appendServerAge(server,card){
+    var baseId=serverBaseId(server), time=el('time','vpn-server-age');
+    time.dataset.serverAgeId=baseId;
+    updateServerAge(time);
+    card.appendChild(time);
+  }
   function metrics(server,card){
     var block=el('div','vpn-latency'), value=el('p','vpn-latency-value');
     var latency=catalog.renderLatency(value,server,staleCatalog);
@@ -51,6 +90,7 @@
     if(!staleCatalog&&h.checked)status.title='Проверено '+new Date(h.checked*1000).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
     top.appendChild(status);card.appendChild(top);
     card.appendChild(el('h3','',place[1]));
+    appendServerAge(server,card);
     if(readyNote)card.appendChild(readyNote);
     if(server.alt_port)card.appendChild(el('p','vpn-card-note','Альтернативный порт'));
     metrics(server,card);
@@ -141,5 +181,10 @@
   document.getElementById('extra-profile').addEventListener('click',function(){var id=document.getElementById('extra-server').value,server=current&&current.servers.find(function(s){return s.id===id;});if(server)download(server,true);});
   document.addEventListener('fodder:catalog',function(e){staleCatalog=false;render(e.detail);});
   document.addEventListener('fodder:catalog-error',stale);
+  fetch('/connect/server-address-history.json',{cache:'no-store',credentials:'omit'}).then(function(response){if(!response.ok)throw new Error('history');return response.json();}).then(function(data){
+    if(!data||data.schema!==1||!data.servers||typeof data.servers!=='object')throw new Error('history');
+    addressHistory=data.servers;refreshServerAges();
+  }).catch(function(){addressHistory={};refreshServerAges();});
+  window.setInterval(refreshServerAges,60000);
   catalog.support({});catalog.watch();
 })();

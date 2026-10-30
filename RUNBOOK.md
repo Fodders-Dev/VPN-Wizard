@@ -1,5 +1,30 @@
 # RUNBOOK
 
+## Public catalog IP-age display (2026-10-30)
+
+The public catalog's files are served by Caddy from
+`/var/www/fodders-site/connect` on SSH alias `fodders`; the running API's
+`/opt/vpn-wizard/app/web/connect` tree is not the public static-file root. This
+release updated only the public page, script, stylesheet and history JSON; no
+service or Caddy reload was needed. The full pre-feature static-file backup is
+`/var/backups/fodders-site/server-age-20261030-133651-b1eaf035641b` (the
+manifest marks the history file as previously absent). The spacing follow-up
+backup is `/var/backups/fodders-site/server-age-layout-20261030-133814-848854231997`.
+
+The public date mapping is NL 2026-10-25, FI 2026-10-30, US 2026-08-30
+(owner-approved two-month estimate), and TR unknown. FI-alt inherits FI. The
+page shows `IP не менялся: N дней` and recalculates at local calendar-day
+boundaries; it does not infer hours or server uptime. Open `Другие варианты
+подключения` to see the alternate-port card and its shared date.
+
+Use the Desktop shortcut `Сменить IP VPN` for future address moves. After a
+verified actual IP change, it backs up and atomically updates the JSON on the
+public host, then reads the date back over HTTPS. A no-op repeat preserves the
+date. If that final public-site sync fails, rerun the same country and target IP;
+the local pending marker keeps the original confirmed date for retry. Check-only
+does not write the marker or website file.
+
+
 ## FI address refresh (2026-10-30)
 
 Moved FI from 185.202.207.126 to 193.8.114.209 with the existing owner launcher.

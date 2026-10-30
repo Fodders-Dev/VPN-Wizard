@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+from datetime import date
 import hashlib
 import importlib.util
 import ipaddress
@@ -948,10 +949,123 @@ def _load_site_link_sync() -> Callable[..., dict[str, Any]]:
     return module.sync_site_link
 
 
+def _load_server_age_sync() -> Callable[..., dict[str, Any]]:
+    path = Path(__file__).with_name("update-site-vpn-link.py")
+    module_name = "_update_site_vpn_link"
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise ChangeError("Public website server-age synchronizer is unavailable.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module.sync_server_address_age
+
+
+def _address_age_pending_path() -> Path:
+    base = Path(os.environ.get("LOCALAPPDATA") or Path.home())
+    directory = base / "FodderVPN"
+    if directory.is_symlink() or (directory.exists() and not directory.is_dir()):
+        raise ChangeError("The private VPN migration state directory is invalid.")
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path = directory / "server-address-age.pending.json"
+    if path.is_symlink():
+        raise ChangeError("The private VPN migration state file is a symlink.")
+    return path
+
+
+def _read_address_age_pending(path: Path) -> dict[str, str] | None:
+    if not path.exists():
+        return None
+    if path.is_symlink() or not path.is_file():
+        raise ChangeError("The pending VPN website update file is not a regular file.")
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        phase = value.get("phase") if isinstance(value, dict) else None
+        changed_on = value.get("changed_on", "") if isinstance(value, dict) else None
+        if (not isinstance(value, dict) or value.get("schema") != 1
+                or value.get("server") not in LAUNCHER_SERVER_IDS
+                or phase not in ("prepared", "confirmed")
+                or not isinstance(value.get("new_ip"), str)
+                or (phase == "confirmed" and (not isinstance(changed_on, str)
+                    or date.fromisoformat(changed_on).isoformat() != changed_on))
+                or (phase == "prepared" and changed_on not in (None, ""))):
+            raise ValueError("invalid pending migration record")
+        validate_public_ipv4(value["new_ip"])
+        return {"server": value["server"], "phase": phase, "new_ip": value["new_ip"], "changed_on": changed_on or ""}
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError, ChangeError):
+        raise ChangeError("The pending VPN website update file is invalid; no migration was started.") from None
+
+
+def _write_address_age_pending(path: Path, value: dict[str, str]) -> None:
+    if path.is_symlink() or path.parent.is_symlink():
+        raise ChangeError("The pending VPN website update path is unsafe.")
+    payload = {"schema": 1, **value}
+    encoded = (json.dumps(payload, separators=(",", ":")) + "\n").encode("utf-8")
+    fd, raw_name = tempfile.mkstemp(prefix=".server-address-age-", dir=str(path.parent))
+    temporary = Path(raw_name)
+    try:
+        os.chmod(temporary, 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    except Exception:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        temporary.unlink(missing_ok=True)
+        raise ChangeError("The pending VPN website update could not be stored safely.") from None
+
+
+def _clear_address_age_pending(path: Path) -> None:
+    if path.is_symlink():
+        raise ChangeError("The pending VPN website update file is a symlink.")
+    path.unlink(missing_ok=True)
+
+
+def _sync_address_age(server_id: str, changed_on: str, *, apply: bool,
+                      age_sync: Callable[..., dict[str, Any]]) -> dict[str, Any]:
+    try:
+        report = age_sync(server_id, changed_on, apply=apply)
+    except Exception as exc:
+        raise ChangeError("The VPN migration succeeded, but its website IP-age update did not verify. Repeat the same server/IP to retry.") from exc
+    if report.get("verified") is not True or (apply and report.get("applied") is not True):
+        raise ChangeError("The VPN migration succeeded, but its website IP-age update did not verify. Repeat the same server/IP to retry.")
+    return report
+
+
 def _windows_main(server_id: str, new_ip: str, apply: bool, env_path: str = DEFAULT_ENV_POSIX,
                   controller_factory: Callable[..., SSHController] = connect_controller,
                   site_sync: Callable[..., dict[str, Any]] | None = None,
+                  age_sync: Callable[..., dict[str, Any]] | None = None,
                   alias_updater: Callable[..., dict[str, Any]] = _update_local_ssh_alias) -> int:
+    pending_path: Path | None = None
+    pending: dict[str, str] | None = None
+    fresh_pending = False
+    age_workflow_enabled = bool(apply and (controller_factory is connect_controller or age_sync is not None))
+    if age_workflow_enabled:
+        try:
+            pending_path = _address_age_pending_path()
+            pending = _read_address_age_pending(pending_path)
+            if pending and (pending["server"] != server_id or pending["new_ip"] != new_ip):
+                raise ChangeError(
+                    "A previous VPN website IP-age update is still pending. Repeat that same server/IP first."
+                )
+            if pending is None:
+                pending = {
+                    "server": server_id,
+                    "phase": "prepared",
+                    "new_ip": new_ip,
+                    "changed_on": "",
+                }
+                _write_address_age_pending(pending_path, pending)
+                fresh_pending = True
+        except ChangeError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+
     try:
         command = build_controller_command(server_id, new_ip, apply, env_path=env_path)
         controller = (controller_factory(server_id=server_id, candidate_ip=new_ip) if controller_factory is connect_controller
@@ -961,9 +1075,13 @@ def _windows_main(server_id: str, new_ip: str, apply: bool, env_path: str = DEFA
         finally:
             controller.close()
     except ChangeError as exc:
+        if fresh_pending and pending_path is not None:
+            _clear_address_age_pending(pending_path)
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
     if status != 0:
+        if fresh_pending and pending_path is not None:
+            _clear_address_age_pending(pending_path)
         if output:
             print(output.strip())
         if diagnostic:
@@ -971,9 +1089,38 @@ def _windows_main(server_id: str, new_ip: str, apply: bool, env_path: str = DEFA
         else:
             print("ERROR: The controller reported that the migration did not complete.", file=sys.stderr)
         return status or 1
+
+    try:
+        migration_report = json.loads(output) if output else {}
+    except json.JSONDecodeError:
+        migration_report = {}
+    address_changed = False
+    if isinstance(migration_report, dict) and migration_report.get("verified") is True and migration_report.get("applied") is True:
+        reported_old_ip = migration_report.get("old_ip")
+        reported_new_ip = migration_report.get("new_ip")
+        address_changed = (
+            isinstance(reported_old_ip, str)
+            and isinstance(reported_new_ip, str)
+            and reported_new_ip == new_ip
+            and reported_old_ip != reported_new_ip
+        )
+    if age_workflow_enabled and address_changed and pending_path is not None and pending is not None:
+        if pending.get("phase") != "confirmed":
+            pending["phase"] = "confirmed"
+            pending["changed_on"] = date.today().isoformat()
+        try:
+            _write_address_age_pending(pending_path, pending)
+        except ChangeError as exc:
+            print(f"ERROR: The VPN migration succeeded, but its retry marker could not be stored: {exc}", file=sys.stderr)
+            return 1
+    should_sync_age = bool(age_workflow_enabled and pending is not None
+                           and pending.get("phase") == "confirmed")
+    if age_workflow_enabled and not should_sync_age and pending is not None and pending.get("phase") == "prepared" and pending_path is not None:
+        _clear_address_age_pending(pending_path)
+
     if server_id == "nl":
         try:
-            report = json.loads(output) if output else {}
+            report = migration_report
             if not isinstance(report, dict) or report.get("verified") is not True or (apply and report.get("applied") is not True):
                 print("ERROR: NL controller did not confirm a verified migration result.", file=sys.stderr)
                 return 1
@@ -993,12 +1140,24 @@ def _windows_main(server_id: str, new_ip: str, apply: bool, env_path: str = DEFA
                 site_ok = False
             report["local_source_alias"] = alias_status
             report["website"] = site_status
+            age_status = None
+            if should_sync_age and pending is not None and pending_path is not None:
+                try:
+                    sync = age_sync or _load_server_age_sync()
+                    age_status = _sync_address_age(server_id, pending["changed_on"], apply=True, age_sync=sync)
+                    _clear_address_age_pending(pending_path)
+                except ChangeError:
+                    age_status = {"verified": False, "applied": False, "retry_pending": True}
+            report["address_age"] = age_status or {"verified": True, "applied": False, "changed": False}
             if apply and report.get("old_ip") != new_ip:
                 domain = new_ip.replace(".", "-") + ".nip.io"
                 report["botfather_actions"] = [f"/setdomain {domain}", f"MainAppURL https://{domain}/portal/"]
             print(json.dumps(report, separators=(",", ":")))
             if not site_ok:
                 print("ERROR: NL migration succeeded, but the website link update or verification failed.", file=sys.stderr)
+                return 1
+            if should_sync_age and not (age_status and age_status.get("verified") is True and age_status.get("applied") is True):
+                print("ERROR: NL migration succeeded, but its website IP-age update did not verify. Repeat the same server/IP to retry.", file=sys.stderr)
                 return 1
             if alias_error is not None:
                 print("ERROR: NL migration and website sync succeeded, but the local SSH alias update failed.", file=sys.stderr)
@@ -1019,9 +1178,37 @@ def _windows_main(server_id: str, new_ip: str, apply: bool, env_path: str = DEFA
             return 1
         report = json.loads(output) if output else {"server": server_id, "verified": True, "applied": True}
         report["local_source_alias"] = alias_status
+        age_status = None
+        if should_sync_age and pending is not None and pending_path is not None:
+            try:
+                sync = age_sync or _load_server_age_sync()
+                age_status = _sync_address_age(server_id, pending["changed_on"], apply=True, age_sync=sync)
+                _clear_address_age_pending(pending_path)
+            except ChangeError:
+                age_status = {"verified": False, "applied": False, "retry_pending": True}
+        report["address_age"] = age_status or {"verified": True, "applied": False, "changed": False}
         print(json.dumps(report, separators=(",", ":")))
+        if should_sync_age and not (age_status and age_status.get("verified") is True and age_status.get("applied") is True):
+            print(f"ERROR: {server_id} migration succeeded, but its website IP-age update did not verify. Repeat the same server/IP to retry.", file=sys.stderr)
+            return 1
     elif output:
-        print(output.strip())
+        report = migration_report
+        age_status = None
+        if should_sync_age and pending is not None and pending_path is not None:
+            try:
+                sync = age_sync or _load_server_age_sync()
+                age_status = _sync_address_age(server_id, pending["changed_on"], apply=True, age_sync=sync)
+                _clear_address_age_pending(pending_path)
+            except ChangeError:
+                age_status = {"verified": False, "applied": False, "retry_pending": True}
+        if isinstance(report, dict):
+            report["address_age"] = age_status or {"verified": True, "applied": False, "changed": False}
+            print(json.dumps(report, separators=(",", ":")))
+        else:
+            print(output.strip())
+        if should_sync_age and not (age_status and age_status.get("verified") is True and age_status.get("applied") is True):
+            print(f"ERROR: {server_id} migration succeeded, but its website IP-age update did not verify. Repeat the same server/IP to retry.", file=sys.stderr)
+            return 1
     return 0
 
 
@@ -1031,7 +1218,8 @@ def migrate(server_id: str, new_ip: str, *, env_path: Path = DEFAULT_ENV, apply:
             service_runner: Callable[..., Any] = subprocess.run,
             backup_root: Path = BACKUP_ROOT,
             known_hosts_path: Path | None = None,
-            root_check: Callable[[], bool] | None = None) -> dict[str, Any]:
+            root_check: Callable[[], bool] | None = None,
+            include_address_metadata: bool = False) -> dict[str, Any]:
     new_ip = validate_public_ipv4(new_ip)
     if env_path.is_symlink() or not env_path.is_file():
         raise ChangeError("Environment file is missing or symlinked.")
@@ -1073,15 +1261,18 @@ def migrate(server_id: str, new_ip: str, *, env_path: Path = DEFAULT_ENV, apply:
         known_before = known_path.read_bytes() if known_path.exists() else b""
         known_changed = known_after != known_before
         changed = control_changed or known_changed or profile_count > 0
+        address_metadata = {"old_ip": old_endpoint, "new_ip": new_ip} if include_address_metadata else {}
         if not apply:
             return {
                 "server": server_id, "selected_profiles": len(selected),
+                **address_metadata,
                 "remote_profiles_to_update": profile_count, "registry_would_change": control_changed,
                 "host_key_would_register": known_changed, "verified": True, "applied": False,
             }
         if not changed:
             return {
                 "server": server_id, "selected_profiles": len(selected),
+                **address_metadata,
                 "remote_profiles_changed": 0, "verified": True, "applied": True, "changed": False,
                 "service_restarted": False,
             }
@@ -1118,6 +1309,7 @@ def migrate(server_id: str, new_ip: str, *, env_path: Path = DEFAULT_ENV, apply:
             _systemctl("start", "vpn-wizard-awg-health.service", service_runner)
             return {
                 "server": server_id, "selected_profiles": len(selected),
+                **address_metadata,
                 "remote_profiles_changed": profile_count, "registry_updated": control_changed,
                 "host_key_registered": known_changed, "verified": True, "applied": True,
                 "changed": True, "service_restarted": True,
@@ -1167,7 +1359,8 @@ def _run_linux(args: argparse.Namespace) -> int:
         print(json.dumps(result, separators=(",", ":")))
         return 0
     try:
-        result = migrate(args.server, args.new_ip, env_path=args.env, apply=args.apply)
+        result = migrate(args.server, args.new_ip, env_path=args.env, apply=args.apply,
+                         include_address_metadata=True)
     except ChangeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

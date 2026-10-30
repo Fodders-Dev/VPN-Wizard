@@ -16,6 +16,7 @@ import re
 import socket
 import ssl
 import sys
+import time
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPSHandler, HTTPRedirectHandler, Request, build_opener
@@ -27,6 +28,8 @@ SITE_URL = "https://fodders.ru/vpn/"
 SITE_ORIGIN = "https://fodders.ru"
 JOIN_PATH = "/connect/join.html"
 CATALOG_PATH = "/api/awg/servers?include_unavailable=true"
+ADDRESS_HISTORY_PATH = "/connect/server-address-history.json"
+ADDRESS_HISTORY_URL = "https://77-91-113-109.nip.io" + ADDRESS_HISTORY_PATH
 SSH_ALIAS = "fodders"
 SSH_PORT_DEFAULT = 22
 
@@ -88,7 +91,11 @@ class _NoRedirect(HTTPRedirectHandler):
 def _http_get(url: str, *, timeout: float = 15.0) -> HttpResult:
     """GET with normal TLS certificate validation and redirects disabled."""
     opener = build_opener(_NoRedirect(), HTTPSHandler(context=ssl.create_default_context()))
-    request = Request(url, headers={"User-Agent": "Fodder-VPN-link-check/1.0"}, method="GET")
+    request = Request(url, headers={
+        "User-Agent": "Fodder-VPN-link-check/1.0",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+    }, method="GET")
     try:
         with opener.open(request, timeout=timeout) as response:
             return HttpResult(
@@ -263,6 +270,7 @@ except ImportError:
 
 MAIN_PATH = Path('/etc/caddy/Caddyfile')
 SNIPPET_PATH = Path('/etc/caddy/fodder-vpn-link.caddy')
+ADDRESS_HISTORY_PATH = Path('/var/www/fodders-site/connect/server-address-history.json')
 BACKUP_ROOT = Path('/var/backups/fodders-site')
 LOCK_PATH = Path('/run/lock/fodders-site-vpn-link.lock')
 ANCHOR_RE = re.compile(rb'(?P<indent>[ \t]*)import[ \t]+/etc/caddy/fodders-desk\.caddy[ \t]*')
@@ -781,9 +789,85 @@ def inspect(params):
     }
 
 
+def address_history(params):
+    if hasattr(os, 'geteuid') and os.geteuid() != 0:
+        fail('remote_not_root')
+    for directory in (Path('/var'), Path('/var/www'), Path('/var/www/fodders-site'), ADDRESS_HISTORY_PATH.parent):
+        if directory.is_symlink():
+            fail('address_history_directory_symlink_refused')
+        if not directory.is_dir():
+            fail('address_history_directory_missing')
+    snapshot = read_regular(ADDRESS_HISTORY_PATH, True)
+    try:
+        document = json.loads(snapshot[0].decode('utf-8'))
+    except (UnicodeError, json.JSONDecodeError):
+        fail('address_history_json_invalid')
+    if not isinstance(document, dict) or document.get('schema') != 1 or not isinstance(document.get('servers'), dict):
+        fail('address_history_schema_invalid')
+    server_id = params.get('server_id', '')
+    if server_id not in ('nl', 'fi', 'us', 'tr'):
+        fail('address_history_server_invalid')
+    changed_on = params.get('changed_on', '')
+    if not re.fullmatch(r'20[0-9]{2}-[0-9]{2}-[0-9]{2}', changed_on):
+        fail('address_history_date_invalid')
+    try:
+        import datetime
+        if datetime.date.fromisoformat(changed_on).isoformat() != changed_on:
+            fail('address_history_date_invalid')
+    except ValueError:
+        fail('address_history_date_invalid')
+    current = document['servers'].get(server_id)
+    if current == changed_on:
+        return {'ok': True, 'changed': False, 'changed_on': current, 'verified': True, 'backup_path': None}
+    if params.get('mode') == 'address-age-inspect':
+        return {'ok': True, 'changed': False, 'would_change': True, 'changed_on': current, 'verified': True}
+    if params.get('mode') != 'address-age-apply':
+        fail('address_history_mode_invalid')
+    if current is not None and (not isinstance(current, str) or not re.fullmatch(r'20[0-9]{2}-[0-9]{2}-[0-9]{2}', current)):
+        fail('address_history_entry_invalid')
+    document['servers'][server_id] = changed_on
+    updated = (json.dumps(document, ensure_ascii=False, indent=2) + '\n').encode('utf-8')
+
+    if BACKUP_ROOT.parent.is_symlink() or BACKUP_ROOT.is_symlink() or not BACKUP_ROOT.is_dir():
+        fail('backup_root_invalid')
+    backup_info = BACKUP_ROOT.lstat()
+    if backup_info.st_uid != 0 or stat.S_IMODE(backup_info.st_mode) & 0o077:
+        fail('backup_root_not_private')
+    backup = BACKUP_ROOT / ('server-address-history-' + time.strftime('%Y%m%d-%H%M%S', time.gmtime()) + '-' + secrets.token_hex(6))
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, 'O_NOFOLLOW'):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(str(backup), flags, 0o600)
+    try:
+        os.fchown(fd, snapshot[1], snapshot[2])
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(snapshot[0])
+            stream.flush()
+            os.fsync(stream.fileno())
+    except Exception:
+        try: os.close(fd)
+        except OSError: pass
+        try: backup.unlink()
+        except OSError: pass
+        fail('address_history_backup_failed')
+
+    assert_current_history(snapshot[0])
+    atomic_write(ADDRESS_HISTORY_PATH, updated, snapshot[1], snapshot[2], snapshot[3])
+    verified = read_regular(ADDRESS_HISTORY_PATH, True)
+    if verified[0] != updated:
+        fail('address_history_verify_failed')
+    return {'ok': True, 'changed': True, 'changed_on': changed_on, 'verified': True, 'backup_path': str(backup)}
+
+
+def assert_current_history(expected):
+    current = read_regular(ADDRESS_HISTORY_PATH, True)
+    if current[0] != expected:
+        fail('address_history_source_changed')
+
+
 def run(params):
     mode = params.get('mode')
-    if mode not in ('apply', 'rollback', 'inspect', 'reconcile'):
+    if mode not in ('apply', 'rollback', 'inspect', 'reconcile', 'address-age-inspect', 'address-age-apply'):
         return {'ok': False, 'error': 'mode_invalid'}
     try:
         lock_fd = acquire_site_lock()
@@ -796,6 +880,8 @@ def run(params):
             return rollback(params)
         if mode == 'inspect':
             return inspect(params)
+        if mode in ('address-age-inspect', 'address-age-apply'):
+            return address_history(params)
         return reconcile(params)
     except OperationFailure as exc:
         return {
@@ -822,6 +908,117 @@ def _remote_script(mode: str, *, domain: str | None = None,
     # JSON contains only the validated public IP-derived target or a strict
     # backup path. The remote command itself stays fixed and receives code via stdin.
     return REMOTE_SCRIPT + "\nPARAMS = json.loads(" + repr(serialized) + ")\nprint(json.dumps(run(PARAMS), separators=(',', ':')))\n"
+
+
+def _address_history_script(server_id: str, changed_on: str, *, apply: bool) -> str:
+    params = {
+        "mode": "address-age-apply" if apply else "address-age-inspect",
+        "server_id": server_id,
+        "changed_on": changed_on,
+    }
+    serialized = json.dumps(params, separators=(",", ":"))
+    return REMOTE_SCRIPT + "\nPARAMS = json.loads(" + repr(serialized) + ")\nprint(json.dumps(run(PARAMS), separators=(',', ':')))\n"
+
+
+def sync_server_address_age(server_id: str, changed_on: str, apply: bool = False, *,
+                            ssh_connect: Callable[[], Any] | None = None,
+                            home: Path | None = None,
+                            config_path: Path | None = None,
+                            known_hosts_path: Path | None = None,
+                            socket_connect: Callable[..., Any] | None = None,
+                            ssh_factory: Callable[[], Any] | None = None) -> dict[str, Any]:
+    """Update one public server's IP-age date on the separate site host.
+
+    The default is a read-only plan. Apply uses the strict `fodders` SSH alias,
+    writes a private backup before the atomic replacement, then verifies both
+    the remote file and the HTTPS asset served to visitors.
+    """
+    if server_id not in ("nl", "fi", "us", "tr"):
+        raise SiteLinkSyncError("The VPN server ID for the public age marker is invalid.")
+    try:
+        parsed_date = __import__("datetime").date.fromisoformat(changed_on)
+    except (TypeError, ValueError):
+        raise SiteLinkSyncError("The VPN IP-change date is invalid.") from None
+    if parsed_date.isoformat() != changed_on:
+        raise SiteLinkSyncError("The VPN IP-change date is invalid.")
+
+    client = None
+    result: dict[str, Any] = {
+        "server": server_id,
+        "changed_on": changed_on,
+        "website_updated": False,
+        "verified": False,
+        "applied": False,
+    }
+    try:
+        if ssh_connect is not None:
+            client = ssh_connect()
+        else:
+            client = _connect_fodders(
+                home=home,
+                config_path=config_path,
+                known_hosts_path=known_hosts_path,
+                socket_connect=socket_connect,
+                ssh_factory=ssh_factory,
+            )
+        remote = _execute_remote(
+            client,
+            _address_history_script(server_id, changed_on, apply=False),
+        )
+        if remote.get("ok") is not True or remote.get("verified") is not True:
+            raise SiteLinkSyncError("The public website's server-age file could not be inspected safely.", result=result)
+        if not apply:
+            result.update({
+                "dry_run": True,
+                "would_change": remote.get("would_change") is True,
+                "verified": True,
+            })
+            return result
+
+        remote = _execute_remote(
+            client,
+            _address_history_script(server_id, changed_on, apply=True),
+        )
+        if remote.get("ok") is not True or remote.get("verified") is not True or remote.get("changed_on") != changed_on:
+            raise SiteLinkSyncError("The public website's server-age date did not verify after the update.", result=result)
+        backup_path = remote.get("backup_path")
+        if remote.get("changed") is True:
+            if not isinstance(backup_path, str) or not re.fullmatch(
+                r"/var/backups/fodders-site/server-address-history-[0-9]{8}-[0-9]{6}-[0-9a-f]{12}",
+                backup_path,
+            ):
+                raise SiteLinkSyncError("The public website updated its age file without valid backup metadata.", result=result)
+
+        get = _http_get
+        response = get(ADDRESS_HISTORY_URL + "?v=" + changed_on + "&check=" + str(time.time_ns()), timeout=15.0)
+        if _response_status(response) != 200:
+            raise SiteLinkSyncError("The public website did not serve the updated server-age file.", result=result)
+        try:
+            body = response.body.decode("utf-8") if isinstance(response.body, bytes) else response.body
+            published = json.loads(body)
+        except (UnicodeError, TypeError, json.JSONDecodeError):
+            raise SiteLinkSyncError("The public website served an invalid server-age file.", result=result) from None
+        if not isinstance(published, dict) or not isinstance(published.get("servers"), dict) or published["servers"].get(server_id) != changed_on:
+            raise SiteLinkSyncError("The public website served a stale server-age date.", result=result)
+
+        result.update({
+            "website_updated": remote.get("changed") is True,
+            "verified": True,
+            "applied": True,
+            "dry_run": False,
+            "backup_path": backup_path,
+        })
+        return result
+    except SiteLinkSyncError:
+        raise
+    except Exception:
+        raise SiteLinkSyncError("The public website's server-age date could not be synchronized safely.", result=result) from None
+    finally:
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
 
 
 def _execute_remote(client: Any, script: str) -> dict[str, Any]:
