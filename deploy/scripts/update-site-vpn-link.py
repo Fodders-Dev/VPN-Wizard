@@ -804,6 +804,11 @@ def address_history(params):
         fail('address_history_json_invalid')
     if not isinstance(document, dict) or document.get('schema') != 1 or not isinstance(document.get('servers'), dict):
         fail('address_history_schema_invalid')
+    estimated = document.get('estimated', [])
+    if (not isinstance(estimated, list)
+            or any(not isinstance(item, str) or item not in ('nl', 'fi', 'us', 'tr') for item in estimated)
+            or len(set(estimated)) != len(estimated)):
+        fail('address_history_estimated_invalid')
     server_id = params.get('server_id', '')
     if server_id not in ('nl', 'fi', 'us', 'tr'):
         fail('address_history_server_invalid')
@@ -817,15 +822,17 @@ def address_history(params):
     except ValueError:
         fail('address_history_date_invalid')
     current = document['servers'].get(server_id)
-    if current == changed_on:
+    was_estimated = server_id in estimated
+    if current == changed_on and not was_estimated:
         return {'ok': True, 'changed': False, 'changed_on': current, 'verified': True, 'backup_path': None}
     if params.get('mode') == 'address-age-inspect':
-        return {'ok': True, 'changed': False, 'would_change': True, 'changed_on': current, 'verified': True}
+        return {'ok': True, 'changed': False, 'would_change': True, 'changed_on': current, 'estimated': was_estimated, 'verified': True}
     if params.get('mode') != 'address-age-apply':
         fail('address_history_mode_invalid')
     if current is not None and (not isinstance(current, str) or not re.fullmatch(r'20[0-9]{2}-[0-9]{2}-[0-9]{2}', current)):
         fail('address_history_entry_invalid')
     document['servers'][server_id] = changed_on
+    document['estimated'] = [item for item in estimated if item != server_id]
     updated = (json.dumps(document, ensure_ascii=False, indent=2) + '\n').encode('utf-8')
 
     if BACKUP_ROOT.parent.is_symlink() or BACKUP_ROOT.is_symlink() or not BACKUP_ROOT.is_dir():

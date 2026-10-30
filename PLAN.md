@@ -8,6 +8,8 @@
       including the FI alternate port.
 - [x] Extend the one-shortcut migration workflow to update dates only on actual
       verified changes, with safe site backups and retry after sync failure.
+- [x] Mark the US age as approximate in the UI and clear that marker on a
+      verified address change.
 
 
 ## FI address refresh (2026-10-30)

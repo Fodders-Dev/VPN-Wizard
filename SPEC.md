@@ -12,6 +12,8 @@ country's date. Initial dates: NL 2026-10-25, FI 2026-10-30, US 2026-08-30
 host. The `Сменить IP VPN` Windows shortcut advances a date only after a
 verified actual address change; idempotent repeats keep it unchanged, and a
 confirmed local pending record lets the same country/IP retry a failed site sync.
+The US age is marked `≈` in the catalog with an estimate tooltip; a verified
+future IP change clears that estimate marker atomically with the date update.
 
 
 ## Current FI endpoint (2026-10-30)

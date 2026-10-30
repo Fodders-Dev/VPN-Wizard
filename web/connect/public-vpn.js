@@ -4,6 +4,7 @@
   var catalog=window.FodderCatalog, grid=document.getElementById('server-grid');
   var busy=false, current=null, loading=false, staleCatalog=false, activeServer=null, activeFormat=null;
   var addressHistory={};
+  var addressHistoryEstimated={};
   var qrDialog=document.getElementById('profile-qr-dialog'), qrImage=document.getElementById('profile-qr'), qrUrl=null, qrFocusKey=null;
   var telegram=window.Telegram&&window.Telegram.WebApp;
   if(telegram||window.TelegramWebviewProxy){
@@ -56,8 +57,14 @@
     if(days===null){node.textContent='Дата смены IP указана неверно';node.removeAttribute('datetime');return;}
     if(days<0){node.textContent='Дата смены IP ещё не наступила';node.removeAttribute('datetime');return;}
     node.dateTime=dateText;
-    node.title='Последняя смена IP: '+new Date(dateText+'T00:00:00').toLocaleDateString('ru-RU');
-    node.textContent='IP не менялся: '+days+' '+dayWord(days);
+    var displayDate=new Date(dateText+'T00:00:00').toLocaleDateString('ru-RU');
+    if(addressHistoryEstimated[node.dataset.serverAgeId]){
+      node.title='Оценка: дата последней смены IP — '+displayDate;
+      node.textContent='IP не менялся: ≈ '+days+' '+dayWord(days);
+    }else{
+      node.title='Последняя смена IP: '+displayDate;
+      node.textContent='IP не менялся: '+days+' '+dayWord(days);
+    }
   }
   function refreshServerAges(){document.querySelectorAll('[data-server-age-id]').forEach(updateServerAge);}
   function appendServerAge(server,card){
@@ -182,9 +189,12 @@
   document.addEventListener('fodder:catalog',function(e){staleCatalog=false;render(e.detail);});
   document.addEventListener('fodder:catalog-error',stale);
   fetch('/connect/server-address-history.json',{cache:'no-store',credentials:'omit'}).then(function(response){if(!response.ok)throw new Error('history');return response.json();}).then(function(data){
-    if(!data||data.schema!==1||!data.servers||typeof data.servers!=='object')throw new Error('history');
-    addressHistory=data.servers;refreshServerAges();
-  }).catch(function(){addressHistory={};refreshServerAges();});
+    if(!data||data.schema!==1||!data.servers||typeof data.servers!=='object'||!Array.isArray(data.estimated))throw new Error('history');
+    addressHistory=data.servers;
+    addressHistoryEstimated=Object.create(null);
+    data.estimated.forEach(function(id){if(['nl','fi','us','tr'].indexOf(id)>=0)addressHistoryEstimated[id]=true;});
+    refreshServerAges();
+  }).catch(function(){addressHistory={};addressHistoryEstimated={};refreshServerAges();});
   window.setInterval(refreshServerAges,60000);
   catalog.support({});catalog.watch();
 })();

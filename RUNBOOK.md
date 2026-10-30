@@ -13,6 +13,9 @@ backup is `/var/backups/fodders-site/server-age-layout-20261030-133814-848854231
 
 The public date mapping is NL 2026-10-25, FI 2026-10-30, US 2026-08-30
 (owner-approved two-month estimate), and TR unknown. FI-alt inherits FI. The
+US age is labelled `≈` with an estimate tooltip; a verified future IP change
+clears this marker atomically with the new date. This UI update is backed up at
+`/var/backups/fodders-site/server-age-estimate-20261030-134239-be881cc4957b`.
 page shows `IP не менялся: N дней` and recalculates at local calendar-day
 boundaries; it does not infer hours or server uptime. Open `Другие варианты
 подключения` to see the alternate-port card and its shared date.
