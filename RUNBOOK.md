@@ -23,6 +23,9 @@ verified Endpoint=193.8.114.209:3478 without printing private contents. Website
 shows FI available (18ms monitor latency). API health returned ok and a second
 public-host preflight reported no pending registry/profile/host-key changes.
 Actual traffic from the owner's imported VPN profile remains a device check.
+Updated the one matching saved-server field on each controller using guarded
+existing SQLite helpers and online backups: fi-saved-host-1793358703559924117
+on 77.91.113.109 and fi-saved-host-1793358725168663885 on NL.
 
 ## All-server launcher and stable website entry (2026-10-26)
 
