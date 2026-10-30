@@ -60,15 +60,15 @@
     var displayDate=new Date(dateText+'T00:00:00').toLocaleDateString('ru-RU');
     if(addressHistoryEstimated[node.dataset.serverAgeId]){
       node.title='Оценка: дата последней смены IP — '+displayDate;
-      node.textContent='IP не менялся: ≈ '+days+' '+dayWord(days);
+      node.textContent='≈ '+days+' '+dayWord(days)+' без происшествий';
     }else{
       node.title='Последняя смена IP: '+displayDate;
-      node.textContent='IP не менялся: '+days+' '+dayWord(days);
+      node.textContent=days+' '+dayWord(days)+' без происшествий';
     }
   }
   function refreshServerAges(){document.querySelectorAll('[data-server-age-id]').forEach(updateServerAge);}
   function appendServerAge(server,card){
-    var baseId=serverBaseId(server), time=el('time','vpn-server-age');
+    var baseId=serverBaseId(server), time=el('time','vpn-server-age vpn-server-age--badge');
     time.dataset.serverAgeId=baseId;
     updateServerAge(time);
     card.appendChild(time);

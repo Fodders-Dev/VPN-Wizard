@@ -12,13 +12,13 @@ manifest marks the history file as previously absent). The spacing follow-up
 backup is `/var/backups/fodders-site/server-age-layout-20261030-133814-848854231997`.
 
 The public date mapping is NL 2026-10-25, FI 2026-10-30, US 2026-08-30
-(owner-approved two-month estimate), and TR unknown. FI-alt inherits FI. The
-US age is labelled `≈` with an estimate tooltip; a verified future IP change
-clears this marker atomically with the new date. This UI update is backed up at
-`/var/backups/fodders-site/server-age-estimate-20261030-134239-be881cc4957b`.
-page shows `IP не менялся: N дней` and recalculates at local calendar-day
-boundaries; it does not infer hours or server uptime. Open `Другие варианты
-подключения` to see the alternate-port card and its shared date.
+(owner-approved two-month estimate), and TR unknown. FI-alt inherits FI.
+The site shows elapsed IP age as an incident-free-days badge and
+recalculates at local calendar-day boundaries. It does not imply
+continuous availability. The US badge is labelled `≈` with an estimate
+tooltip; a verified future IP change clears the estimate marker
+atomically with the new date. The badge release is backed up at
+`/var/backups/fodders-site/server-age-incident-badge-20261030-151835-046010f7afa0`.
 
 Use the Desktop shortcut `Сменить IP VPN` for future address moves. After a
 verified actual IP change, it backs up and atomically updates the JSON on the
