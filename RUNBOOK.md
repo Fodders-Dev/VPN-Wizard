@@ -584,3 +584,13 @@ Client config expectations:
 - Proxy mode (ShadowTLS) exports an auto-config profile URL (Hiddify / sing-box). Legacy proxy mode exports a `vless://` link + QR.
 - ShadowTLS proxy configs are pinned to the primary port by default (to avoid RU ISP port filtering breaking urltest-based failover). Optional urltest can be enabled via `VPNW_SHADOWTLS_ENABLE_URLTEST=1`.
 - `/api/download/<id>/config` is a snapshot: if server/proxy was reconfigured, generate a fresh URL/profile (old URL may point to outdated settings).
+
+## Watchdog interface-specific silence alert (2026-10-30)
+
+A silence alert describes the named interface only. When another owned interface
+has a fresh handshake, it is shown in the alert context. TCP/443 checks and host
+resource measurements do not verify VPN tunnel traffic. Old profile endpoints,
+UDP blocking and inactive clients are hypotheses until checked.
+The wording update is backed up at
+`/var/backups/fodder-vpn-monitor-20261030-1519-b417d86`; the timer runs the
+installed script on its next invocation, so no service restart is required.

@@ -22,8 +22,9 @@ VPNW_TELEGRAM_AUTH_TOKEN (или VPNW_BOT_TOKEN) и VPNW_OWNER_IDS.
 но TCP-память кончилась — и все TLS-хендшейки встали, а узнали мы об этом, только
 когда сайт полностью лёг. Эти пороги предупреждают заранее.
 
-Ещё проверяется, доходят ли до интерфейсов живые люди: интерфейс с профилями,
-но без единого хендшейка, — это молча отрезанная аудитория (см. SILENT_HOURS).
+Ещё watchdog проверяет хендшейки на собственных интерфейсах. Их длительное
+отсутствие — сигнал, что на конкретном интерфейсе давно нет подтверждённых
+подключений; это не вывод по всей машине (см. SILENT_HOURS).
 
 Запуск с --test шлёт пробное сообщение и выходит — так проверяется доставка.
 Запуск с --capacity печатает текущие цифры по всем коробкам и выходит.
@@ -424,6 +425,20 @@ def parse_iface_probe(text: str) -> list[dict]:
     return rows
 
 
+def peer_count_label(count: int) -> str:
+    last_two = count % 100
+    last = count % 10
+    if 11 <= last_two <= 14:
+        noun = "пиров"
+    elif last == 1:
+        noun = "пир"
+    elif 2 <= last <= 4:
+        noun = "пира"
+    else:
+        noun = "пиров"
+    return f"{count} {noun}"
+
+
 def interface_complaints(rows: list[dict], now: int, own: tuple[str, ...] = PRODUCT_INTERFACES) -> list[dict]:
     """What is wrong with our interfaces, and of which kind.
 
@@ -470,7 +485,7 @@ def interface_complaints(rows: list[dict], now: int, own: tuple[str, ...] = PROD
                 add(
                     "silent",
                     row["iface"],
-                    f"{row['iface']}: {row['peers']} профилей, "
+                    f"{row['iface']}: {peer_count_label(row['peers'])}, "
                     f"последнее подключение {hours} ч назад",
                 )
             else:
@@ -478,7 +493,7 @@ def interface_complaints(rows: list[dict], now: int, own: tuple[str, ...] = PROD
                 add(
                     "silent",
                     row["iface"],
-                    f"{row['iface']}: {row['peers']} профилей и "
+                    f"{row['iface']}: {peer_count_label(row['peers'])} и "
                     f"ни одного подключения за {hours} ч",
                 )
     return out
@@ -487,10 +502,11 @@ def interface_complaints(rows: list[dict], now: int, own: tuple[str, ...] = PROD
 INTERFACE_MESSAGES = {
     "silent": (
         "🔇 {name}: {detail}.\n\n"
-        "Сервер при этом жив и по ресурсам в порядке — значит люди до него не "
-        "доходят. Чаще всего это старый адрес в их приложении после смены IP: "
-        "профили на сервере уже новые, а на руках у людей — прежние. "
-        "Проверь, роздали ли им обновлённые файлы."
+        "{fresh_context}"
+        "Свежих подключений на указанном интерфейсе нет. Возможные причины: "
+        "старый адрес в профилях, блокировка UDP или отсутствие активности. "
+        "Старый адрес — только одна из гипотез. TCP/443 и хорошие ресурсы хоста "
+        "отдельно не подтверждают работу туннеля."
     ),
     "mss": (
         "🧱 {name}: {detail}.\n\n"
@@ -527,6 +543,24 @@ def check_interfaces(state: dict, now: int) -> None:
         detail = "; ".join(c["text"] for c in complaints) or ", ".join(
             f"{r['iface']}×{r['peers']}" for r in rows if r["iface"] in own
         )
+        fresh_context = ""
+        if status == "silent":
+            silent_ifaces = {c["iface"] for c in complaints if c["kind"] == "silent"}
+            window = SILENT_HOURS * 3600
+            fresh_others = []
+            for row in rows:
+                iface = row["iface"]
+                handshake = row["newest_handshake"]
+                age = now - handshake if handshake else None
+                if (
+                    iface in own
+                    and iface not in silent_ifaces
+                    and age is not None
+                    and 0 <= age < window
+                ):
+                    fresh_others.append(f"{iface} видел подключение {int(age // 3600)} ч назад")
+            if fresh_others:
+                fresh_context = "При этом " + ", ".join(fresh_others) + ". "
         key = f"ifaces:{name}"
         entry = state.get(key) or {"status": "ok", "since": now, "last_alert": 0}
         # Track WHICH interface has WHICH fault, not just that something is
@@ -545,7 +579,9 @@ def check_interfaces(state: dict, now: int) -> None:
         bad = status != "ok"
         stale = bad and now - int(entry.get("last_alert") or 0) >= REMIND_SECONDS
         if (changed or stale) and (bad or entry["status"] != "ok"):
-            text = INTERFACE_MESSAGES[status].format(name=name, detail=detail)
+            text = INTERFACE_MESSAGES[status].format(
+                name=name, detail=detail, fresh_context=fresh_context
+            )
             if not changed:
                 text = "⏰ Всё ещё так.\n" + text
             try:
@@ -628,7 +664,7 @@ def main() -> int:
                     else "никогда"
                 )
                 print(
-                    f"{name} · {row['iface']}: {row['peers']} профилей, "
+                    f"{name} · {row['iface']}: {peer_count_label(row['peers'])}, "
                     f"последнее подключение {age}, "
                     f"MSS {'да' if row['has_mss_rule'] else 'НЕТ'}, "
                     f"syncconf {'да' if row['has_syncconf'] else 'НЕТ'}"

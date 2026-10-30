@@ -102,6 +102,8 @@ this certificate repair does not establish RF-client transport reliability.
 
 ## Server catalogue and voluntary support
 
+- Watchdog silence alerts are interface-specific. A fresh handshake on another owned interface is included as context; TCP/443 reachability and host resources do not establish VPN reachability. A stale profile endpoint is a hypothesis, not a measured cause.
+
 - A running interface with no VPN handshake in the last five minutes is
   "Доступен", not confirmed working from a user's ISP. Explain the idle state
   briefly and keep downloads/QR available; only recent handshakes mean "Работает".

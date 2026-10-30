@@ -132,7 +132,7 @@ def render(stats: dict) -> str:
         "",
         f"Профилей выдано: {issued}" + (f"  (+{stats['new_24h']} за сутки)" if stats["new_24h"] else ""),
         f"Заработал хотя бы раз: {ever}{share}",
-        f"Пользовались за сутки: {stats['active_24h']}",
+        f"Хендшейк за сутки по профилям, отслеживаемым ботом: {stats['active_24h']} пользователей (это не весь VPN-трафик на серверах)",
     ]
     if stats["by_server"]:
         spread = ", ".join(f"{name}: {count}" for name, count in sorted(stats["by_server"].items()))

@@ -1,5 +1,10 @@
 # PLAN
 
+## Watchdog interface-specific silence alerts (2026-10-30)
+
+- [x] Name the exact quiet interface; include fresh handshakes from other owned interfaces.
+- [x] Mark old profiles as a possible cause only; distinguish VPN handshakes from TCP/443 and host health.
+
 ## Public server IP-age display (2026-10-30)
 
 - [x] Add accessible whole-day IP-age labels to main and alternate exit cards.
