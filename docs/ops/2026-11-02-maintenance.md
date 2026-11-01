@@ -1,0 +1,27 @@
+# Maintenance — 2026-11-02 (Europe/Moscow)
+
+## USA disk cleanup
+
+USA 147.45.125.36 root filesystem grew from 143 MiB free (99% used) to
+1.1 GiB free (88% used). Cleaned apt package cache and regenerable apt lists,
+rotated btmp.1, 80 MiB of archived journals, and the abandoned
+/var/tmp/mkinitramfs_EeHkb3 workspace from October 15 after verifying no apt,
+dpkg or mkinitramfs process was running. Retained installed kernels, current
+VPN configuration and running containers. awg-quick@awg0 remained active;
+remnanode remained up with two weeks of uptime.
+
+## NL address replacement
+
+Ran Set-VpnServerIp.ps1 nl 151.243.212.136. Existing SSH/AWG identities and
+runtime interfaces verified. Updated 266 persisted profiles, six configuration
+files, one SQLite row and two Remnawave rows. HTTPS/catalog returned 200;
+Telegram menu URLs updated. Controller backup: change-nl-ip-7a5a6l_m.
+
+Stable https://fodders.ru/vpn/ now resolves to
+https://151-243-212-136.nip.io/connect/join.html (verified HTTP 200).
+Public history JSON and repository seed date NL to 2026-11-02.
+
+Owner actions in BotFather: setdomain 151-243-212-136.nip.io and Main App URL
+https://151-243-212-136.nip.io/portal/. Existing imported client profiles
+require an Endpoint edit preserving the port, or downloading/importing the
+refreshed profile.
