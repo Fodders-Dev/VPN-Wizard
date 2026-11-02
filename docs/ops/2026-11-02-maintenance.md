@@ -17,11 +17,14 @@ runtime interfaces verified. Updated 266 persisted profiles, six configuration
 files, one SQLite row and two Remnawave rows. HTTPS/catalog returned 200;
 Telegram menu URLs updated. Controller backup: change-nl-ip-7a5a6l_m.
 
-Stable https://fodders.ru/vpn/ now resolves to
-https://151-243-212-136.nip.io/connect/join.html (verified HTTP 200).
+The migration initially moved the website shortcut to NL by mistake. It was
+restored to the RU public host: https://fodders.ru/vpn/ resolves to
+https://77-91-113-109.nip.io/connect/join.html (verified HTTP 200).
+The Windows launcher now pins the public website to the RU host independently
+of the changing NL VPN address.
 Public history JSON and repository seed date NL to 2026-11-02.
 
-Owner actions in BotFather: setdomain 151-243-212-136.nip.io and Main App URL
-https://151-243-212-136.nip.io/portal/. Existing imported client profiles
+BotFather continues to use setdomain 77-91-113-109.nip.io and Main App URL
+https://77-91-113-109.nip.io/portal/. Existing imported client profiles
 require an Endpoint edit preserving the port, or downloading/importing the
 refreshed profile.

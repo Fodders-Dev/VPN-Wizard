@@ -30,6 +30,7 @@ from cryptography.fernet import Fernet, InvalidToken
 DEFAULT_ENV = Path("/etc/vpn-wizard.env")
 DEFAULT_ENV_POSIX = "/etc/vpn-wizard.env"
 BACKUP_ROOT = Path("/var/backups/vpn-wizard")
+PUBLIC_VPN_SITE_IP = "77.91.113.109"
 SERVER_IDS = {"fi", "us", "tr"}
 LAUNCHER_SERVER_IDS = SERVER_IDS | {"nl"}
 IFACE_RE = re.compile(r"^[a-z][a-z0-9]{1,14}$")
@@ -1133,7 +1134,7 @@ def _windows_main(server_id: str, new_ip: str, apply: bool, env_path: str = DEFA
                 alias_error = exc
             sync = site_sync or _load_site_link_sync()
             try:
-                site_status = sync(new_ip, apply=apply)
+                site_status = sync(PUBLIC_VPN_SITE_IP, apply=apply)
                 site_ok = site_status.get("verified") is True and (not apply or site_status.get("applied") is True)
             except Exception as exc:
                 site_status = getattr(exc, "result", None) or {"verified": False, "applied": False, "error": str(exc)[:240]}
@@ -1150,8 +1151,11 @@ def _windows_main(server_id: str, new_ip: str, apply: bool, env_path: str = DEFA
                     age_status = {"verified": False, "applied": False, "retry_pending": True}
             report["address_age"] = age_status or {"verified": True, "applied": False, "changed": False}
             if apply and report.get("old_ip") != new_ip:
-                domain = new_ip.replace(".", "-") + ".nip.io"
-                report["botfather_actions"] = [f"/setdomain {domain}", f"MainAppURL https://{domain}/portal/"]
+                site_domain = PUBLIC_VPN_SITE_IP.replace(".", "-") + ".nip.io"
+                report["botfather_actions"] = [
+                    f"/setdomain {site_domain}",
+                    f"MainAppURL https://{site_domain}/portal/",
+                ]
             print(json.dumps(report, separators=(",", ":")))
             if not site_ok:
                 print("ERROR: NL migration succeeded, but the website link update or verification failed.", file=sys.stderr)

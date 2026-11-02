@@ -829,13 +829,14 @@ def test_windows_nl_site_failure_is_reported_after_backend_without_claiming_roll
     )
 
     assert code == 1
-    assert calls == [("82.25.60.19", True)]
+    assert calls == [(change_ip.PUBLIC_VPN_SITE_IP, True)]
     out, err = capsys.readouterr()
     report = json.loads(out.splitlines()[0])
     assert report["changed"] is True
     assert report["website"]["verified"] is False
     assert "rollback" not in report
-    assert report["botfather_actions"][0] == "/setdomain 82-25-60-19.nip.io"
+    assert report["botfather_actions"][0] == "/setdomain 77-91-113-109.nip.io"
+    assert report["botfather_actions"][1] == "MainAppURL https://77-91-113-109.nip.io/portal/"
     assert "NL migration succeeded" in err
 
 
@@ -857,14 +858,14 @@ def test_windows_nl_noop_still_runs_site_repair_callback(capsys):
     )
 
     assert code == 0
-    assert calls == [("82.25.60.19", True)]
+    assert calls == [(change_ip.PUBLIC_VPN_SITE_IP, True)]
     report = json.loads(capsys.readouterr().out)
     assert report["changed"] is False
     assert report["website"]["site_updated"] is True
 
 
 def test_windows_nl_default_site_loader_runs_with_mocked_io(capsys, monkeypatch: pytest.MonkeyPatch):
-    target = "https://82-25-60-19.nip.io/connect/join.html"
+    target = "https://77-91-113-109.nip.io/connect/join.html"
     requests = []
 
     class Controller:
@@ -915,7 +916,7 @@ def test_windows_nl_default_site_loader_runs_with_mocked_io(capsys, monkeypatch:
     )
 
     assert code == 0
-    assert "https://82-25-60-19.nip.io/connect/join.html" in requests
+    assert "https://77-91-113-109.nip.io/connect/join.html" in requests
     assert "https://fodders.ru/vpn?codex_probe=must-drop" in requests
     report = json.loads(capsys.readouterr().out)
     assert report["website"]["verified"] is True

@@ -7,6 +7,8 @@
 )
 
 $ErrorActionPreference = 'Stop'
+$PublicSiteIp = '77.91.113.109'
+$PublicSiteDomain = ($PublicSiteIp -replace '\.', '-') + '.nip.io'
 
 if ([string]::IsNullOrWhiteSpace($Country)) {
     $Country = Read-Host 'Страна nl/fi/us/tr [fi]'
@@ -41,7 +43,7 @@ if ($CheckOnly) {
     Write-Host 'Проверяю SSH, ключи AWG и план обновления. Изменений не будет.'
 } else {
     if ($Country -eq 'nl') {
-        Write-Host 'Проверяю и применяю смену публичного IP Нидерландов, сайта и VPN-ссылок.'
+        Write-Host ('Проверяю и применяю смену IP VPN-сервера Нидерландов. Сайт и вход в Telegram остаются на RU: https://' + $PublicSiteDomain + '/portal/.')
     } else {
         Write-Host 'Проверяю и применяю смену IP сервера VPN.'
     }
@@ -55,11 +57,10 @@ if (-not $CheckOnly -and $Country -eq 'nl') {
     foreach ($Line in $OutputLines) {
         try { $Report = $Line | ConvertFrom-Json -ErrorAction Stop } catch { continue }
         if ($Report.botfather_actions -and $Report.botfather_actions.Count -ge 2) {
-            $Domain = (($NewIp.Trim() -replace '\.', '-') + '.nip.io')
-            Write-Host ('Сайт: https://' + $Domain + '/connect/join.html')
-            Write-Host ('Портал: https://' + $Domain + '/portal/')
+            Write-Host ('Сайт: https://' + $PublicSiteDomain + '/connect/join.html')
+            Write-Host ('Портал: https://' + $PublicSiteDomain + '/portal/')
             Write-Host ('BotFather вручную: ' + $Report.botfather_actions[0])
-            Write-Host ('BotFather вручную: MainAppURL https://' + $Domain + '/portal/')
+            Write-Host ('BotFather вручную: MainAppURL https://' + $PublicSiteDomain + '/portal/')
         }
     }
 }
